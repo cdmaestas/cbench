@@ -1,0 +1,25 @@
+FIXIT123_HOME=/projects/tbird/jbogden/svnsrc/fixit123
+FIXIT123_NODEINFO_CMD="/apps/torque/bin/pbsnodes -a"
+FIXIT123_OFFLINE_CMD="/apps/torque/bin/pbsnodes -o"
+FIXIT123_ONLINE_CMD="/apps/torque/bin/pbsnodes -c -N n"
+FIXIT123_CHECKSTATE_CMD="/apps/moab/bin/showres -n"
+FIXIT123_LOGDIR=/var/log
+FIXIT123_DB_HOME=/apps/breakfix-testing/logs_step123
+FIXIT123_CBENCHTEST=/scratch2/cbench-test-nwcc
+FIXIT123_STEP2_TESTIDENT="breakfix-spirit"
+FIXIT123_STEP2_TESTSTORUN="--class 'cpu|memory|disk'"
+FIXIT123_STEP2_WALLTIME="24:00:00"
+FIXIT123_STEP3_WALLTIME="16:00:00"
+
+FIXIT123_INTERACTIVE_NODES_REGEX='^sn[1-9]$|^sn[1-2][0-9]$|^sn3[0-2]$'
+FIXIT123_CHECKMOUNT_REGEX='scratch2'
+FIXIT123_USER=cbench
+#FIXIT123_STEP1_NODELIST_FILE=/home/jbogden/step1list
+#FIXIT123_STEP2_NODELIST_FILE=/home/jbogden/step2list
+#FIXIT123_STEP3_NODELIST_FILE=/home/jbogden/step3list
+FIXIT123_STEP3_BATCHSUBMIT_CMD="qsub.real -q step3 -m n"
+FIXIT123_RESERVATION_IGNORE_REGEX='SYS-ENG|eshpc|interactive'
+#FIXIT123_STEP1_PAUSEFILE=
+#FIXIT123_STEP2_PAUSEFILE=
+#FIXIT123_STEP3_PAUSEFILE=
+

@@ -1,0 +1,47 @@
+#!/bin/bash
+# sleep delay, 2 minutes should be good enough
+DELAY=2m
+statusfile=$1
+tempnumber=$2
+# $3 is the BROKEN_BACKPLANE flag
+
+tempfile=tmpdac960.$tempnumber
+tempfile2=tmpdac960_2.$tempnumber
+
+if [ ! -e $tempfile ] ; then {
+	cat $statusfile > $tempfile
+	cp $tempfile $tempfile2
+} ; fi
+
+while true ; do {
+	sleep $DELAY
+
+	# Only grab resets as errors when there are >= 10 resets
+	if [ "$3" = "BROKEN_BACKPLANE" ] ; then {
+		cat $statusfile | egrep -B 4 -i '(error|[0-9][0-9] resets)' 2>/dev/null >>/dev/null
+	} ; else {
+		cat $statusfile | egrep -B 4 -i '(error|resets)' 2>/dev/null >>/dev/null
+	} ; fi
+	if [ $? = 0 ] ; then {
+		cat $statusfile > $tempfile2
+		diff -q $tempfile $tempfile2
+		if [ $? != 0 ] ; then {
+			cp $tempfile2 $tempfile
+			cat $tempfile
+			echo ']] DAC960 errors or drive resets detected, see above'
+			exit 1
+		} ; fi
+	} ; fi
+
+	cat $statusfile | grep "Disk Status:" | grep -v 'Online,' | grep -v 'Standby,' >>/dev/null
+	if [ $? = 0 ] ; then {
+		cat $statusfile > $tempfile2
+		diff -q $tempfile $tempfile2
+		if [ $? != 0 ] ; then {
+			cp $tempfile2 $tempfile
+			cat $tempfile
+			echo ']] DAC960 disk status not correct, see above'
+			exit 1
+		} ; fi
+	} ; fi
+} ; done

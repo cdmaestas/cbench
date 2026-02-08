@@ -1,0 +1,25 @@
+#!/bin/bash
+# write/readback data test of filesystems
+
+renice 5 $$ >> /dev/null 2>&1
+
+dev=$1
+size=$2
+mpoint=$3
+
+c=$[$[$size / 8192] + 1]
+if [ $size = 0 ] ; then {
+	export count=""
+} ; else {
+	export count="count=$c"
+} ; fi
+
+cd $mpoint
+ls -la >>/dev/null 2>&1
+find -xdev -name "*" -type f -exec sh -c 'dd if="{}" $count of=/dev/null bs=8192 >>/dev/null 2>&1 ; if [ $? != 0 ] ; then echo "{}" could not be read ; kill -9 `ps -h -p $$ --format "pid ppid command" | cut -f 2 -d '"'"' '"'"'` ;  fi' \;
+if [ $? != 0 ] ; then {
+	exit 1
+} ; fi
+
+ls -la >>/dev/null 2>&1
+exit $?

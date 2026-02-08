@@ -1,0 +1,7 @@
+#!/bin/bash
+if [ ! -e "$1/nbench" -o -z "$1" ] ; then {
+	echo You must specify the nbench directory. >&2
+	exit 2
+} ; fi
+echo $1
+

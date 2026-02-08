@@ -1,0 +1,30 @@
+#!/bin/bash
+#set -x
+
+echo -n "Enter where cbench is located (default $(pwd)):"
+read CBENCHOME
+[ "x" = "x$CBENCHOME" ] && CBENCHOME=$(pwd)
+export CBENCHOME
+
+[ -f $CBENCHOME/doc/examples/cbench-standalonedir-template.sh ] && cp -f ${CBENCHOME}/doc/examples/cbench-standalonedir-template.sh $CBENCHOME/cbench-standalonedir.sh
+
+sed -i -e "s#REPLACE_CBENCHOME#${CBENCHOME}#" ${CBENCHOME}/cbench-standalonedir.sh 
+
+echo -n "Where do you wish to install CBENCH? (default $HOME/cbench-standalone):"
+read CBENCHSTANDALONEDIR
+[ "x" = "x$CBENCHSTANDALONEDIR" ] && CBENCHSTANDALONEDIR=$HOME/cbench-standalone
+export CBENCHSTANDALONEDIR
+[ -d $CBENCHSTANDALONEDIR ] && echo "Previous $CBENCHSTANDALONEDIR directory, remove or specify a different directory" && exit 1
+
+sed -i -e "s#REPLACE_CBENCHSTANDALONEDIR#${CBENCHSTANDALONEDIR=}#" ${CBENCHOME}/cbench-standalonedir.sh 
+
+echo "Log file in $CBENCHOME/cbench_standalone_install.log"
+source ${CBENCHOME}/cbench-standalonedir.sh && make cbench_standalonedir_alldistclean > $CBENCHOME/cbench_standalone_install.log 2>&1 && make cbench_standalone >> $CBENCHOME/cbench_standalone_install.log 2>&1
+egrep -i 'error' $CBENCHOME/cbench_standalone_install.log
+if [ $? -eq 0 ]; then
+	echo "Errors found, examine: $CBENCHOME/cbench_standalone_install.log"
+else
+	echo "Installation is located in: $CBENCHSTANDALONEDIR"
+fi
+exit
+

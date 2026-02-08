@@ -1,0 +1,199 @@
+
+= Cbench Installation HOWTO Guide =
+[wiki:doc/CbenchDocumentation Back to top-level of Documentation]
+
+''Last updated 2 June 2008''
+
+'''This How-To walks through a basic configuration of Cbench 1.1.5 on a Linux cluster.'''
+
+== Cbench Overview ==
+    
+Before getting into the dirty work of installing and making sense of Cbench, it is important to understand the purpose and components of Cbench.  The Cbench toolset is first and foremost a framework of scripts and tools that is used by systems engineers in the management of linux clusters.  There is currently no API for plugging in new tests; Cbench is not really a benchmark program so much as it is a harness for generating, running, and analyzing any number of third-party tests (opensource or otherwise).  The strength of Cbench lies in its ability to run tests in many configurations in an orderly, understandable manner.  Further development may lead to more of a benchmark suite, but remember for now that:
+
+'''Cbench is a way of building, running, and parsing programs, not a testing program itself'''.
+
+== Prerequisites ==
+
+Cbench requires a few things to be installed before proceeding:  
+ * The Cbench source
+ * Linux-based computer or compute cluster
+ * MPI Libraries (OpenMPI or MVAPICH)
+ * Perl
+ * C and Fortran compilers (Intel, GCC, Pathscale, or PGI)
+ * [http://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms BLAS] Library, if interested in tests which link them (e.g. Linpack)
+ 
+
+== Getting Cbench ==
+
+Download the Cbench 1.1.5 source files from Sourceforge [http://sourceforge.net/project/showfiles.php?group_id=54344&package_id=49005&release_id=582534 here]
+
+Extract the files somewhere convenient, such as `/home/whoever/cbench-1.1.5/`
+
+{{{
+bash:~/cbench-1.1.5$ wget http://internap.dl.sourceforge.net/sourceforge/cbench/cbench_release_1.1.5.tar.gz
+bash:~/cbench-1.1.5$ tar xzf cbench_release_1.1.5.tar.gz
+bash:~/cbench-1.1.5$ ls
+cbench.pl                    cluster.def  Makefile    sbin       VERSION
+cbench_release_1.1.5.tar.gz  doc          opensource  templates
+CHANGES                      make.def     perllib     tools
+}}}
+== Setting up the environment ==
+
+Cbench requires a little work before we can install its parts.  The `INSTALL` file in `cbench/doc/` also has some information regarding this section.
+
+
+=== Cbench home and tests ===
+
+Cbench requires a few environment variables to be set when interacting with it.  The first two variables that need to be set are `CBENCHOME` and `CBENCHTEST`.  `CBENCHOME` should point to the Cbench source tree and `CBENCHTEST` should point to the directory where you want the tests for Cbench to reside.  For this walkthrough we will set them as follows:
+
+{{{
+bash:~/cbench-1.1.5$ export CBENCHOME=~/cbench-1.5
+bash:~/cbench-1.1.5$ export CBENCHTEST=~/cbench_tests
+}}}
+
+
+'''Note to Sandia users:''' For each of the sections below, simply load the proper modules and your environment will be properly set up for Cbench.
+
+=== MPI ===
+
+Cbench also needs to know which MPI binaries (mpicc, mpicxx, etc) to use.  We'll use OpenMPI, which happens to be installed in `/usr/local/openmpi/1.2.2/`.  Cbench assumes that the binaries are in `bin/` for the given path.
+
+{{{
+bash:~/cbench-1.1.5$ export MPIHOME=/usr/local/openmpi/1.2.2/
+}}}
+
+
+=== Compiler ===
+
+We also need to set which compiler Cbench will use.  Cbench supports Intel, PGI, Pathscale, and GNU compilers.  We'll use `gcc` for simplicity:
+
+{{{
+bash:~/cbench-1.1.5$ export COMPILERCOLLECTION=gcc
+}}}
+
+You'll also want to make sure that the compiler commands are in your `PATH` if they're installed in non-standard locations.
+
+=== BLAS Library ===
+
+Finally, in order to run Linpack or any other test requiring a [http://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms BLAS] library we must set the `BLASLIB` and `RPATH` variables.  `RPATH` is the absolute path of the `BLAS` libraries, which in our case will be `/usr/lib/`.  We will use the lapack3 libraries for basic tests:
+
+{{{
+bash:~/cbench-1.1.5$ export RPATH=/usr/lib
+bash:~/cbench-1.1.5$ export BLASLIB="-Wl,-rpath,$RPATH -L$RPATH -llapack -lm"
+}}}
+
+
+
+
+It is certainly a good idea to use a `BLAS` library that is optimized for your architecture in real implementations; some good ones are the [http://www.tacc.utexas.edu/resources/software/#blas GOTO BLAS] and the [http://www.intel.com/cd/software/products/asmo-na/eng/266858.htm Intel CMKL BLAS].  Examples of the syntax to include these `BLASLIB` items is found in `make.def`.  Note also that you will need a Fortran compiler if you are going to compile Linpack.
+
+
+== Install Cbench ==
+
+There are two (sort of) two ways to install Cbench:
+
+ '''1)''' We can install the default Cbench tests into $CBENCHTEST by simply executing a `make install` in your `$CBENCHOME` directory.  This will compile all the default tests and create the testing tree at `$CBENCHTEST`.
+
+{{{
+bash:~/cbench-1.1.5$ make installtests
+}}}
+
+ '''OR'''
+
+ '''2)''' If, for some reason, you prefer using the normal `make -> make install` method, this works, too.  If you use simply run `make`, you will run into this:
+
+
+{{{
+bash:~/cbench-1.1.5$ make
+
+...
+
+Applying patch [ 01-cbenchtest.patch ]
+patching file bin/dplot
+Reversed (or previously applied) patch detected!  Assume -R? [n]
+Apply anyway? [n]
+Skipping patch.
+...
+}}}
+
+ Say `n` to each question and you should be fine - the resulting Cbench will end up properly patched, so don't worry.
+
+ Then run 
+{{{
+bash:~/cbench-1.1.5$ make install
+bash:~/cbench-1.1.5$ make installtests
+}}}
+
+Either way, you will end up with your compiled binaries in `CBENCHOME/bin` as well as `$CBENCHTEST/bin`.  If any of the binaries failed to compile, they will simply not show up in your `bin/` directories.  Each test may be installed separately by exploring the Cbench source tree and following its instructions, though you'll have to place them in the right directories yourself if doing it by hand.
+
+Your testing tree contains copies of the original `cbench.pl`, `cluster.def`, and test binaries from `$CBENCHOME` so that you can customize each testing tree as desired without affecting the original source files (useful for creating new testing trees later on).
+
+You now have a fully-functional Cbench testing tree.  You move on and [wiki:doc/HOWTO-RunTestHowTo_1.1 run tests], or you can install non-default tests by continuing on below.
+
+== Install Non-Default Tests ==
+
+Some code within Cbench is not compiled by default.  HPC Challenge and NAS Parallel Benchmarks are two primary ones.  HPCC eventually will compile by default after the Cbench build system is upgraded to something a little smarter.  This is because HPCC can be built two ways in Cbench:
+ 1. with the normal MPI libraries and compilers as specified by `MPIHOME`
+ 2. with a build of MPICH self-contained within Cbench which is useful for building MPI tests for use in the `nodehwtest` testset.
+
+The NAS Parallel Benchmarks has to build a binary for every single combination of processor count, test (sp, ft,...), and test size (A,B,C,...) so we don't build them by default.  This can be a lot of binaries depending on the size of your cluster as setup in `.[source:trunk/cbench/cluster.def cluster.def]`.
+
+From `$CBENCHOME`:
+
+=== Building only what is required for node-level hardware testing ===
+{{{
+bash:~/cbench-1.1.5$ make nodehwtest
+}}}
+
+=== Building HPCC with the system MPI ===
+From the top-level of the Cbench source tree:
+{{{
+bash:~/cbench-1.1.5$ make -C opensource/hpcc distclean
+bash:~/cbench-1.1.5$ make -C opensource/hpcc
+bash:~/cbench-1.1.5$ make -C opensource/hpcc install
+bash:~/cbench-1.1.5$ make itests   (to update the CBENCTEST tree)
+}}}
+
+=== Building NPB ===
+
+From the top-level of the Cbench source tree:
+{{{
+bash:~/cbench-1.1.5$ make -C opensource/NPB
+}}}
+OR to limit the size of the build even further than what is in cluster.def (i.e. your cluster has 4096 nodes but you only want to be able run NPB jobs up to 64 nodes)
+{{{
+bash:~/cbench-1.1.5$ make MAXPROCS=64 -C opensource/NPB
+}}}
+To make sure your NPB binaries get updated in the `CBENCHTEST` tree, from the top-level of the Cbench tree run :
+{{{
+bash:~/cbench-1.1.5$ sbin/install_npb
+}}}
+
+=== Building the self-contained MPICH for Cbench ===
+
+{{{
+bash:~/cbench-1.1.5$ make -C opensource/mpich
+}}}
+
+=== Building HPCC with the Cbench `MPICH` ===
+
+{{{
+bash:~/cbench-1.1.5$ make -C opensource/hpcc distclean
+bash:~/cbench-1.1.5$ make -C opensource/hpcc local
+bash:~/cbench-1.1.5$ make -C opensource/hpcc install
+bash:~/cbench-1.1.5$ make itests   (to update the CBENCTEST tree)
+}}}
+
+=== Building the Nodeperf ===
+
+To install the Nodeperf tests, we need the `nodeperf.c` file from the [http://www.intel.com/cd/software/products/asmo-na/eng/266857.htm Intel MP Linpack Performance Library] source.  It can be found in `linpack_9.1/benchmarks/mp_linpack`; copy `nodeperf.c` to the `cbench/opensource/nodeperf` directory and run
+{{{
+bash:~/cbench-1.1.5$ make -C opensource/nodeperf
+}}}
+
+Note: this currently requires the Sandia-only `nodeperf2` file as well!
+
+== Installation Summary ==
+
+Hopefully things have gone smoothly up to this point.  Feel free to move on to move on and [wiki:doc/HOWTO-RunTestHowTo_1.1 run tests].
+ 	  	 

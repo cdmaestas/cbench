@@ -1,0 +1,33 @@
+# mpisanity_imb job template
+# uses the Intel MPI Benchmarks in a safer mode, i.e.
+# smaller buffers, to keep it from blowing up on memory
+# like it loves to do
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/IMB-MPI1
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/IMB-MPI1
+
+# build the lengths file if it doesn't exist
+if [ ! -f ./lengths ]; then
+	cat << EOF >> ./lengths
+0
+1
+2
+4
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+EOF
+
+fi
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/IMB-MPI1 -msglen ./lengths -npmin NUM_PROCS_HERE"
+
+cbench_run_cmd $CMD

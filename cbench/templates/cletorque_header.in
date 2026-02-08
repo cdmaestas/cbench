@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+############ Cbench cletorque_header.in ######################
+# Directives for Torque in the Cray Linux Environment (CLE)
+# NOTE: Torque seems to require that these directives be
+#       first
+#
+#PBS -l mppwidth=NUM_PROCS_HERE
+#PBS -l mppnppn=NUM_PPN_HERE
+#
+#PBS -l walltime=WALLTIME_HERE
+#PBS -j oe
+#
+# other attributes you might use but are hidden from Torque processing
+#HIDE -q somequeue
+#HIDE -A 70400/01.01.02
+
+# include the common Cbench functions used in job scripts
+. BENCH_TEST_HERE/cbench_functions
+
+# this tells us what type of cbench job this is
+CBENCH_RUN_TYPE=RUN_TYPE_HERE
+
+# this tells us details of the Cbench job in the job output
+cbench_echo "Cbench numprocs: NUM_PROCS_HERE"
+cbench_echo "Cbench numnodes: NUM_NODES_HERE"
+cbench_echo "Cbench ppn: NUM_PPN_HERE"
+cbench_echo "Cbench jobname: JOBNAME_HERE"
+cbench_echo "Cbench joblaunchmethod: JOBLAUNCHMETHOD_HERE"
+cbench_echo ""
+
+# grap the Torque jobid
+JOBID=`echo $PBS_JOBID | cut -f1 -d'.'`
+
+# dump out some information on the environment the job is running in for
+# posterity
+cbench_echo "======= Cray CLE Job Environment Info ========"
+# dump some key environmental variables
+env | egrep 'PBS|CRAY' | sort | while read tmp
+do
+	cbench_echo "$tmp"
+done
+
+cbench_echo "=============================================="
+cbench_echo ""
+
+# For the Cray CLE MPI environment, turn on some environment variables that
+# dump useful information from MPI jobs
+export MPICH_ENV_DISPLAY=1
+export MPICH_CPUMASK_DISPLAY=1

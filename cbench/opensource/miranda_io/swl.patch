@@ -1,0 +1,92 @@
+--- src/miranda_io.f90.orig	2009-05-20 12:47:23.000000000 -0600
++++ src/miranda_io.f90	2009-05-20 13:16:22.000000000 -0600
+@@ -48,7 +48,9 @@
+       character*1024 :: fname, file_suffix, home
+ 
+       integer, parameter :: ni=24, nj=30, nk=1680
+-      integer, parameter :: loopparm=100, shiftparm=4
++      integer, parameter :: shiftparm=4
++      integer :: loop_count=100, iargc
++      character (len = 120) :: arg
+ 
+       integer(kind=8), dimension(ni,nj,nk) :: W1, R1, W2, R2
+       integer(kind=8), dimension(ni,nj,nk,2) :: W3, R3, W4, R4
+@@ -61,6 +63,10 @@
+       integer :: writeunit, readunit
+       integer(kind=8) :: ishift, nodeoff, wvalue, rvalue
+ 
++!      integer (kind = 8) :: total_bytes_transferred
++      real (kind = 8) :: total_bytes_transferred
++      real (kind = 4) time0, time1, etime, tarray(2), overall_transfer_rate
++
+       include 'mpif.h'
+ 
+       call MPI_INIT(ierr)
+@@ -69,19 +75,26 @@
+ 
+ !     check environment for file name, then broadcast from root task
+       if (mynod == 0) then
+-!        call getenv('MIRANDA_IO_FNAME', value=home)
++
+         call getenv('MIRANDA_IO_FNAME', home)
+         if (trim(home) /= '') then
+           basefname = trim(home)
+         endif
++
++        if (iargc() .eq. 1) then
++            call getarg (1, arg)
++            read (arg, *) loop_count
++        endif            
+       endif
++
+       call MPI_BCAST(basefname, 1024, MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr);
++      call MPI_BCAST(loop_count, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr);
+ 
+       if( mynod == 0 ) then
+         print *, 'Fortran I/O test emulating Bill Cabots code and bz4410'
+         print *, '6 mixed arrays of int*8 written by 1 write()'
+         print *, 'base dimensions are IJK= ', ni,nj,nk
+-        print *, 'The test will execute ', loopparm, 'iterations'
++        print *, 'The test will execute ', loop_count, 'iterations'
+         print *, 'For read your neighbor, the shift is ', shiftparm, 'tasks'
+         print *, 'node(task reading) is node(task writing) + shift'
+         print *, 'After reading back the arrays they are examined, and'
+@@ -91,7 +104,8 @@
+       endif
+ 
+       nodeoff=2**21
+-      do loop = 1,loopparm
++      time0 = etime (tarray)
++      do loop = 1, loop_count
+ 
+         forall(i=1:ni,j=1:nj,k=1:nk) W1(i,j,k) = nodeoff*mynod+i+ni*(j-1+nj*(k-1))
+         W2 = W1
+@@ -196,9 +210,27 @@
+ !          stop
+ !       endif
+ 
+-        if( mynod == 0 ) print *, 'Iteration = ',loop,' completed.'
++        if (mynod == 0) then
++           print *, 'Iteration = ',loop,' completed.'
++           call flush (6)
++        endif
+ 
+       end do ! loop
++      time1 = etime (tarray)
++
++      if (mynod .eq. 0) then
++        
++        total_bytes_transferred = real (2 * 6 * loop_count)
++        total_bytes_transferred = total_bytes_transferred * real (ni * nj * nk)
++        total_bytes_transferred = total_bytes_transferred * real (nprocs)
++!        write (6, *) "Total bytes transferred = ", total_bytes_transferred
++!        write (6, *) "Total time = ", time1 - time0
++        overall_transfer_rate = real(total_bytes_transferred) / ((time1 - time0) * 1.0e+06)
++        write (6, 600) overall_transfer_rate 
++600     format (" Overall Transfer Rate = ", 1pe12.3, " MiB/s")
++        write (6, *) "all done"
++
++      endif
+ 
+       call MPI_FINALIZE(ierr)
+ 

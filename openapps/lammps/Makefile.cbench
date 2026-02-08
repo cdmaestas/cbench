@@ -1,0 +1,57 @@
+include $(CBENCHOME)/make.def
+
+SHELL = /bin/sh
+.IGNORE:
+
+# System-specific settings
+
+# NOTE: On Sandia systems, you will need load the appropriate fftw module before building LAMMPS
+# Because LAMMPS has both Fortran and C++ components, linking requires special options
+
+CC =		$(CXX)
+CCFLAGS =	-DFFT_FFTW $(FFTWINCLUDE) $(CFLAGS) -I../../lib -I../../lib/poems -I../../lib/reax
+
+DEPFLAGS =	-M
+LINK =		$(CXX)
+LINKFLAGS =	-L../../lib/meam -L../../lib/poems -L../../lib/reax
+USRLIB =	-lstdc++ -lpoems -lmeam -lreax
+SYSLIB =	$(FFTWLIB) -lm
+SIZE =		size
+
+ifeq ($(COMPILER),pgi)
+  LINKFLAGS += -pgf90libs
+endif
+ifeq ($(COMPILERCOLLECTION),intel)
+  LINK = $(F90)
+  LINKFLAGS += $(NOMAIN_FLAG)
+endif
+ifeq ($(COMPILERCOLLECTION),pathscale)
+  LINKFLAGS += -lpathfortran
+endif
+ifeq ($(COMPILERCOLLECTION),gcc)
+  LINKFLAGS += -lgfortran
+endif
+
+# Link rule
+
+$(EXE):	$(OBJ)
+	$(LINK) $(LINKFLAGS) $(OBJ) $(USRLIB) $(SYSLIB) -o $(EXE)
+	$(SIZE) $(EXE)
+
+# Library target
+ 
+lib:    $(OBJ)
+	$(ARCHIVE) $(ARFLAGS) $(EXE) $(OBJ)
+
+# Compilation rules
+
+%.o:%.cpp
+	$(CXX) $(CCFLAGS) -c $<
+
+%.d:%.cpp
+	$(CXX) $(CCFLAGS) $(DEPFLAGS) $< > $@
+
+# Individual dependencies
+
+DEPENDS = $(OBJ:.o=.d)
+include $(DEPENDS)

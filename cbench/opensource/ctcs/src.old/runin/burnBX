@@ -1,0 +1,8 @@
+#!/bin/bash
+nice ./bin/burnBX $1
+x="$?"
+if [ $x != 0 ] ; then {
+	echo burnBX exited code $x
+	exit 1
+} ; fi
+exit 0

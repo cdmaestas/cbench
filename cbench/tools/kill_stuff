@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+
+use Getopt::Long;
+GetOptions(
+	'match=s' => \$match,
+	'force' => \$force,
+	'debug' => \$DEBUG,
+	'signal=s' => \$signal,
+);
+
+if (! defined $match) {
+	print "NEED --match parameter\n";
+	exit;
+}
+(! defined $signal) and $signal = "9";
+
+@ps = `ps wax`;
+
+foreach (@ps) {
+	/kill_stuff/ and next;
+	(defined $DEBUG) and (/$match/ and print "DEBUG=> $_");
+	(!defined $force) and (/kill_stuff|ntpd|portmap|rpc.statd|udevd|mingetty|pbs_mom|sshd|^\[.*\]/ and next);
+	(defined $force) and (/kill_stuff|ntpd|portmap|rpc.statd|udevd|mingetty|sshd|^\[.*\]/ and next);
+	#print $_;
+	next unless /$match/;
+	#print "$_";
+	($pid, $state, $name) = /^\s*(\d+)\s+\S+\s+(\S+)\s+\S+\s+(.*)$/;	
+	print "signal $signal kill $pid ($state) ($name)\n";
+	system("kill -$signal $pid &");
+}

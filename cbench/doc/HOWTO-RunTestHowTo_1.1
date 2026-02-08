@@ -1,0 +1,539 @@
+= Cbench 1.1.X Testing HOWTO Guide =
+[wiki:doc/CbenchDocumentation Back to top-level of Documentation]
+
+
+''Page last updated 16 December 2008''
+
+'''Note: This HOWTO shows how to use the old 1.1 version of Cbench.  Instructions for how to use Cbench 1.2 (the current version) are found [wiki:doc/HOWTO-RunTestHowTo_1.2 here].'''
+
+== Overview ==
+
+Cbench provides the framework to create, launch, and analyze tests for many benchmark and test programs commonly used on a Linux cluster.  This How-To walks through the steps to run a few different tests within Cbench.  Examples here were run on the [wiki:ThunderbirdCluster Thunderbird Linux cluster] at [http://www.sandia.gov Sandia National Labs].
+
+== Configure Cbench for Testing ==
+
+If running on a cluster with [http://modules.sourceforge.net/ Environment Modules], make sure the Cbench environment variables are set up properly for you to run the tests.  Using the parameters from the [wiki:doc/HOWTO-QuickInstall_1.1 Installation HOWTO], we need:
+ * OpenMPI libraries
+ * GNU Compilers
+ * [http://www.tacc.utexas.edu/resources/software/gotoblasfaq.php GOTO BLAS] libraries 
+
+This is what the default modulefile setup looks like:
+{{{
+[blogin1 ~]$ module list
+Currently Loaded Modulefiles:
+  1) /opt/modules/oscar-modulefiles/default-manpath/1.0.1
+  2) compilers/intel-9.1
+  3) misc/env-openmpi
+  4) mpi/openmpi-1.1.2-ofed-intel-9.1
+  5) libraries/intel-mkl
+}}}
+
+A few modules need to be changed to run correctly.  This example shows two ways to find the module path to add, both by listing the available modules and by listing the module information itself:
+ 
+{{{
+[blogin1 ~]$ module avail mpi
+
+------------------------------ /apps/modules/modulefiles -------------------------------
+mpi/mvapich-0.9.8-ofed-gcc-3.4.6
+mpi/mvapich-0.9.8-ofed-intel-9.1
+mpi/mvapich-0.9.8-ofed-pgi-6.2-3
+mpi/mvapich-intel
+mpi/openmpi-1.1.2-ofed-gcc-3.4.6
+mpi/openmpi-1.1.2-ofed-intel-9.1(default)
+mpi/openmpi-1.1.2-ofed-pgi-6.2-3
+mpi/openmpi-1.2.1_ofed_gcc-3.4.6
+mpi/openmpi-1.2.1_ofed_intel-9.1-f045-c049
+mpi/openmpi-1.2.1_ofed_pgi-6.2-5
+mpi/openmpi-1.2.2_ofed_gcc-3.4.6
+mpi/openmpi-1.2.2_ofed_intel-10.0-f023-c023
+mpi/openmpi-1.2.3_ofed_gcc-3.4.6
+mpi/openmpi-1.2.3_ofed_intel-10.0-f023-c023
+mpi/openmpi-1.2.3_ofed_pgi-7.0-2
+
+[blogin1 ~]$ module switch mpi mpi/openmpi-1.2.3_ofed_gcc-3.4.6
+[blogin1 ~]$ module avail compilers
+
+------------------------------ /apps/modules/modulefiles -------------------------------
+compilers/gcc-3.4.6            compilers/intel-9.1-f040-c046
+compilers/intel-10.0-f023-c023 compilers/intel-9.1-f045-c049
+compilers/intel-9.1(default)   compilers/pgi-6.2-3
+compilers/intel-9.1-f039-c044  compilers/pgi-6.2-5
+compilers/intel-9.1-f040-c045  compilers/pgi-7.0-2
+
+[blogin1 ~]$ module switch compilers compilers/gcc-3.4.6
+[blogin1 ~]$ module list
+Currently Loaded Modulefiles:
+  1) /opt/modules/oscar-modulefiles/default-manpath/1.0.1
+  2) mpi/openmpi-1.2.3_ofed_gcc-3.4.6
+  3) misc/env-openmpi-1.2
+  4) compilers/gcc-3.4.6
+  5) libraries/goto
+
+[blogin1 ~]$ module show libraries/goto
+
+-------------------------------------------------------------------
+/apps/modules/modulefiles/libraries/goto:
+
+module-whatis    GOTO BLAS library version 0.99-3
+prepend-path     LD_LIBRARY_PATH /projects/global/x86_64/libraries/goto_blas
+-------------------------------------------------------------------
+
+[blogin1 ~]$ module switch libraries libraries/goto
+[blogin1 ~]$ module list
+Currently Loaded Modulefiles:
+  1) /opt/modules/oscar-modulefiles/default-manpath/1.0.1
+  2) mpi/openmpi-1.2.3_ofed_gcc-3.4.6
+  3) misc/env-openmpi-1.2
+  4) compilers/gcc-3.4.6
+  5) libraries/goto
+}}}
+
+The environment variables used by Cbench must be set to reflect the locations of the libraries.  After exporting the variables with the appropriate paths, here's what the environment looks like:
+
+{{{
+[blogin1 ~]$ env | grep -e CBEN -e MPIHOME -e COMPIL -e BLAS
+BLASLIB=-Wl,-rpath,/projects/global/x86_64/libraries/goto_blas -L/projects/global/x86_64/libraries/goto_blas -lgoto_prescott64p-r1.00 -lpthread -lm
+CBENCHTEST=/home/user/cbench_tests
+COMPILERCOLLECTION=gcc
+MPIHOME=/apps/x86_64/mpi/openmpi/gcc-3.4.6/openmpi-1.2.3_ofed
+CBENCHOME=/home/user/cbench
+}}}
+
+== Configure cluster.def ==
+Before running any tests, we need to configure Cbench with the information about our cluster.  The default location of the configuration file is in the `CBENCHOME` directory, which for us will be `~/cbench`.  Each value in the file should be set according to the parameters of your test cluster.  
+
+Values that need to be set for each cluster:
+ * `$cluster_name` - short string to name the cluster (used to name some things by default)
+ * `$max_nodes` - the maximum number of nodes in the cluster
+ * `$procs_per_node` - the number of physical processors per node in the cluster
+ * `%max_ppn_procs` - the list of cores per node combinations to use when generating jobs
+ * `$memory_per_node` - the maximum amount of RAM (in MB) in the node -- use 1GB = 1024MB
+ * `$default_walltime` - the default walltime to assign a batch job
+ * `@memory_util_factors` - the fraction of memory certain tests should use -- must have at least one value, may have more than one comma-separated values
+ * `$joblaunch_method` - the job launch method to use, e.g. 'openmpi', 'mpiexec', 'torque', 'mvapich', 'misc' (see [wiki:doc/SupportedBatchJobLaunchers])
+ * `$batch_method` - the batch system to use (see [wiki:doc/SupportedBatchJobLaunchers])
+ * `$batch_extraargs` - other necessary arguments for the batch submission, e.g. '-V -A proj/task' for SNL ICC machines
+    * Note: a common option to include when using Torque is the -V option so that the job is launched with the current environment variables duplicated.  
+
+There are other values to set if necessary: see `~/cbench/cluster.def` to fully customize for your cluster 
+
+[wiki:doc/HOWTO-QuickInstall_1.1#Examplecluster.def Here] is the `cluster.def` used for this set of tests 
+
+Now, on to some testing.  We'll start with MPI level testing since this is where most people conduct their testing.  The node-level tests (encapsulated in the ''nodehwtest'' test set), which focus on single-node hardware testing, are really targeted to system integrators, system administrators, hardware breakfix engineers, and the like.  The node-level testing is more involved and compilcated.
+
+----
+
+== MPI-Level Testing ==
+
+The MPI-level tests/benchmarks that are integrated into formal Cbench ''test sets'' are all run in a similar fashion, so we will only look at one test set for now.  Each test set uses a triad of scripts as a "testing harness" of sorts:
+ * TESTSETNAME_gen_jobs script
+ * TESTSETNAME_start_jobs script
+ * TESTSETNAME_output_parse script
+The '''Bandwidth''' test set combines [http://www.hlrs.de/organization/par/services/models/mpi/b_eff/ b_eff] (Effective bandwidth), Presta's [http://www.llnl.gov/asci/platforms/purple/rfp/benchmarks/limited/presta/ com] test (interprocess communication bandwidth), [http://www.intel.com/software/products/cluster/mpi/mpi_benchmarks_lic.htm Intel's MPI Benchmarks], and [http://nowlab.cis.ohio-state.edu/projects/mpi-iba/benchmarks.html OSU's MPI benchmarks].
+
+We begin by going into the `~/cbench_tests/bandwidth` directory.  
+
+{{{
+[blogin1 ~]$ cd cbench_tests/bandwidth
+}}}
+
+Once there we find the test harness Perl scripts and some jobs template (the `*.in` files) used to generate the specific jobs for this test set.
+
+{{{
+[blogin1 bandwidth]$ ls
+bandwidth_beff.in      bandwidth_imb.in      bandwidth_output_parse.pl
+bandwidth_com.in       bandwidth_osubibw.in  bandwidth_start_jobs.pl
+bandwidth_gen_jobs.pl  bandwidth_osubw.in
+}}}
+
+We need to run the `bandwidth_gen_jobs.pl` script to generate the jobs for the various configurations possible in the system.  
+{{{
+[blogin1 bandwidth]$ ./bandwidth_gen_jobs.pl --ident 130p_run1 --maxprocs 130
+[blogin1 bandwidth]$ ./bandwidth_start_jobs.pl --ident 130p_run1 --batch 
+}}}
+
+After the tests are submitted and have run, we can either parse the output for a text summary or plot the data using [http://www.gnuplot.info/ gnuplot].  Here is some of the output from the 64-node run of all the bandwidth tests (the `statsmode` option prints statistics about each results and the units for the individual results):
+
+{{{
+[blogin1 bandwidth]$ ./bandwidth_output_parse.pl --ident 130p_run1 --statsmode
+..
+
+  NP 130p_run1-com-1ppn-unidir_b
+   2 mean=950.7300 max=950.7300 min=950.7300 stddev=0.0000 count=1 (MB/s)
+   4 mean=1897.8700 max=1897.8700 min=1897.8700 stddev=0.0000 count=1 (MB/s)
+   8 mean=3396.7900 max=3396.7900 min=3396.7900 stddev=0.0000 count=1 (MB/s)
+   9                    NODATA
+  16 mean=5592.3800 max=5592.3800 min=5592.3800 stddev=0.0000 count=1 (MB/s)
+  25                    NODATA
+  32 mean=5017.0500 max=5017.0500 min=5017.0500 stddev=0.0000 count=1 (MB/s)
+  36 mean=5580.0800 max=5580.0800 min=5580.0800 stddev=0.0000 count=1 (MB/s)
+  49                    NODATA
+  64 mean=9830.8900 max=9830.8900 min=9830.8900 stddev=0.0000 count=1 (MB/s)
+  72 mean=11040.7500 max=11040.7500 min=11040.7500 stddev=0.0000 count=1 (MB/s)
+  81                    NODATA
+  96 mean=9811.1800 max=9811.1800 min=9811.1800 stddev=0.0000 count=1 (MB/s)
+ 100 mean=15693.2900 max=15693.2900 min=15693.2900 stddev=0.0000 count=1 (MB/s)
+ 110 mean=17527.3100 max=17527.3100 min=17527.3100 stddev=0.0000 count=1 (MB/s)
+ 112 mean=17550.8300 max=17550.8300 min=17550.8300 stddev=0.0000 count=1 (MB/s)
+ 121                    NODATA
+ 128 mean=17095.1400 max=17095.1400 min=17095.1400 stddev=0.0000 count=1 (MB/s)
+
+  NP 130p_run1-com-1ppn-bidir_bw
+   2 mean=1610.1000 max=1610.1000 min=1610.1000 stddev=0.0000 count=1 (MB/s)
+   4 mean=3185.3800 max=3185.3800 min=3185.3800 stddev=0.0000 count=1 (MB/s)
+   8 mean=5828.8500 max=5828.8500 min=5828.8500 stddev=0.0000 count=1 (MB/s)
+   9                    NODATA
+  16 mean=5601.2900 max=5601.2900 min=5601.2900 stddev=0.0000 count=1 (MB/s)
+  25                    NODATA
+  32 mean=7589.7700 max=7589.7700 min=7589.7700 stddev=0.0000 count=1 (MB/s)
+  36 mean=11053.3900 max=11053.3900 min=11053.3900 stddev=0.0000 count=1 (MB/s)
+  49                    NODATA
+  64 mean=18489.2500 max=18489.2500 min=18489.2500 stddev=0.0000 count=1 (MB/s)
+  72 mean=19265.6400 max=19265.6400 min=19265.6400 stddev=0.0000 count=1 (MB/s)
+  81                    NODATA
+  96 mean=21848.5800 max=21848.5800 min=21848.5800 stddev=0.0000 count=1 (MB/s)
+ 100 mean=23746.2900 max=23746.2900 min=23746.2900 stddev=0.0000 count=1 (MB/s)
+ 110 mean=30058.6200 max=30058.6200 min=30058.6200 stddev=0.0000 count=1 (MB/s)
+ 112 mean=30064.3300 max=30064.3300 min=30064.3300 stddev=0.0000 count=1 (MB/s)
+ 121                    NODATA
+ 128 mean=24054.2400 max=24054.2400 min=24054.2400 stddev=0.0000 count=1 (MB/s)
+
+...
+
+Parse Summary:
+--------------
+Total Files Parsed = 216
+Total Jobs Parsed = 180
+
+Job Status Summary:
+-------------------
+NOTICE = 10
+PASSED = 170
+Overall Job Success = 100.00%
+}}}
+
+This summary will give an idea of the values recorded for the various tests run and for the job success rate.  If there are errors in running tests, they will be noted in the `Job Status Summary` and the `Overall Job Success` value will reflect the failures.  Should there be numerous or enigmatic errors, there are various options to delve deeper into the errors:
+ * `--diagnose` - option to enable high level diagnosis of job failures
+   * EDITORIAL NOTE: might be good to enumerate the diagnosis values like STARTED, NOTSTARTED, etc.; might be good to show some sample error data output
+ * `--customparse` - option to enable additional context sensitive error checking in job's stderr and stdout 
+ * `--errorsonly` - option to see each error diagnosis in detail without any results displayed
+ * `--successrate` - option to see job success rate broken down by processor count
+
+=== Plotting Test Data ===
+
+All the tests except `nodehwtest` have the ability to plot some or all of their output using gnuplot.  Starting with the `--help` information we'll take a look at how to make various kinds of plots.
+
+{{{
+ --gnuplot        Generate a Gnuplot and display it
+   --logy           Use a logarithmic y axis
+   --logx           Use a logarithmic x axis
+   --linewidth <num> Tell Gnuplot to use the specified linewidth
+   --yrange n1,n2   Tell gnuplot to use the range [n1:n2] for the y-axis
+   --xrange n1,n2   Tell gnuplot to use the range [n1:n2] for the x-axis
+   --addplot function,title=<string>  Add a plot line or lines to the gnuplot
+                                      graph that is generated by the --gnuplot
+                                      option.  For example:
+                        --addplot '0.80,title=80% mark'
+                        --addplot '3.6*4*0.8*x,title=80% efficiency'
+                                      There can be multiple --addplot options
+                                      used on the command line
+   --xlabel <string> Tell gnuplot to use the specified string as the x-axis
+                     label
+}}}
+
+The simplest plot includes all the test data found during parsing on a single plot:
+
+{{{
+[blogin1 bandwidth]$ ./bandwidth_output_parse.pl --ident 130p_run1 --gnuplot
+}}}
+[[Image(gnuplot_130p_bw_all.jpg)]]
+
+This plot is obviously less than optimal for a number of reasons.  The tests run in `bandwidth` produce results in MB/s and messages/s.  This plot guessed at the units for the y-axis, which are only MB/s.  Furthermore, there are multiple benchmarks combined with  multiple ppn (processes per node) configurations which results in many series of  test data.  
+
+EDITORIAL NOTE: might ought to talk about the composition of the series name as well
+
+Cbench lets us focus on any test or set of tests we like, using the following options:  
+{{{
+   --match          This limits the processing of job outputs to
+                    jobs with a jobname that matches the specified
+                    regex string. For example,
+                      --match 2ppn
+                    would only process 2 ppn tests
+   
+   --exclude        This is just like the --match parameter except
+                    that jobs matching are NOT processed
+   
+   --metric         A regex to include only certain metrics
+}}}
+Note that all regular expressions (regex's) are Perl regex syntax.
+
+For example, if we want to see only the results for the `unidir_bw` metric (which is available from more than one benchmark) :
+{{{
+[blogin1 bandwidth]$ ./bandwidth_output_parse.pl --ident 130p_run1 --gnuplot --metric unidir_bw
+}}}
+[[Image(gnuplot_130p_unidir_bw.jpg)]]
+
+[[BR]]
+
+That plot is more helpful, but still too much data.  To see only the `2ppn` tests:
+{{{
+[blogin1 bandwidth]$ ./bandwidth_output_parse.pl --ident 130p_run1 --gnuplot --metric unidir_bw --match 2ppn
+}}}
+[[Image(gnuplot_130p_unidir_bw_2ppn.jpg)]]
+
+[[BR]]
+
+The scale between the `osubw` and `com` tests is still not quite compatible because `com` is measuring bi-sectional bandwidth and `osubw` is not.  So, to focus in on just the `osubw` test, add to the regex for the `--metric` option:
+{{{
+[blogin1 bandwidth]$ ./bandwidth_output_parse.pl --ident 130p_run1 --gnuplot --metric osubw.*unidir_bw --match 2ppn
+}}}
+[[Image(gnuplot_130p_osubw_unidir_bw_2ppn.jpg)]]
+
+Using the `--metric`, `--exclude`, and `--match` options, you should be able to plot the data that you want.
+
+EDITORIAL NOTE: might be good to mention the .png and .ps output files after each --gnuplot as well as the gnuplot raw data and script file that is actually used.
+----
+
+== Node-Level Testing ==
+
+Cbench's node-level hardware testing is also described somewhat in the [wiki:doc/HOWTO-NodeLevelTesting  Nodehwtest Testset HOWTO (aka node-level testing)].  
+
+This example was done on 64 Thunderbird nodes in interactive mode.  Currently there is no way to run `nodehwtest` without knowing the list of nodes, so batch scheduler submission withouth targeting specific nodes won't work.  Either run it interactively or on a predetermined set of nodes (e.g., burn-in hardening or breakfix testing).  Many of the tests also require administrative privileges to run properly.  If you are trying to run the tests as a user, be prepared for many of the tests to fail.
+
+Before running any tests, make sure the Cbench environment variables are set up properly on whatever node you'll be launching the tests from and `cd` into the proper directory (notice that we're on a compute node, not a login node - the job has already started in interactive mode):
+{{{
+[an22 ~]$ . dotme_cbench
+[an22 ~]$ cd cbench_tests/nodehwtest
+}}}
+
+We need to know the list of nodes in this job.  The script takes either a `pdsh`-style node list or a file containing the node list.  To get the node list in `pdsh` format on the ICC clusters: 
+{{{
+[an22 nodehwtest]$ cat $PBS_NODEFILE | sort -u | sed 's/$/: /' | dshbak -c
+
+----------------
+an[1-5,22,42,59],bn[767-770,864,867,869,880-885,887,897,903,914],cn[258,261,278,282,560-561,1015,1017,1020-1022],dn[2,5,59,63,68-69,73-76,81,84,93,100,123-124,214,216,218-220,223,228-229,430-433]
+----------------
+
+}}}
+
+Next, generate the jobs and run them.  We'll only run the `streams` test for this example since running the whole `nodehwtest` set takes up to 12 hours:
+{{{
+[an22 nodehwtest]$ ./nodehwtest_gen_jobs.pl --nodelist an[1-5,22,42,59],bn[767-770,864,867,869,880-885,887,897,903,914],cn[258,261,278,282,560-561,1015,1017,1020-1022],dn[2,5,59,63,68-69,73-76,81,84,93,100,123-124,214,216,218-220,223,228-229,430-433] --ident run1
+
+
+[an22 nodehwtest]$ ./nodehwtest_start_jobs.pl --match streams --ident run1 --remote
+Starting node_hw_test jobs for test identifier 'run1' on an[1-5,22,42,59],bn[767-770,864,867,869,880-885,887,897,903,914],cn[258,261,278,282,560-561,1015,1017,1020-1022],dn[2,5,59,63,68-69,73-76,81,84,93,100,123-124,214,216,218-220,223,228-229,430-433]:
+Start time: Mon Jul  2 15:29:05 MDT 2007
+an4: Running 'streams' hw_test module... (iteration 1 of 1) (total_elapsed=0.0 min, last_iteration=0.0 min)
+an1: Running 'streams' hw_test module... (iteration 1 of 1) (total_elapsed=0.0 min, last_iteration=0.0 min)
+
+...
+}}}
+
+Once the tests are finished and the `pdsh` commands all return, parse the output to see what the tests found:
+{{{
+[an22 nodehwtest]$ ./nodehwtest_output_parse.pl --ident run1 --characterize Cbench nodehwtest 
+  output parser:
+  Parsing test identifiers:  run1
+  Running CHARACTERIZE mode
+  Characterized target values will NOT be saved to file
+  Parsing only the latest run from each node
+
+..
+
+CHARACTERIZED TARGET VALUES:
+streams_add: mean=2446.1719 max=3066.0000 min=1554.0000 stddev=669.3262  (sample count=64)
+streams_copy: mean=2055.1406 max=2571.0000 min=1317.0000 stddev=546.8086  (sample count=64)
+streams_failed: mean=0.0000 max=0.0000 min=0.0000 stddev=0.0000  (sample count=64)
+streams_scale: mean=2098.9531 max=2591.0000 min=1330.0000 stddev=559.5841  (sample count=64)
+streams_triad: mean=2454.2188 max=3080.0000 min=1553.0000 stddev=667.5477  (sample count=64)
+
+
+
+Nodes with tests exceeding two standard deviations (95% probability):
+
+Summary:
+Parsed 128 iterations in 64 files for 64 nodes in 0.0 minutes
+}}}
+
+One of the main purposes of running `nodehwtest` is to test for deviant nodes.  Since this test was run only once and over a small set of nodes, it is not surprising no nodes fell outside the acceptable range of values.  Had any nodes performed worse than two standard deviations from the mean value for the set of tests analyzed, they would be shown above the summary.   (EDITORIAL NOTE: we could add a section title in the nodehwtest stuff in the user guide, point to it from here, and add a little more verbage about the uniform distribution assumption and the 2 std deviation thing. I think I have a nice graph too.)
+
+For example, from a different run we get:
+
+[[Image(nodehwtest_bad_results.jpg)]]
+
+The results are based on statistical analysis, so more test iterations and more unique nodes should be included before determining that a node actually requires closer analysis.  It is hard to absolutely say a node is bad.  Really the best the nodehwtest_output_parse.pl algorithms can do is cull out nodes that definitely do NOT need to be looked at.
+
+Should you want to look at the actual raw test data for a given node, look in the `ident` directory (`run1/` in this case) and find the node/run at which you want to look.  Each time node hardware testing is run on a given node, a "run" number is incremented (which is what the .runXXXX suffix on files indicates.  By default, the nodehwtest output parser only looks at the data from the most recent run from each node.  If you have multiple runs of data you want to aggregate, you can use the --lastnruns option.
+
+----
+== Example `cluster.def` ==
+
+{{{
+#!perl
+
+#!/usr/bin/perl
+
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+# String to identify the cluster, and check for CBENCHCLUSTER env var
+$cluster_name = $ENV{CBENCHCLUSTER} ? $ENV{CBENCHCLUSTER} : "test";
+
+# Total number of nodes in the cluster
+$max_nodes = 1024;  #maximum number of nodes allowed for user
+
+# Number of processors in a node
+$procs_per_node = 2;
+
+# Total number of processors in the cluster to build/run benchmarks on
+# (assuming a homogeneous cluster, which is more often the case)
+$max_procs = $max_nodes * $procs_per_node;
+
+# The max number of processors available at a given level of processor-per-
+# node (aka, ppn) usage. In other words, how many processors are available
+# when using 1ppn, 2ppn, etc..
+%max_ppn_procs = (
+	'1' => (1 * $max_nodes),
+	'2' => (2 * $max_nodes),
+	#'4' => (4 * $max_nodes),
+);
+
+# The raw (i.e. how much do the DIMMs add up to) amount of RAM available
+# PER PROCESSOR. For example, a dual processor node with 2GB of RAM has
+# 1GB of RAM per processor.
+#
+# This is specified in MBytes.  So 1GB is specified as 1024 for example.
+$memory_per_node = 6144;
+
+$memory_per_processor = $memory_per_node / $procs_per_node;
+
+# This parameter sets the default walltime specifier used when submitting
+# batch jobs. The parameter can be overidden on the *_start_jobs.pl 
+# command line with the --batchargs parameter.
+$default_walltime = "04:00:00";
+
+# This parameter controls the number of extra nodes added to Cbench jobs.
+# For example, a 256 proc 1ppn job would normally allocate 128 nodes, but
+# with extra_job_nodes=1 the job would allocate 129 nodes.  This is currently
+# mostly useful in tandem with job launchers that support a -nolocal type
+# option, i.e. don't run an mpi process on the node from which the job
+# is being launched.  Both mpiexec and the OpenMPI job launcher (orterun)
+# support a -nolocal option.
+$extra_job_nodes = 0;
+
+# Benchmarks/tests/test sets may use this array to generate parameters for
+# various jobs. At least a single value should be present. For normal linux,
+# 80% is a good starting point. Multiple comma separated values can be specified
+# to generate more test permutations using different amounts of memory.
+# Currently only the Linpack test set uses this.
+@memory_util_factors = (0.25,0.80,0.85);
+
+# Select the parallel job launch mechanism. The job launch mechanism
+# must be correctly supported in cbench.pl.
+#
+# NOTE: This is not necessarily the name of the job launching binary,
+#       just the name of a configuration.
+$joblaunch_method = "openmpi";
+
+# optional parameter to specify the exact binary, including path,
+# used for job launching
+#
+# NOTE: The binary must behave correctly with respect to what the
+#       $joblaunch_method setting specifies. So you can specify
+#       "/home/bob/bobcmd" here but it better behave like
+#       $joblaunch_method expects it too.... or else....
+$joblaunch_cmd = "";
+
+# optional parameter to add extra arguments to the launch command line
+$joblaunch_extraargs = "";
+
+# Select the batch system to use
+$batch_method = "torque";
+
+# optional parameter to set the exact binary, including path, used
+# for batch system submissions
+
+#
+# NOTE: This binary must behave like the setting for $batch_method expects
+#       it too...
+$batch_cmd = "";
+
+# optional parameter to add extra arguments to the batch command line
+$batch_extraargs = "-V -A proj/task";  #proj/task is required accounting info for Sandia
+
+# Select the remote command execution method to use.
+# The nodehwtest_start_jobs.pl script is currently the only start_jobs script
+# that supports the --remote parameter.
+$remotecmd_method = "pdsh";
+
+# optional parameter to add extra arguments to the remote execution command line
+$remotecmd_extraargs = "-f 700";
+
+#
+# This section controls custom parse filters that will optionally be
+# employed by the Cbench output parsers when looking at job output.
+# With these filters, the user can dynamically tell the output parsers
+# to look for user-defined errors. These filters are only used when
+# the --customparse parameter is given to the *_output_parse.pl scripts.
+#
+# Each filter is composed of a key/value pair.  The key is is a Perl
+# regular expression including capturing. The value is a string that will
+# be used to identify when an occurrence of the regex is found. The value
+# can include the $1,$2,... etc variables that would be captured by
+# the Perl regular expression
+#
+# The filters are defined in simple Perl modules organized generally
+# around what software the filters are matching output from. The
+# filter modules are in the perllib/parse_filter directory.  The 
+# filters defined in the modules can be edited at any time and assuming
+# the parse_filter module is in the include array below, the output
+# parse engine will use the edited filters at the next invocation.
+@parse_filter_include = (
+	'mpiexec',
+	'torque',
+	'openmpi',
+	'mvapich',
+	'misc',
+);
+
+
+# The NODEHWTEST test set provides node-level testing capabilities within Cbench.
+# Some of the hw_test modules (see perllib/hw_test) that are used have optional
+# configuration parameters that control their behavior.
+#
+# @nodehwtest_local_filesystems() array is used to tell disk testing modules, e.g.
+# iozone.pm, local filesystems they can use to test local disks. It is optional,
+# but if you are not running NODEHWTEST stuff as root, you'll probably need it. The
+# paths specified must exist and have write permissions.
+@nodehwtest_local_filesystems = (
+#	"/scratch47",
+#	"/tmp/$ENV{'USER'}",
+);
+
+
+1;
+
+# vim: syntax=perl
+}}}
+ 	  	 

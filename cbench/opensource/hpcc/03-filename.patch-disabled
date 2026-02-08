@@ -1,0 +1,124 @@
+diff -Naurp --exclude cscope.out --exclude '*.swp' hpcc-1.0.0-orig/hpl/include/hpl.h hpcc-1.0.0-filename_patched/hpl/include/hpl.h
+--- hpcc-1.0.0-orig/hpl/include/hpl.h	2004-05-18 15:03:54.000000000 -0600
++++ hpcc-1.0.0-filename_patched/hpl/include/hpl.h	2006-04-27 15:54:12.805030000 -0600
+@@ -91,6 +91,9 @@
+ #include "hpl_pmatgen.h"
+ #include "hpl_ptest.h"
+ 
++/* Include HPCC env */
++#include <hpcc.h>
++
+ #endif
+ /*
+  * End of hpl.h
+diff -Naurp --exclude cscope.out --exclude '*.swp' hpcc-1.0.0-orig/hpl/testing/ptest/HPL_pdinfo.c hpcc-1.0.0-filename_patched/hpl/testing/ptest/HPL_pdinfo.c
+--- hpcc-1.0.0-orig/hpl/testing/ptest/HPL_pdinfo.c	2005-06-09 11:32:42.000000000 -0600
++++ hpcc-1.0.0-filename_patched/hpl/testing/ptest/HPL_pdinfo.c	2006-05-01 14:06:00.548587000 -0600
+@@ -288,6 +288,11 @@ void HPL_pdinfo
+    char                       * lineptr;
+    int                        error=0, fid, i, j, lwork, maxp, nprocs,
+                               rank, size;
++/*
++ * .. Global Variables ..
++ */
++   extern HPCC_Params *hpcc_params;
++
+ /* ..
+  * .. Executable Statements ..
+  */
+@@ -307,11 +312,10 @@ void HPL_pdinfo
+ /*
+  * Open file and skip data file header
+  */
+-#define INFILE "hpccinf.txt"
+-      if( ( infp = fopen( INFILE, "r" ) ) == NULL )
++      if( ( infp = fopen( hpcc_params->inFname, "r" ) ) == NULL )
+       { 
+          HPL_pwarn( stderr, __LINE__, "HPL_pdinfo",
+-                    "cannot open file " INFILE );
++                    "cannot open file ", hpcc_params->inFname );
+          error = 1; /* goto label_error; */
+       }
+ 
+@@ -329,7 +333,7 @@ void HPL_pdinfo
+       }
+ 
+       fid = 8; /* always write to a file */
+-      strcpy( file, "hpccoutf.txt" );
++      strcpy( file, hpcc_params->outFname );
+       if     ( fid == 6 ) TEST->outfp = stdout;
+       else if( fid == 7 ) TEST->outfp = stderr;
+       else if( ( TEST->outfp = fopen( file, "a" ) ) == NULL )
+diff -Naurp --exclude cscope.out --exclude '*.swp' hpcc-1.0.0-orig/src/hpcc.c hpcc-1.0.0-filename_patched/src/hpcc.c
+--- hpcc-1.0.0-orig/src/hpcc.c	2005-05-26 11:00:11.000000000 -0600
++++ hpcc-1.0.0-filename_patched/src/hpcc.c	2006-05-01 14:12:10.229135000 -0600
+@@ -5,6 +5,10 @@
+ 
+ #include <hpcc.h>
+ #include <ctype.h>
++#include <unistd.h>
++#include <string.h>
++
++HPCC_Params *hpcc_params;
+ 
+ int
+ main(int argc, char *argv[]) {
+@@ -13,6 +17,37 @@ main(int argc, char *argv[]) {
+   FILE *outputFile;
+   HPCC_Params params;
+   time_t currentTime;
++  int c;
++  extern char *optarg;
++  extern int optind, optopt, opterr;
++
++  /* set the defaults */
++  strcpy(params.outFname, "hpccoutf.txt");
++  strcpy(params.inFname,  "hpccinf.txt");
++
++  opterr = 0;   /* prevent error printing directly from getopt() */
++  while ((c = getopt(argc, argv, "o:i:")) != -1) {
++    switch(c) {
++    case 'o':
++        strncpy(params.outFname, optarg, 256);
++        break;
++    case 'i':
++        strncpy(params.inFname, optarg, 256);
++        break;
++    case ':':
++        fprintf(stderr, "Error: Invalid option: -%c\n", optopt);
++        exit(1);
++    case '?':
++        fprintf(stderr, "Error: -%c option without filename\n", optopt);
++        exit(2);
++    default:
++        fprintf(stderr, "Unknown getopt error\n");
++        exit(3);
++    }
++  }
++
++  /* set global pointer so HPL_pdinfo (and possibly others) can access params */
++  hpcc_params = &params;
+ 
+   MPI_Init( &argc, &argv );
+ 
+diff -Naurp --exclude cscope.out --exclude '*.swp' hpcc-1.0.0-orig/src/io.c hpcc-1.0.0-filename_patched/src/io.c
+--- hpcc-1.0.0-orig/src/io.c	2005-06-10 11:35:06.000000000 -0600
++++ hpcc-1.0.0-filename_patched/src/io.c	2006-04-27 15:23:43.147595000 -0600
+@@ -211,7 +211,6 @@ HPCC_Init(HPCC_Params *params) {
+   int myRank, commSize;
+   int i, nMax, procCur, procMax, procMin, errCode;
+   double totalMem;
+-  char inFname[12] = "hpccinf.txt", outFname[13] = "hpccoutf.txt";
+   FILE *outputFile;
+   MPI_Comm comm = MPI_COMM_WORLD;
+   time_t currentTime;
+@@ -222,9 +221,6 @@ HPCC_Init(HPCC_Params *params) {
+   MPI_Comm_size( comm, &commSize );
+   MPI_Comm_rank( comm, &myRank );
+ 
+-  strcpy( params->inFname, inFname );
+-  strcpy( params->outFname, outFname );
+-
+   if (0 == myRank)
+     outputFile = fopen( params->outFname, "a" );
+ 

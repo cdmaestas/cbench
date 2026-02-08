@@ -1,0 +1,68 @@
+
+= Non-Default Test Installation Notes =
+[wiki:doc/CbenchDocumentation Back to top-level of Documentation]
+
+''Last updated 22 May 2009''
+
+Some code within Cbench is not compiled by default.  HPC Challenge and NAS Parallel Benchmarks are two primary ones.  HPCC eventually will compile by default after the Cbench build system is upgraded to something a little smarter.  This is because HPCC can be built two ways in Cbench:
+ 1. with the normal MPI libraries and compilers as specified by `MPIHOME`
+ 2. with a build of MPICH self-contained within Cbench which is useful for building MPI tests for use in the `nodehwtest` testset.
+
+The NAS Parallel Benchmarks has to build a binary for every single combination of processor count, test (sp, ft,...), and test size (A,B,C,...) so we don't build them by default.  This can be a lot of binaries depending on the size of your cluster as setup in `.[source:trunk/cbench/cluster.def cluster.def]`.
+
+From `$CBENCHOME`:
+
+== Building only what is required for node-level hardware testing ==
+{{{
+bash:~ $ make nodehwtest
+}}}
+
+== Building HPCC with the system MPI ==
+From the top-level of the Cbench source tree:
+{{{
+bash:~ $ make -C opensource/hpcc distclean
+bash:~ $ make -C opensource/hpcc
+bash:~ $ make -C opensource/hpcc install
+bash:~ $ make itests   (to update the CBENCTEST tree)
+}}}
+
+== Building NPB ==
+
+From the top-level of the Cbench source tree:
+{{{
+bash:~ $ make -C opensource/NPB
+}}}
+OR to limit the size of the build even further than what is in cluster.def (i.e. your cluster has 4096 nodes but you only want to be able run NPB jobs up to 64 nodes)
+{{{
+bash:~ $ make MAXPROCS=64 -C opensource/NPB
+}}}
+To make sure your NPB binaries get updated in the `CBENCHTEST` tree, from the top-level of the Cbench tree run :
+{{{
+bash:~ $ sbin/install_npb
+}}}
+
+== Building the self-contained MPICH for Cbench ==
+
+{{{
+bash:~ $ make -C opensource/mpich
+}}}
+
+== Building HPCC with the Cbench `MPICH` ==
+
+{{{
+bash:~ $ make -C opensource/hpcc distclean
+bash:~ $ make -C opensource/hpcc local
+bash:~ $ make -C opensource/hpcc install
+bash:~ $ make itests   (to update the CBENCTEST tree)
+}}}
+
+== Building the Nodeperf ==
+
+To install the Nodeperf tests, we need the `nodeperf.c` file from the [http://www.intel.com/cd/software/products/asmo-na/eng/266857.htm Intel MP Linpack Performance Library] source.  It can be found in `linpack_9.1/benchmarks/mp_linpack`; copy `nodeperf.c` to the `cbench/opensource/nodeperf` directory and run
+{{{
+bash:~ $ make -C opensource/nodeperf
+}}}
+
+Note: this currently requires the Sandia-only `nodeperf2` file as well!
+
+ 	  	 

@@ -1,0 +1,13 @@
+# lammps_chute job template
+# Uses LAMMPS benchmark code Chute
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/lmp_cbench
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/lmp_cbench
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/lmp_cbench"
+STDIN_FILE="CBENCHTEST_HERE/lammps/bench/in.chute"
+
+cbench_run_cmd $CMD
+

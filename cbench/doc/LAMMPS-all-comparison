@@ -1,0 +1,68 @@
+= Tests of all LAMMPS benchmark/example codes =
+
+
+
+[wiki:doc/LAMMPS-codes Back to LAMMPS Codes]
+
+''Page last updated 18 February 2009''
+
+=== 14 May 2008 Benchmark Code Scaling Runs - 1 ppn 1 node on trps ===
+
+
+[[Image(https://cbench.sandia.gov/attachment/wiki/doc/LAMMPS-codes/benchmark_codes_totalusage_all_100steps.png?format=raw)]]   
+
+[[Image(https://cbench.sandia.gov/attachment/wiki/doc/LAMMPS-codes/benchmark_codes_cputime_all_100steps.png?format=raw)]] [[Image(https://cbench.sandia.gov/attachment/wiki/doc/LAMMPS-codes/benchmark_codes_memory_all_100steps.png?format=raw)]]
+
+
+
+||'''Benchmark Code'''||'''Scaling (x y z)'''||'''ppn'''||'''nodes'''||'''Atoms'''||'''Memory (MB)'''||'''Loop Time (s)'''||
+||chain.scaled	      ||1 1 1                || 1       || 1         || 32k       || 8.37288	||1.67363||
+||                    ||2 1 1               || 1       || 1         ||  64k      ||17.4093	      ||4.03516           ||
+||                    ||2 2 1               || 1       || 1         || 128k      ||33.0585	      ||8.81864           ||
+|| || || || || || || || 
+||chute.scaled	      ||1 1 -                || 1       || 1         || 32k       ||34.1137	||1.47615||
+||                    ||2 1 -               || 1       || 1         ||  64k      ||59.2416	      ||3.94993           ||
+||                    ||2 2 -               || 1       || 1         || 128k      || 113.965	      ||9.08002           ||
+|| || || || || || || || 
+||eam	              ||20 20 20                || 1       || 1         || 32k       ||13.3815	||9.82626||
+||                    ||40 20 20            || 1       || 1         ||  64k      ||24.2696	      ||19.7555           ||
+||                    ||40 40 20            || 1       || 1         || 128k      || 45.5814	      ||40.3252           ||
+|| || || || || || || || 
+||lj	              ||20 20 20                || 1       || 1         || 32k       ||11.5405	||3.6435||
+||                    ||40 20 20            || 1       || 1         ||  64k      ||21.1262	      ||7.48384           ||
+||                    ||40 40 20            || 1       || 1         || 128k      || 39.8364	      ||15.2637           ||
+|| || || || || || || || 
+||rhodo.scaled	      ||1 1 1                || 1       || 1         || 32k       ||124.369	||64.0337||
+||                    ||2 1 1               || 1       || 1         ||  64k      ||232.002   	      ||136.545           ||
+||                    ||2 2 1               || 1       || 1         || 128k      || 429.742	      ||284.429           ||
+
+
+=== 13 May 2008 Example Code Runs - 1 ppn 1 node on trps ===
+
+[[Image(https://cbench.sandia.gov/attachment/wiki/doc/LAMMPS-codes/lammps_example_codes.png?format=raw)]]
+
+||'''Example Code'''	||'''Memory (MB)''' || '''Loop Time (s)''' ||
+||colloid	|| 1.84805 || 12.2157||
+||crack	|| 1.98601 || 11.3958||
+||diploe	|| 2.56176 || 1.57349||
+||ellipse - gayberne	|| 2.5914 || 1.08811||
+||ellipse - resquared	|| 2.5914 || 1.99323||
+||flow-couette	|| 1.68525 || 0.495686||
+||flow-poission	|| 1.68525 || 0.611013||
+||friction	|| 1.73539 || 9.54733||
+||indent	|| 1.681	|| 3.81989||
+||indent-min	|| 2.13877 || 1||
+||meam	||4.62954	||0.110863||
+||meam-shear	||6.09291	||2.13663||
+||melt	|| 2.19355 || 1.1163||
+||micelle	|| 1.84502 || 22.5599||
+||min	|| 1.70423 || 0.306506||
+||nemd	|| 1.79413 || 1.22244||
+||obstacle	|| 1.70365 || 2.5635||
+||peptide	|| 19.2806 || 10.0259||
+||pour	|| 3.27422 || 35.5152||
+||pour.2d	|| 3.12551 || 6.21093||
+||rigid	|| 1.62637 || 0.191214||
+||rigid.poems ||1.70328	||5.29969||
+||shear	|| 1.98543 || 12.758||
+ 	  	 

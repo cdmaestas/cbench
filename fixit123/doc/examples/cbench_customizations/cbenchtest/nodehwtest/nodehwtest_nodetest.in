@@ -1,0 +1,22 @@
+# job template to run node-level hardware tests through batch
+# NOTE: bash syntax is used here
+
+export CBENCHOME=CBENCHOME_HERE
+
+# preamble command string or /bin/true if no preamble specified
+PREAMBLE_HERE
+
+# Some of the tests run in the nodehwtest framework require root
+# priveleges. 
+
+NODE=`hostname`
+LOGDIR=/apps/breakfix-testing/logs_step123
+MAINLOG=$LOGDIR/breakfix.log
+TSTAMP=`date +%m/%d/%y`
+DSTAMP=`date +%H:%M`
+echo "$TSTAMP $DSTAMP NODE $NODE => STEP2A STARTED RUNNING, jobid $PBS_JOBID" >> $MAINLOG
+
+ulimit -Ss 10240
+
+COMMAND_HERE
+

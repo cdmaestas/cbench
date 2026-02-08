@@ -1,0 +1,120 @@
+#!/usr/bin/perl
+# vim: syntax=perl tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+BEGIN {
+        die "Please define FIXIT123_HOME!\n" if !defined($ENV{FIXIT123_HOME});
+}
+#use lib ( $ENV{FIXIT123_HOME} eq "/usr" ? "/usr/libexec/fixit123" : "$ENV{FIXIT123_HOME}/libexec");
+
+# add Fixit123 perl library to the Perl search path
+use lib ("$ENV{FIXIT123_HOME}\/perllib");
+
+use Date::Manip;
+use Getopt::Long;
+use Env::Bash;
+use Term::ANSIColor qw(color :constants);
+
+GetOptions(
+	'debug' => \$DEBUG,
+	'node=s' => \$node,
+	'step2pass=s' => \$step2pass,
+	'step3pass=s' => \$step3pass,
+	'step3tag=s' => \$step3tag,
+	'dryrun|dry-run'  => \$dryrun,
+);
+
+
+$BINDIR = "$ENV{FIXIT123_HOME}/bin";
+$LOGDIR = "$ENV{FIXIT123_DB_HOME}";
+$STEP3ADIR="$LOGDIR/step3a";
+$step2_logfile = "$LOGDIR/breakfix.log";
+$step3_logfile = "$LOGDIR/breakfix_step3.log";
+
+# figure out the Cbench environment specified by Fixit123 config
+my $be = Env::Bash->new( Source => ". $ENV{'FIXIT123_CBENCHTEST'}/cbench-init.sh",
+	Keys => 1, );
+$CBENCHOME = $be->CBENCHOME;
+$CBENCHTEST = $be->CBENCHTEST;
+
+
+my $logmsg = '';
+if (defined $step2pass) {
+	(!defined $node) and die &usage();
+
+	$logmsg = sprintf("%s NODE %s => STEP2B PASSED, manually via poke_breakfix_data, %s\n", get_timestamp(), $node, $step2pass);
+
+    open (OUT,">>$step2_logfile") or die
+	    "Could not open $step2_logfile ($!)";
+}
+elsif (defined $step3pass) {
+	(! defined $step3tag) and 
+		die "--step3pass requires the --step3tag parameter";
+
+	$step3nodefile = "$STEP3ADIR\/$step3tag\.nodelist";
+
+	$logmsg = sprintf("%s NODE %s => STEP3B PASSED, manually via poke_breakfix_data, %s, tag was %s, READY for REINTEGRATION\n", get_timestamp(), $l, $step3pass, $step3tag);
+
+    open (OUT,">>$step3_logfile") or die
+	    "Could not open $step3_logfile ($!)";
+
+    open (IN,"<$step3nodefile") or die
+	    "Could not open $step3nodefile ($!)";
+    @nodebuf = <IN>;
+    close(IN);
+
+}
+
+# record the log message in the right breakfix log
+print "$logmsg";
+if (!$dryrun) {
+	if (defined $step2pass) {
+		printf OUT $logmsg;
+	}
+	elsif (defined $step3pass) {
+		foreach $l (@nodebuf) {
+			chomp $l;
+			$logmsg = sprintf("%s NODE %s => STEP3B PASSED, manually via poke_breakfix_data, %s, tag was %s, READY for REINTEGRATION\n", get_timestamp(), $l, $step3pass, $step3tag);
+			printf OUT $logmsg;
+		}
+	}
+
+    close(OUT);
+	system("sync");
+}
+
+
+sub get_timestamp {
+	my ($sec, $min, $hour, $day, $mon, $year, $wday, $yday, $isdst) = localtime;
+    
+    $year = $year - 100;
+    $stamp = sprintf "%02d/%02d/%02d %02d:%02d",$mon+1,$day,$year,$hour,$min;
+    return $stamp;
+}
+
+sub usage {
+	my $str = 
+	"USAGE: poke_breakfix_data --node NAME [--step2pass MESSAGE]\n";
+
+	return $str;
+}

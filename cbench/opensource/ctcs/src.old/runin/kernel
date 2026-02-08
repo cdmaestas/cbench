@@ -1,0 +1,139 @@
+#!/bin/bash
+#ls1=`mktemp /tmp/kernelcompareorigXXXXXX`
+#ls2=`mktemp /tmp/kernelcomparenewXXXXXX`
+. ../lib/sh/ctcslib.sh
+
+kconfig="yes ''"
+
+if [ -z "$1" ] ; then
+	makej=""
+else
+	makej="-j $1"
+fi
+
+if [ -z "$2" ] ; then
+	dir=/tmp/linux
+else
+	dir="$2"
+fi
+
+
+function interrupt () {
+	trap interrupt SIGUSR1
+        trap interrupt SIGTERM
+	trap interrupt SIGINT
+#        echo $failed fail $succeed succeed $count count
+	rm -f $ls1 $ls2
+	rm -rf $dir
+        # this just grabs the process id and all children.  and kills them
+	# until they're dead
+	x=1
+	while [ $x -gt 0 ] ; do {
+		kill_children --KILL
+		x=$?
+	} ; done
+	# untrap the exit before we exit :)
+        exit 255
+}
+trap interrupt SIGUSR1
+trap interrupt SIGTERM
+trap interrupt SIGINT
+
+if [ -d "/usr/src/linux" ] ; then
+        LINUXDIR="/usr/src/linux"
+else 
+        if [ -d "/usr/src/linux-2.4" ] ; then
+        	LINUXDIR="/usr/src/linux-2.4"
+        else
+                if [ -d "/usr/src/linux-2.6" ] ; then
+                	LINUXDIR="/usr/src/linux-2.6"
+                else
+			#Try a hail mary pass
+			LINUXDIR=`ls -d /usr/src/linux* 2>/dev/nul|head -1`
+			if [ ! $LINUXDIR ];then
+				
+                		echo Linux source dir does not exist.  Help'!'
+                		echo "Tried: /usr/src/linux /usr/src/linux-2.4 /usr/src/linux-2.6"
+                		exit 2
+                	fi
+		fi
+        fi
+fi
+
+cd $LINUXDIR
+echo ]] init
+rm -rf $dir >&2
+sync
+mkdir -p $dir >&2
+cd $dir >&2
+# should no longer be necessary
+#cp -dpR /usr/src/linux/.??* . >/dev/null 2>&1
+cp -a $LINUXDIR/* . >&2
+#sum1=`cd /usr/src/linux && ls -lR * | grep -v -G ' ->' | tee $ls1 | md5sum`
+#sum2=`cd $dir && ls -lR * | grep -v -G ' ->' | tee $ls2 | md5sum`
+
+#if [ "$sum1" != "$sum2" ] ; then {
+#	echo '***********'
+#	echo Tree Copy FAILED.  Directory checksum mismatch.
+#	echo To say that this is bad is a severe understatement.
+#	echo If this shows up in a good system give the system
+#	echo to Jason to dissect it.
+#	echo '***********'
+#	echo '** diff analysis, original to copy **'
+#	diff --urN $ls1 $ls2
+#	echo '** end diff analysis **'
+#	exit 1
+#} ; fi
+#rm -f $ls1 $ls2
+
+if [ ! -d "$dir" ] ; then {
+	echo $dir
+	echo test configuration error >&2
+	exit 2
+} ; fi
+
+
+cd $dir
+
+echo ]] cleanup
+make -sw clean >> /dev/null 2>&1
+make -sw mrproper >> /dev/null 2>&1
+
+if [ -e ./makefile ] ; then {
+	echo warning: I seem to have found a VA makefile.
+	echo I am going to proceed as if there is one.  Errors
+	echo here can be ignored.
+	echo ]] make restore
+	$kconfig | make -sw restore >> /dev/null 2>&1
+#	echo ]] restore configuration
+#	cp configs/kernel*i686.config .config
+	rm -f ./makefile
+} ; fi
+
+if [ ! -s '.config' ] ; then {
+	echo ]] make oldconfig
+	# just in case.  Redirect 
+	$kconfig | make -sw oldconfig >> /dev/null 2>&1
+	if [ $? != 0 ] ; then exit 1 ; fi
+} ; fi
+
+echo ]] make dep
+# make dep still displays commands despite -sw
+make -sw dep >> /dev/null
+if [ $? != 0 ] ; then exit 1 ; fi
+
+echo ]] make clean
+make -sw clean >> /dev/null
+if [ $? != 0 ] ; then exit 1 ; fi
+
+echo ]] make vmlinux
+make -sw $makej vmlinux >> /dev/null
+if [ $? != 0 ] ; then exit 1 ; fi
+
+echo ]] make $makej modules
+make -sw $makej modules >> /dev/null
+if [ $? != 0 ] ; then exit 1 ; fi
+
+rm -rf $dir >&2
+
+exit 0

@@ -1,0 +1,75 @@
+= Compiling the Openapps Tree of Cbench =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+[wiki:doc/HOWTO-CheckoutOpenAppsTree Check it out first].
+
+Build linkage requirements:
+ * AMG - nothing additional needed
+ * LAMMPS - needs correct FFTW and BLAS for linkage
+ * HPCCG - nothing additional needed
+ * IRS - nothing additional needed
+ * phdMesh - nothing additional needed
+ * SWEEP3d - nothing additional needed
+ * Trilinos - needs BLAS and LAPACK for linkage
+
+== LAPACK linkage ==
+Cbench relies on an environment variable `LAPACKLIB` to give it the information to successfully link with LAPACK.  Note that LAPACK also requires a valid BLAS linkage.  This can also be hardcoded in `make.def` around line 193.  LAPACKLIB should have all the information necessary to link, eg:
+{{{
+export LAPACKLIB="-L/path/to/lapack -llapack"
+}}}
+or to embed dynamic link path with Rpath
+{{{
+export LAPACKLIB="-Wl,-rpath,/path/to/lapack -L/path/to/lapack -llapack"
+}}}
+
+If your BLASLIB environment variable points to a library setup that has LAPACK (like linking with MKL or ACML for BLAS), you can set LAPACKLIB like:
+{{{
+export LAPACKLIB=" "
+}}}
+
+== FFTW Include and Linkage ==
+Similarly, FFTW linkage is most easily setup with environment variables. FFTW requires valid include file information as well as valid linkage information.  One way is to specifiy FFTWLIB and FFTWINCLUDE (in the spirit of other Cbench environment variables like BLASLIB) which will fully tell Cbench how to include and link with FFTW:
+{{{
+export FFTWLIB="-L/usr/lib64 -lfftw2xc_intel"
+export FFTWINCLUDE="-I/usr/include"
+}}}
+Alternatively you can specify the FFTW_LIB and FFTW_INCLUDE environment variables and Cbench will make some assumptions during compilation:
+{{{
+export FFTW_LIB=/path/to/fftw/libraries
+export FFTW_INCLUDE=/path/to/fftw/includes
+}}}
+This can also be hardcoded in `make.def` (search for FFTWLIB to see the logic).
+
+== Test library linkage ==
+BLAS, LAPACK and FFTW linkage can easily be tested in Cbench versions newer than 1.2.1 (source checkouts newer than r601) with
+{{{
+% cd $CBENCHOME
+% make -C opensource/maketests clean
+% make -C opensource/maketests
+% make -C opensource/maketests linkstatus
+}}}
+
+== Compiling ==
+Compile it all:
+{{{
+% cd /path/to/openapps
+% make
+% make install
+}}}
+
+Compile something specific:
+{{{
+% cd /path/to/openapps
+% make -C lammps
+% make -C lammps install
+}}}
+
+Binaries and such will now be installed in $CBENCHOME/bin.  Now we need to install/update to the Cbench Testing Tree with the Openapps binaries:
+{{{
+% cd $CBENCHOME
+% make itests
+}}}
+ 	  	 

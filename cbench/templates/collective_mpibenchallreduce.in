@@ -1,0 +1,14 @@
+# collective_mpibenchallreduce job template
+# LLNL mpiBench_Allreduce benchmark
+# using the all-to-all nonblocking pattern
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/mpiBench_Allreduce 
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/mpiBench_Allreduce 
+
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/mpiBench_Allreduce -c"
+
+cbench_run_cmd $CMD
+

@@ -1,0 +1,65 @@
+#!/bin/bash
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+#set -x
+
+# check for the FIXIT123 environment config variables
+if [ -z $FIXIT123_CONF ]; then
+	echo "FAILURE  FIXIT123_CONF variable not defined!"
+	exit 1
+fi
+
+# setup fixit123 environment variables using the fixt123 profile script
+if [ -f /etc/profile.d/fixit123.sh ]; then
+	. /etc/profile.d/fixit123.sh
+else
+	# try to find the fixt123 profile script...	
+	. $FIXIT123_CONF
+	. $FIXIT123_HOME/etc/profile.d/fixit123.sh
+fi
+
+if [ -z $1 ]; then
+	echo $0 NODENAME [debug]
+	echo $0 bn196
+	exit 1
+fi
+
+# setup Cbench environment variables based on FIXIT123 setup
+. $FIXIT123_CBENCHTEST/cbench-init.sh
+
+mkdir -p $FIXIT123_CBENCHTEST/nodehwtest/$FIXIT123_STEP2_TESTIDENT
+
+CMDBASE=""
+if [ "$2" == 'dryrun' ]; then
+	CMDBASE="echo"
+fi
+
+if [ "$2" == 'debug' ]; then
+	set -x
+	echo $0 DEBUG mode...
+	# do something debugish....
+	$CBENCHTEST/nodehwtest/nodehwtest_start_jobs.pl --batch --match 'ctcs|idle|cpuinfo|meminfo' --preamble ". $CBENCHTEST/cbench-init.sh; . $FIXIT123_CONF" --ident $FIXIT123_STEP2_TESTIDENT --batchargs "-l walltime=$FIXIT123_STEP2_WALLTIME $FIXIT123_STEP2_BATCHARGS" --jobtemplate $FIXIT123_HOME/bin/nodehwtest_nodetest.in --nodelist $1 --debug 1 --small
+else
+	$CMDBASE $CBENCHTEST/nodehwtest/nodehwtest_start_jobs.pl --batch $FIXIT123_STEP2_TESTSTORUN --preamble ". $CBENCHTEST/cbench-init.sh; . $FIXIT123_CONF" --ident $FIXIT123_STEP2_TESTIDENT --burnin --batchargs "-l walltime=$FIXIT123_STEP2_WALLTIME $FIXIT123_STEP2_BATCHARGS" --jobtemplate $FIXIT123_HOME/bin/nodehwtest_nodetest.in --nodelist $1
+fi

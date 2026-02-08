@@ -1,0 +1,84 @@
+#!/usr/bin/perl
+# vim: syntax=perl tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+use Getopt::Long;
+
+GetOptions(
+	'nodefile=s' => \$nodefile,
+    'ident=s' => \$ident,
+    'logfile=s' => \$logfile,
+    'step3log=s' => \$step3log,
+);
+
+(defined $nodefile) or die
+	"Need the --nodefile parameter";
+(defined $ident) or die
+	"Need the --ident parameter";
+(!defined $logfile) and die
+	"Need the --logfile parameter";
+
+$bin_dir = "$ENV{FIXIT123_HOME}/bin";
+$log_dir = "$ENV{FIXIT123_DB_HOME}";
+$bf_log = "$log_dir/breakfix_step3.log";
+
+# read in the list of nodes in the file and build a Torque
+# node specification with it
+open (IN,"<$nodefile") or die
+	"Could not open $nodefile ($!)";
+
+$nodespec = '';
+$numnodes = 0;
+foreach $n (<IN>) {
+    chomp $n;
+    $nodespec .= "$n\:ppn=2\+";
+    $numnodes++;
+}
+$nodespec =~ s/\+$//;
+
+# read in the step3a batch template
+my $file = "$bin_dir\/step3a_batch.in";
+open (IN,"<$file") or die
+	"Could not open $file ($!)";
+undef $/;
+my $batch_temp = <IN>;
+close(IN);
+$/ = "\n";
+
+# if the step3 walltime parameter is in the environment, use it
+my $walltime = "24:00:00";
+if (defined $ENV{FIXIT123_STEP3_WALLTIME}) {
+	$walltime = $ENV{FIXIT123_STEP3_WALLTIME};
+} 
+
+$batch_temp =~ s/TORQUE_NODESPEC_HERE/$nodespec/gs;
+$batch_temp =~ s/WALLTIME_HERE/$walltime/gs;
+$batch_temp =~ s/NUM_NODES_HERE/$numnodes/gs;
+$batch_temp =~ s/IDENT_HERE/$ident/gs;
+$batch_temp =~ s/BREAKFIX_LOG_HERE/$bf_log/gs;
+$batch_temp =~ s/FIXIT123_HOME_HERE/$ENV{FIXIT123_HOME}/gs;
+$batch_temp =~ s/FIXIT123_CBENCHTEST_HERE/$ENV{FIXIT123_CBENCHTEST}/gs;
+$batch_temp =~ s/FIXIT123_CONF_HERE/$ENV{FIXIT123_CONF}/gs;
+(defined $logfile) and $batch_temp =~ s/LOGFILE_HERE/$logfile/gs;
+
+print "$batch_temp";

@@ -1,0 +1,69 @@
+#!/bin/bash
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+# check for the FIXIT123 environment config variables
+if [ -z FIXIT123_HOME ]; then
+	echo "FAILURE  FIXIT123_HOME variable not defined!"
+	exit 1
+fi
+
+# pickup the Cbench environment we want
+. $FIXIT123_CBENCHTEST/cbench-init.sh
+
+DATE=`date +%m-%d-%Y`
+EXEC=$CBENCHTEST/tools/nodehwtest_parse_helper.pl
+FILE=$1
+TEMP=`mktemp`
+
+# flag known hardware badness
+$EXEC --file $FILE --gtactual 2 --test cpuinfo_num --text "HYPERTHREADING IS ON" >> $TEMP
+$EXEC --file $FILE --ltactual 7150 --test cpuinfo_cpumhz_total --text "CPU is the WRONG SPEED" >> $TEMP
+# flag HARD failures
+$EXEC --file $FILE --gtactual 0 --test memtester_fail --text "memory test FAILURES" >> $TEMP
+$EXEC --file $FILE --gtactual 0 --test ctcs_memtst_fail --text "memory test FAILURES" >> $TEMP
+$EXEC --file $FILE --gtactual 0 --test hpcc_fail --text "HPCC FAILED computation correctness" >> $TEMP
+# flag any difference in meminfo reporting
+$EXEC --file $FILE --gtabspercent 100 --test meminfo_mem_total --text "total memory is incorrect" >> $TEMP
+
+# flag any test that is below threshold, ignore the ones above threshold
+$EXEC --file $FILE --negpercent 300 --test '.*' --text 'more than 300% below standard deviation'  | grep -v ctcs_memtst_incomplete>> $TEMP
+
+# these checks try to flag slower running nodes...
+$EXEC --file $FILE --ltactual 10 --test hpcc_hpl_gflops --text "slow HPCC linpack" >> $TEMP
+$EXEC --file $FILE --ltactual 10 --test xhpl_gflops --text "slow linpack" >> $TEMP
+$EXEC --file $FILE --ltactual 10000 --test nodeperf_mflops --text 'slow nodeperf'  >> $TEMP
+
+# these checks try to flag really slow running nodes...
+#$EXEC --file $FILE --ltactual 11 --test hpcc_hpl --text "slow linpack" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_randomaccess_gups --text "slow random access memory performance" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_fft_gflops --text "slow FFT performance" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_ptrans_gbs --text "slow parallel transpose performance" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test streams_triad --text "slow memory" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test cachebench_memcpy --text "slow cache performance w/ memcpy" >> $TEMP
+
+
+#cat $TEMP | /projects/tbird/jbogden/sort_report
+cat $TEMP
+rm -f $TEMP

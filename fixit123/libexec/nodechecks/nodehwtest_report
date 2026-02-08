@@ -1,0 +1,61 @@
+#!/bin/bash
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+. /apps/cbench/dotme.cbench
+
+DATE=`date +%m-%d-%Y`
+EXEC=$CBENCHOME/tools/nodehwtest_parse_helper.pl
+FILE=$1
+TEMP=`mktemp`
+
+# flag known hardware badness
+$EXEC --file $FILE --gtactual 2 --test cpuinfo_num --text "HYPERTHREADING IS ON" >> $TEMP
+$EXEC --file $FILE --ltactual 7150 --test cpuinfo_cpumhz_total --text "CPU is the WRONG SPEED" >> $TEMP
+# flag HARD failures
+$EXEC --file $FILE --gtactual 0 --test memtester_fail --text "memory test FAILURES" >> $TEMP
+$EXEC --file $FILE --gtactual 0 --test ctcs_memtst_fail --text "memory test FAILURES" >> $TEMP
+$EXEC --file $FILE --gtactual 0 --test hpcc_fail --text "HPCC FAILED computation correctness" >> $TEMP
+$EXEC --file $FILE --gtactual 0 --test topspin_device_fail --text "HCA FAILURE" >> $TEMP
+$EXEC --file $FILE --gtactual 0 --test topspin_firmware_fail --text "HCA FIRMWARE FAILURE" >> $TEMP
+
+# flag any test that is below threshold, ignore the ones above threshold
+$EXEC --file $FILE --negpercent 50 --test '.*' --text 'below threshold'  >> $TEMP
+
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_hpl_gflops --text "slow HPCC linpack" >> $TEMP
+
+# these checks try to flag really slow running nodes...
+#$EXEC --file $FILE --ltactual 11000 --test nodeperf_mflops --text 'slow nodeperf'  >> $TEMP
+#$EXEC --file $FILE --ltactual 11 --test hpcc_hpl --text "slow linpack" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_randomaccess_gups --text "slow random access memory performance" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_fft_gflops --text "slow FFT performance" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test hpcc_ptrans_gbs --text "slow parallel transpose performance" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test streams_triad --text "slow memory" >> $TEMP
+#$EXEC --file $FILE --ltpercent 250 --test cachebench_memcpy --text "slow cache performance w/ memcpy" >> $TEMP
+
+#$EXEC --file $FILE --ltactual 1 --test topspin_port0_up --text "IB port is DOWN" >> $TEMP
+#$EXEC --file $FILE --gtactual 0 --test omdiag_notworking --text "omdiag isn't working" --brief >> $TEMP
+
+#cat $TEMP | /projects/tbird/jbogden/sort_report
+cat $TEMP
+rm -f $TEMP

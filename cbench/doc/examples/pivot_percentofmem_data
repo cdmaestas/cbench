@@ -1,0 +1,56 @@
+#!/usr/bin/perl
+
+use strict;
+use File::Find;
+use Getopt::Long;
+
+my $baseident = 'set1';
+
+GetOptions(
+	'base=s' => \$baseident,
+);
+
+my $startdir = `pwd`;
+chomp $startdir;
+
+find(\&process_dir, ".");                                                                    
+
+sub process_dir {
+	#print "$File::Find::name\n";
+
+    if ($File::Find::name =~ /ppn.*\.([oe])(\d+)/) {
+		my $type = $1;
+		my $jobid = $2;
+
+		my @patharray = split '/',$File::Find::name;
+		my $testident = $patharray[$#patharray-2];
+		#print "@patharray => $testident => $baseident\n";
+		($testident =~ /^$baseident/) or next;
+		print "$File::Find::name $File::Find::dir\n";
+
+		my $jobname = $patharray[$#patharray-1];
+		my $file = $patharray[$#patharray];
+		my ($bench, $ppn, $np) = ($jobname =~ /^(\S+)\-(\d)ppn[\-|\.](\d+)$/);
+		my ($base, $factor) = ($testident =~ /^(\S+)\-(\d+)perc$/);
+		print "$testident $jobname $factor\n";
+
+		my $ident = "$np"."nodes-$base";
+		if (! -d "$startdir/$ident") {
+			system("mkdir -p $startdir/$ident");
+		}
+
+		my $newjobname = "$bench\-$ppn"."ppn\-$factor";
+		if (! -d "$startdir/$ident/$newjobname") {
+			system("mkdir -p $startdir/$ident/$newjobname");
+		}
+		
+		my $newfile = "$startdir/$ident/$newjobname/$newjobname\.$type"."$jobid";
+		my $cmd = "sed -e \'s/^Cbench numprocs\:.*\$\/Cbench numprocs\: $factor\/g\' ".
+			"-e \'s/^Cbench numnodes\:.*\$\/Cbench numnodes\: $factor\/g\' ".
+			"-e \'s/^Cbench jobname\:.*\$\/Cbench jobname\: $newjobname\/g\' ".
+			"$file > $newfile";
+		print "$cmd\n";
+		system("$cmd");
+
+	}
+}

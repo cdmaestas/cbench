@@ -1,0 +1,9 @@
+sectionA	aadmin3,aadmin4
+sectionB	badmin3,badmin4
+sectionC	cadmin3,cadmin4
+sectionD	dadmin3,dadmin4
+oneC	cadmin3,cadmin4
+sectionALL	aadmin2,aadmin3,aadmin4,badmin2,badmin3,badmin4,cadmin2,cadmin3,cadmin4,dadmin2,dadmin3,dadmin4
+heatload	aadmin3,aadmin4,badmin3,badmin4,cadmin3,cadmin4,dadmin3,dadmin4
+offline		dadmin2,dadmin3,dadmin4
+eccstress1	aadmin3,aadmin4,badmin3,badmin4,cadmin3,cadmin4,dadmin3,dadmin4

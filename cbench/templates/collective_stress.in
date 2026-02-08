@@ -1,0 +1,20 @@
+# collective_stress job template
+# 'stress' MPI benchmark from the MPICH perftest code
+# using the all-to-all nonblocking pattern
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/stress
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/stress
+
+# does not run on less than 2 processes 
+ONEPROC=`expr NUM_PROCS_HERE \< 2`
+if [ "$ONEPROC" == "1" ]; then
+	cbench_echo "CBENCH NOTICE: stress needs at least 2 processes"
+	exit
+fi
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/stress -async -all -quiet -ttime 00:10"
+
+cbench_run_cmd $CMD
+

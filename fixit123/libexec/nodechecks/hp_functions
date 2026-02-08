@@ -1,0 +1,476 @@
+# -*-Shell-script-*-
+#
+# hp_functions     This file contains HP functions to be used by nodechecks 
+#                  shell scripts
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+# SmartStart Toolkit
+SSTK=/projects/global/src/hp/ssstk
+
+
+psp_check_install() {
+
+	echo
+	echo -n "Checking for HP PSP install: "
+
+	local install_ok=1
+
+	for s in vlan cmanic hpsmhd hpvca hp-vt hprsm hpasm snmpd snmptrapd ipmi
+	do
+		if [ ! -x "/etc/init.d/$s" ]; then
+			install_ok=0
+		fi
+	done
+
+	# psp seems sane, but check for hponcfg util too
+	which hponcfg 2>&1 | grep -q 'no hponcfg'
+	if [ $? -eq 0 ]; then
+		echo_failure
+		echo "  WARNING: PSP install looks ok but couldn't find hponcfg."
+		echo "           Something is messed up. A node reinstall might"
+		echo "           be necessary."
+		return 1
+	fi
+
+	if [ $install_ok -eq 1 ]; then
+		echo_success
+		return 0
+	else
+		echo_failure
+		return 1
+	fi
+}
+
+psp_start_services() {
+	echo
+	echo -n "Starting HP PSP services: "
+
+	#for s in vlan cmanic hpsmhd hpvca hp-vt hprsm hpasm snmpd snmptrapd ipmi
+	for s in snmpd hpasm 
+	do
+		echo -n "$s "
+		service $s start > /dev/null 2>&1
+	done
+	echo
+}
+
+psp_stop_services() {
+	echo
+	echo -n "Stopping HP PSP services: "
+
+	for s in vlan cmanic hpsmhd hpvca hp-vt hprsm hpasm snmpd snmptrapd ipmi
+	do
+		echo -n "$s "
+		service $s stop > /dev/null 2>&1
+	done
+	echo
+}
+
+psp_hwdisc() {
+	PSP_HWDISCFILE=/tmp/fixit123_psp_hwdisc.dat
+	# smartstart v1.60
+	#$SSTK/utilities/hwdisc3 -f$PSP_HWDISCFILE
+	# smartstart v1.70
+	pushd $SSTK/utilities > /dev/null
+	./hpdiscovery -f $PSP_HWDISCFILE
+	popd > /dev/null
+}
+
+psp_check_bios_version() {
+	local goodver=$1
+	local family=$2
+	local type=$3
+
+	echo
+	echo -n "Checking BIOS/ROM version ($goodver $family): "
+
+	psp_hwdisc
+	foundfamily=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HWDISCFILE | grep "ROM=" |awk -F'=' '{print $2}'`
+	foundver=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HWDISCFILE | grep "SMBIOS ROMDate=" |awk -F'=' '{print $2}'`
+	if [ "$goodver" == "$foundver" -a "$family" == "$foundfamily" ]; then
+		echo_success
+		return 0
+	else
+		echo_failure
+		return 1
+	fi
+}
+
+psp_update_bios_firmware() {
+	local goodver=$1
+	local family=$2
+	local hwtype=$3
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	# lookup the filename we will actually need
+	local filename=`$FIXIT123_HOME/tools/decode_hp_firmware_files.pl --fwtype bios --hwtype $hwtype --version $goodver`
+	if [ $? -eq 1 ]; then
+		echo  "Cannot decode firmware filename. Maybe a newer version?"
+		return 1
+	fi
+
+	echo "  Updating BIOS firmware to $goodver ..."
+	#/projects/global/FIRMWARE/BIOS/dl360g4/cp006555.scexe << EOF
+	/projects/global/FIRMWARE/BIOS/$hwtype/$filename << EOF
+yes
+no
+EOF
+
+}
+
+
+psp_check_ilo_version() {
+	local goodver=$1
+
+	echo
+	echo -n "Checking ILO firmware version ($goodver): "
+
+	local TMPFILE=/tmp/fixit123_psp_hponcfg.dat
+	hponcfg -g > $TMPFILE 2>&1
+	local ver=`grep Firmware $TMPFILE| awk '{print $4}'`
+	if [ "$goodver" == "$ver" ]; then
+		echo_success
+		return 0
+	else
+		echo_failure
+		return 1
+	fi
+
+}
+
+psp_update_ilo_firmware() {
+	local goodver=$1
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	# lookup the filename we will actually need
+	local filename=`$FIXIT123_HOME/tools/decode_hp_firmware_files.pl --fwtype ilo --version $goodver`
+	if [ $? -eq 1 ]; then
+		echo  "Cannot decode firmware filename. Maybe a newer version?"
+		return 1
+	fi
+
+	echo "  Updating ILO firmware to $goodver ..."
+	#/projects/global/FIRMWARE/ILO/ILO189.runfromlinux << EOF
+	/projects/global/FIRMWARE/ILO/$filename << EOF
+y
+EOF
+}
+
+
+psp_check_storage_version() {
+	local goodver=$1
+
+	echo
+	echo -n "Checking storage controller firmware version ($goodver): "
+
+	hpaducli -f /tmp/fixit123_psp_hpaducli.dat
+	foundver=`grep 'Controller Firmware Rev' /tmp/fixit123_psp_hpaducli.dat | awk -F':' '{print $2}'| tr -s [:space:]`
+	if [ " $goodver" == "$foundver" ]; then
+		echo_success
+		return 0
+	else
+		echo_failure
+		return 1
+	fi
+
+}
+
+psp_update_storage_firmware() {
+	local goodver=$1
+	local hwtype=$2
+	# FIXME: do the updated based on the actual version provided
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	# lookup the filename we will actually need
+	local filename=`$FIXIT123_HOME/tools/decode_hp_firmware_files.pl --fwtype storage --hwtype $hwtype --version $goodver`
+	if [ $? -eq 1 ]; then
+		echo  "Cannot decode firmware filename. Maybe a newer version?"
+		return 1
+	fi
+
+	echo "  Updating storage controller firmware to $goodver ..."
+	#/projects/global/FIRMWARE/SMART6I/CP007624.scexe << EOF
+	/projects/global/FIRMWARE/$hwtype/$filename << EOF
+yes
+EOF
+}
+
+psp_check_nic_version() {
+	local goodver=$1
+
+	echo
+	echo -n "Checking NIC firmware version ($goodver): "
+
+	psp_hwdisc
+	foundver=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HWDISCFILE | grep Firmware | grep NetworkAdapter |awk -F'=' '{print $2}' | awk -F'-' '{print $2}'|head -1| sed 's/[a-z]//g'`
+	if [ "$goodver" == "$foundver" ]; then
+		echo_success
+		return 0
+	else
+		echo_failure
+		return 1
+	fi
+
+
+}
+
+psp_update_nic_firmware() {
+	local goodver=$1
+	# FIXME: do the updated based on the actual version provided
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	echo "  Updating NIC firmware to $goodver ..."
+
+	# this is hard to do since it kills NFS mounts in the progress...
+	# so we try to localize everything on the node and then do the update
+	# and then a reboot is required...
+	local ARCH=`uname -i`
+	local RPM=/projects/global/FIRMWARE/NIC/hp/hpnicfwupg-1.7.0-1.$ARCH.rpm
+	echo "    Removing any previous hpnicfwupg rpm"
+	rpm -e hpnicfwupg
+	echo "    Installing $RPM for the NIC firmware"
+	rpm -U $RPM
+	# Build a script in tmpfs (i.e. in memory to do the update)
+	# because the nfs filesystems could get messed up and it is hard in
+	# general to umount and mount the rights ones (because thye could
+	# be Luster and require special care and feeding for instance). So,
+	# we'll just update and then reboot using a script in RAM.
+	#
+	# we are assuming /dev/shm is a tmpfs... which is fine for Redhat
+	# but who knows about others....
+	local TMP=`mktemp -p /dev/shm/`
+	chmod u+x $TMP
+	echo "#!/bin/bash" >> $TMP
+	echo "hpnicfwupg -y" >> $TMP
+	echo "sync" >> $TMP
+	echo "sleep 15" >> $TMP
+	echo "echo Rebooting after NIC firmware upgrade" >> $TMP
+	echo "/sbin/reboot" >> $TMP
+
+	$TMP
+	# we shouldn't get here...
+	exit
+}
+
+psp_check_bios_settings() {
+	local goodset=$1
+
+	echo
+	echo -n "Checking BIOS settings: "
+
+	PSP_CONREPFILE=/tmp/fixit123_psp_conrep.dat
+	pushd $SSTK/utilities > /dev/null
+	./conrep -s -f$PSP_CONREPFILE
+	popd > /dev/null
+
+	$FIXIT123_HOME/tools/grok_hp_xml.pl --file $goodset | sort > /tmp/bios1
+	$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_CONREPFILE | egrep -v "IMD_ServerName|CPU_Virtualization|Legacy_SERR|No_Execute_Memory_Protection|Power-On_Delay" | sort > /tmp/bios2
+	diff -b /tmp/bios1 /tmp/bios2 > /tmp/biosdiff
+	local cnt=`wc -l /tmp/biosdiff | awk '{print $1}'`
+	if [ $cnt -ne 0 ]; then
+		echo_failure
+		return 1
+	else
+		echo_success
+		return 0
+	fi
+}
+
+psp_update_bios_settings() {
+	local goodset=$1
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	echo
+	echo "  Updating BIOS settings using $goodset..."
+
+	pushd $SSTK/utilities > /dev/null
+	./conrep -l -f$goodset
+	popd > /dev/null
+}
+
+psp_check_ilo_settings() {
+
+	echo
+	echo -n "Checking ILO settings: "
+
+	local PSP_HPONCFGFILE=/tmp/fixit123_psp_hponcfg.dat
+	hponcfg -w $PSP_HPONCFGFILE > /dev/null
+
+#| grep -e IP_ADDRESS -e SUBNET_MASK -e DNS_NAME -e GATEWAY_IP_ADDRESS | grep VALUE
+	found_ipaddr=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HPONCFGFILE | grep " IP_ADDRESS VALUE" |awk -F'=' '{print $2}' `
+	found_subnetmask=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HPONCFGFILE | grep "SUBNET_MASK VALUE" |awk -F'=' '{print $2}' `
+	found_dnsname=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HPONCFGFILE | grep "DNS_NAME VALUE" |awk -F'=' '{print $2}' `
+	found_gwip=`$FIXIT123_HOME/tools/grok_hp_xml.pl --file $PSP_HPONCFGFILE | grep "GATEWAY_IP_ADDRESS VALUE" |awk -F'=' '{print $2}' `
+	
+	good_dnsname=$HOSTNAME-ilo
+	good_ipaddr=`grep "$good_dnsname" /etc/hosts | awk '{print $1}'`
+	good_subnetmask=255.255.0.0
+	good_gwip=0.0.0.0
+
+	local ok=1
+	if [ "$good_ipaddr" != "$found_ipaddr" ]; then
+		ok=0
+	fi
+	if [ "$good_dnsname" != "$found_dnsname" ]; then
+		ok=0
+	fi
+	if [ "$good_gwip" != "$found_gwip" ]; then
+		ok=0
+	fi
+	if [ "$good_subnetmask" != "$found_subnetmask" ]; then
+		ok=0
+	fi
+
+	if [ $ok -eq 0 ]; then
+		echo_failure
+		return 1
+	else
+		echo_success
+		return 0
+	fi
+}
+
+psp_update_ilo_settings() {
+	local goodset=$1
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	echo
+	echo "  Updating ILO settings using $goodset ..."
+
+	good_dnsname=$HOSTNAME-ilo
+	good_ipaddr=`grep "$good_dnsname" /etc/hosts | awk '{print $1}'`
+	good_subnetmask=255.255.0.0
+
+	sed -e "s/IP_ADDRESS_HERE/$good_ipaddr/g;s/SUBNET_MASK_HERE/$good_subnetmask/g;s/DNS_NAME_HERE/$good_dnsname/g" $goodset > /tmp/fixit123_iloset.dat
+	
+	# it seems to work best to write the ilo settings first and then
+	# reset the ILO processor
+	echo "     Writing updated ILO config...takes about 30 seconds"
+	hponcfg -f /tmp/fixit123_iloset.dat
+	sleep 30
+	#FIXME: right now we assume the ilo admin name and password...
+	echo "     Resetting ILO processor...takes about 60 seconds"
+	local TMP=/tmp/fixit123_ilo_reset.xml
+	cat > $TMP <<EOF
+<RIBCL VERSION="2.1">
+  <LOGIN USER_LOGIN="Administrator" PASSWORD="Administrator">
+  <RIB_INFO MODE="write">
+    <RESET_RIB/>
+  </RIB_INFO>
+  </LOGIN>
+</RIBCL>
+EOF
+	hponcfg -f $TMP
+	sleep 60
+}
+
+psp_update_ilo_admin_passwd() {
+	local passwd=$1
+
+	local TMP=/tmp/fixit123_ilo_passwd_reset.xml
+	cat > $TMP <<EOF
+<RIBCL VERSION="2.1">
+ <LOGIN USER_LOGIN="Administrator" PASSWORD="$passwd">
+  <USER_INFO MODE="write">
+   <MOD_USER USER_LOGIN="Administrator">
+    <PASSWORD value="$passwd"/>
+   </MOD_USER>
+  </USER_INFO>
+ </LOGIN>
+</RIBCL>
+EOF
+
+	hponcfg -f $TMP >/dev/null 2>&1
+	sleep 5
+}
+
+psp_install() {
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	WANT_REBOOT=1
+
+	echo
+	echo "  Installing Proliant Support Pack...be patient...."
+
+	#/projects/global/src/hp/psp-7.70/compaq/csp/linux/install770.sh --nui -s
+	if [ -x /projects/global/src/hp/install_psp-7.90.sh ]; then
+		echo "  Using PSP version 7.90"
+		/projects/global/src/hp/install_psp-7.90.sh
+	else
+		echo "  Using PSP version 7.70"
+		/projects/global/src/hp/install_psp.sh
+	fi
+
+	echo "ATTENTION: Updated HP Proliant Support Pack, you must now reboot this system ..."
+}
+
+hp_ping_ilo() {
+	local node=$1
+	local srcnode=$2
+
+	echo
+	echo  -n "Pinging ILO interface on $1: "
+	# only know how to do this with CAP4 at the moment
+	grep CAPHOME `which power` > /dev/null
+	if [ $? -eq 1 ]; then
+		echo_failure
+		echo
+		echo "Could not find CAP install, so do not know how to ping ILO"
+		return 1
+	fi
+
+	ssh $srcnode "power $node status "2>&1 | grep -q -i "power is"
+	if [ $? -eq 0 ]; then
+		echo_success
+		return 0
+	else
+		echo_failure
+		return 1
+	fi
+}
+
+hp_xw9400_bios_check() {
+	local goodver=$1
+        echo
+        echo -n "Checking to see if xw9400 BIOS version is $goodver: "
+        if [ `/usr/sbin/dmidecode | head -20 | grep Version | awk '{print $3}'` = $goodver ]; then
+                echo_success 
+	        return 0
+        else
+                echo_failure 
+		echo
+                echo -n "BIOS version is incorrect - Found BIOS version:  "
+		/usr/sbin/dmidecode | head -20 | grep Version | awk '{print $3}'
+                return 1
+        fi
+}

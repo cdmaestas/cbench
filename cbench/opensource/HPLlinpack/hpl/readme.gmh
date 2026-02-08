@@ -1,0 +1,224 @@
+    MP (Massively Parallel) Linpack is the 3rd part of a benchmark which
+solves a dense (real*8) system of linear equations (Ax=b), measures the amount
+of time it takes to factor and solve the system, converts that time into a
+performance rate and tests the results for accuracy.  In the massively parallel
+portion of the benchmark, one can solve any number of equations.  You must use
+partial pivoting to assure the accuracy of the results.  This benchmark should 
+not be used to report LINPACK 100 performance as that is a compiled-code only
+benchmark.  The benchmark should not be confused with LINPACK 1000, which 
+solves only a 1000 equations and uses a shared memory model if there are 
+multiple CPUS.  This benchmark should not be confused with LINPACK, the 
+library, which has been expanded upon by LAPACK the library.  
+
+    Around 2000, a package appeared on the web for users to use.  It is 
+optional, not mandatory.  It is called HPL.  Some people think that the goal of
+the MP Linpack benchmark is to measure HPL performance.  That is not the case.
+HPL is a relatively recent thing, the MP Linpack benchmark has existed for 
+years.  HPL can be used to measure MP Linpack performance, but its can also be
+difficult to use and time consuming (days/weeks).  HPL can be found at 
+http://www.netlib.org/hpl.
+
+    HPL has had two releases: 1.0 and 1.0a.  As near as we can tell, there 
+are only cosmetic differences.  Since these distributions differ, however,
+one must decide which one to patch.  
+
+    The current patch level is 4.  We call this HPL Patch 4.
+
+    Some users worry that using a patched version of HPL will hinder their
+performance.  To address this, everything in the patch is compile-optional.  
+That is, all the changes and enhancements and experiments we have made are in
+#defines.  If you don't use any of the new #defines, then you should end up 
+with HPL vanilla 1.0 (or 1.0a) as it would be off netlib.  That is the idea, 
+of course. 
+
+    Some users wonder why bother to use a patched version?  For starters, it
+helps find solutions and fast problems.  That saves time and energy.  If 
+that's all you want/need, you should be happy and grab the patch.  Time is 
+money.  If you want performance as well as time-saving approaches, then you
+should try HPLPACK 4.  
+
+    HPL requires a compiler.  We have observed that Intel's compiler gives 
+the best performance.  But we've also observed that gcc will also get 
+adequate performance.  It also needs a BLAS math library.
+  
+    There are four BLAS libraries that we have currently evaluated: MKL,
+Goto, ATLAS, and MLIB. Many people have their favorite.  Despite the fact that
+this package is worked on by an MKL member does not mean that I'm here to push
+MKL on people.  I'm not a salesman.  My goal is to help people get the biggest
+number possible on Intel hardware.  If you like MLIB, and it does better than 
+MKL 7.0.1, then fine.  The goal is to get the best number.  I would encourage 
+people to try MKL 7.0.1.  For starters, we merged the best of MKL and Goto's 
+code in an earlier release.  We obtained a source license from Goto and the 
+University of Texas Austin to use his Xeon and Itanium 2 source.  Given the 
+combination of two already good libraries, I believe MKL is a good bet.  But
+the user should beware that the ideal data set for one library won't be ideal
+for another library.
+
+    These notes and patches are not public domain, please do not distribute 
+them for the possible of optimizations on other platforms.  We do not have 
+comments about ATLAS nor MLIB.  We can say that MLIB achieves quite impressive 
+performances for small block sizes.
+
+    HPL requires a long time searching many different parameters.  You see, in 
+the MP Linpack, the goal is to get the best number possible- and the
+input is not fixed, and so there is a large parameter space you must search
+over.  In fact, an exhaustive search of all possible inputs is improbably large 
+even for a powerful cluster.
+
+    To build the HPL Patch 4:
+
+    Use the appropriate patch for the appropriate distribution.  Do not patch 
+HPL 1.0 with HPL Patch4a (meant for HPL 1.0a).
+
+    To start, first test that you can run and use HPL before any patch.  
+There's no sense in patching anything that isn't broken if it cannot be used
+in its original state.  Once you've verified that everything is working, you
+can safely apply the patch.  It won't overwrite any arch files or change 
+anything (in fact, because all changes are #define's, it really won't change
+anything unless you want it to.) 
+
+    Apply the patch (untar it) to the ROOT directory of HPL (called $(TOPdir) 
+in the Make.<arch>.
+
+    You should see this readme and dclock.c in the main directory.  Compile 
+dclock.c as follows:
+
+gcc -g -D_LINUX -D_GCC_ -DGETCPUFREQUENCY=get_frequency -DDSECND=dsecnd_ -c dclock.c
+
+    The above is the sample line to use for IA-32.  The sample line to use for IPF is to also include -D_IA64_.  
+
+    You'll need to find a way to link this in and set
+
+LINKER = <old line> $(TOPdir)/dclock.o in my Make.<arch>.
+
+    MKL usually likes the NN case of MP LINPACK best.  To use MKL for this
+case, look at your HPL.dat file and change L and U to "1" not 0:
+1            L1 in (0=transposed,1=no-transposed) form
+1            U  in (0=transposed,1=no-transposed) form
+
+    If you want to experiment with even more libraries, contact Greg Henry.  
+Please allow him some time to respond.  
+
+    If you've no experiences with HPL, you're in for a bit of a nightmare.  
+There are thousands of parameters to tweak, most of which matter not (or 
+let's just say almost always should be a certain way in IA.)  
+ 
+    To help with this mess, I've changed HPL so that it prints performance 
+information as it proceeds, or even terminates early depending on your desires.
+HPL requires a long time searching many different parameters.  
+
+    As you know, running huge problems to completion on large numbers of nodes 
+can take many hours. The search space for MP Linpack is also huge- not only 
+can you run any size problem, but over a number of block sizes, grid layouts, 
+lookahead steps, using different factorization methods, etc., etc.. It can be 
+frustrating and a large waste of time to run a huge problem to completion only 
+to discover it ran 0.01% slower than your previous best problem.
+
+    This code should not be redistributed without permission (did I mention
+this?)  For starters, it needs to be refined.  If you specify ENDEARLY (see
+below), it shouldn't even bother to do a residual check.
+
+    This HPL Patch, although slightly incomplete in the above noted sense, 
+addresses the issue of reducing the search space. This saves your time, which 
+is your most valuable commodity.
+
+    There are 3 options you might want to experiment with to reduce the search
+time:
+	1.) -DASYOUGO
+	2.) -DENDEARLY
+	3.) -DASYOUGO2 (use cautiously- this does have a marginal performance 
+impact)
+	(to see DGEMM internal performance, compile with -DASYOUGO2 and
+-DASYOUGO2_DISPLAY: this will give lots of useful performance information at
+the cost of around 0.2% performance hit.)
+
+    If you want the old HPL back, simply don't define these options and 
+recompile from scratch!
+
+   -DASYOUGO: gives performance data as the run proceeds- it always starts off 
+higher, and then drops because that is actually what happens in LU.  This 
+performance estimate is usually an overestimate (because LU slows down as it
+goes), but it gets more accurate as the problem proceeds.  The greater the 
+lookahead step, the less accurate the first number may be.
+
+   -DENDEARLY: terminates the problem after a few steps, so that you can set 
+up 10 or 20 HPL runs without monitoring them, see how they all do, and then 
+only run the fastest ones to completion. -DENDEARLY assumes -DASYOUGO. 
+You don't need to define both, although it doesn't hurt.
+
+   -DASYOUGO2: gives detailed single node performance information.  It captures
+all DGEMM calls (if you use Fortran BLAS) and records their data.  As it does
+this, this routine has a marginal intrusive overhead.  Unlike -DASYOUGO that
+is quite nonintrusive, this is interrupting every DGEMM call to monitor its
+performance.  For big problems, this is easily less than 1/10th of a percent
+overhead.  But let the user beware.
+
+    Here is a sample ASYOUGO2 output (the first 3 nonintrusive numbers can be
+found in ASYOUGO and ENDEARLY), so it suffice to describe these numbers:
+
+ Col=001280 Fract=0.050 Mflops=42454.99 (DT=      9.5 DF=     34.1 DMF=38322.78)     
+
+    The problem size was N=16000 with a blocksize of 128.  After 10 blocks, 
+1280 columns, an output was sent to the screen.  Here, the fraction of columns 
+completed is 1280/16000=0.08.  All of these only print 20 or so outputs, at 
+various places through the matrix decomposition: fractions 0.005,0.010,0.015,
+0.02,0.025,0.03,0.035,0.04,0.045,0.05,0.055,0.06,0.065,0.07,0.075,0.080,0.085,
+0.09,0.095,.10,...,.195,.295,.395,...,.895.
+But this problem size is so small, and the block size so big by comparison,
+that as soon as it printed the value for 0.045, it was already through 0.08
+fraction of the columns.  On a really big problem, the fractional number will
+be more accurate.  It never prints more than the 46 numbers above.  So, 
+smaller problems will have fewer than 46 updates, and the biggest problems 
+will have precisely 46 updates.
+
+   The Mflops is an estimate based on 1280 columns of LU being completed.
+However, with lookahead steps, sometimes that work isn't actually completed
+when the output is made.  Nevertheless, this is a good estimate for comparing
+identical runs.
+
+   The 3 numbers in parenthesis are intrusive ASYOUGO2 addins.  The DT is the
+total time processor 0 has spent in DGEMM.  The DF is number of billion 
+operations that have been performed in DGEMM by one processor.  Hence, the 
+performance of processor 0 (in Gflops) in DGEMM is always DF/DT.  Using the
+number of DGEMM flops as a basis instead of the number of LU flops, we get
+a lower bound on performance of our run by looking at DMF, which can be
+compared to Mflops above (it using use the global LU time, but the DGEMM
+flops under the assumption that the problem is evenly distributed).
+
+   Using these tools will greatly assist the amount of data you test.
+
+   You need to know several things about -DENDEARLY:
+
+   1.) -DENDEARLY stops the problem after a few iterations of DGEMM on the 
+blocksize (the bigger the blocksize, the further it gets.) It will print only 
+5 or 6 "updates". -DASYOUGO prints about 20 or so before the problem completes.
+
+   2.) Performance for -DASYOUGO and -DENDEARLY always starts off at one speed, 
+slowly increases, and then slows down toward the end (because that is what LU 
+does!). -DENDEARLY probably will terminate before it starts to slow down.
+
+   3.) -DENDEARLY terminates the problem early with an HPL Error exit.  This 
+means that you need to ignore the missing residual results. Of course it gets 
+the wrong answer- the problem never completed. The point is to get an idea what 
+the initial was, and if it looks good, then run the problem to completion 
+without -DENDEARLY.
+
+   4.) Because -DENDEARLY terminates early, ignore the bogusly high Gflop 
+rating HPL will think the problem ran at. This is really how I need to "fix" 
+this patch. It's a simple change to the HPL driver, but I haven't done it yet. 
+HPL will think the performance is excellent only because HPL will think the 
+problem ran to completion.
+
+   5.) The bigger the problem, the more accurately the last update that 
+-DENDEARLY returns will be close to what happens when the problem runs to 
+completion (for obvious reasons).  -DENDEARLY is a poor approximation for 
+small problems.
+
+   I'm told that the best compile options for Itanium 2 are with the Intel
+compiler and: -O2 -ipo -ipo_obj -ftz -IPF_fltacc -IPF_fma -unroll -w -tpp2 
+I'm also told a 1:4 ratio of P and Q is ideal with a BCAST of 0.  I'm not 
+certain I understand why either of these should be so, but that's what I've
+most recently been told.
+
+- Greg Henry
+- 503-712-8457

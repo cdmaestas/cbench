@@ -1,0 +1,23 @@
+#!/usr/bin/perl -w
+my $specin="ctcs.spec.in";
+my $spec="ctcs.spec";
+my $line;
+my $key;
+
+my %substitutions = (
+	__REQUIRES__,"./check-requirements --withrpms"
+);
+
+open (IN, $specin);
+open (OUT, ">$spec");
+
+LINE: while ($line = <IN>) {
+	foreach $key (keys (%substitutions)) {
+		if ( $line =~ /$key/ ) {
+			print OUT `$substitutions{$key}`;
+			next LINE;
+		}
+	}			
+	print OUT $line;
+}
+

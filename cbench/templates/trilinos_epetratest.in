@@ -1,0 +1,9 @@
+# Trilinos Epetra test
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/trilinos_epetratest
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/trilinos_epetratest
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/trilinos_epetratest 700 700 NUMPROCS_X_HERE NUMPROCS_Y_HERE -m -h"
+
+cbench_run_cmd $CMD

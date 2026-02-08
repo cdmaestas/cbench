@@ -1,0 +1,18 @@
+# this is a test
+set verbose 0
+timer 1m
+
+fg 10 COUNTING test1 1 2 3
+fg 7 SLEEPING test1 3 4
+bg 45 MONITOR test2 4 5
+fg 3 DUFUS test1 8 9
+bg 19 MOXIT test2 9 0
+fg 30 DUMMY test2 93 4 1
+
+wait
+timer 2m
+
+fg 15 YEEHAW test1 9 8 7
+
+wait
+exit

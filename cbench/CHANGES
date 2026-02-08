@@ -1,0 +1,499 @@
+		=======================
+		CBENCH REVISION HISTORY
+		=======================
+        
+A __brief__ summary of changes in each release of Cbench.
+
+* Cbench release (1.3.0)
+	* reworked Make files to download source when needed
+	* created a new cbench_standalone target that uses openmpi, pdsh, and 
+	openBLAS to build tests and doesn't rely on any external MPI installations
+	* allow curl and wget methods to be used to downloading code to be compiled
+	* allow git and svn methods to be used to downloading code to be compiled
+	* many, many useful contributions from sf users: cstackpole, mr_ep, braithr, 
+	randy_scott, sonicsoft70
+	* from now on join stdout/stderr into single files for torque like slurm 
+	* support LSF batch environment
+	* Basic support for running on the Cray Linux Environment (CLE) on a 
+	Cray XE6 class machine. CLE natively uses the Application Level Placement 
+	Scheduler (ALPS) system for launching applications on compute nodes. CLE 
+	can use more than one batch system, but this commit provides support for 
+	Torque on CLE.
+	Set the following in cluster.def:
+		$joblaunch_method = "alps";
+		$batch_method = "cletorque";
+	Note that CLE Torque has some additional resource parameters it knows 
+	about and thus I treated it separately. 
+	* Support for compiling Cbench in a Cray Compile Environment (CCE) on 
+	Cray XT (at least on CLE 2.1.56 and newer) and Cray XE systems.
+	* Add an '--exclude' option to allow for exclusion of certain 
+	jobnames during job submission. The use case justifying this feature is 
+	submitting jobs in the shakedown testset and excluding I/O jobs
+	* Addition of NUMA-GPU tests to the Single Node Benchmark script. 
+	The parsing of NUMA tests (both memory and GPU) utilizes the 
+	Algorithm::KMeans module, so that module is being committed as well. 
+	The parse code is a bit unwieldy but it creates some node colored tables 
+	for the NUMA test output.
+	* initial Open64 Compiler support to cbench
+	* make download target to download source tree, useful when non 
+	seemless internet access
+	* specify specific nodes for nodehwtest_start_jobs.pl for batch and ssh
+	* add --preamble method to generation of jobs
+	* if "$spool_as_final_name true" in torque config do not parse running jobs
+	* Add build support for the Scalable HeterOgeneous Computing (SHOC) 
+	Benchmark Suite from ORNL (http://ft.ornl.gov/doku/shoc/start)
+	* Add build support for the LMbench3 benchmark suite - 
+	http://www.bitmover.com/lmbench/
+	* Add build support for the Portable Hardware Locality (hwloc) tool from 
+	the OpenMPI project.
+	* First pass at using dmidecode to gather hardware config information 
+	and parsing it to identify inconsistencies across a set of nodes.
+	* add Single Node Benchmark test framework
+
+* Cbench release (1.2.2)
+	* Changed how cbench_start_jobs.pl and start_jobs() handle delaying 
+	between each job submission.  Should be much faster when submitting 
+	100s to 1000s of jobs. Fastest submission is still --delay 0.
+	* Fix HPlinpack2 output parsing bugs.
+	* Mostly cosmetic changes to status output during generating
+	and starting jobs which gives some stats on numbers of jobs built 
+	and submitted.
+	* Changes to allow nodehwtest jobs to be started without specifying 
+	specific nodes (ticket #12).  The traditional --batch mode for 
+	nodehwtest_start_jobs.pl is now called --nodebatch.  --batch now behaves 
+	much more like how like cbench_start_jobs.pl deals with it.
+	* Support IS and EP NPB tests as well.
+	* cbench_output_parse.pl tweaks for statistics when jobs are flagged as RUNNING.
+	* openapps: Updated LAMMPS rhodolong job to test checkpoint/restart
+	capabilities. (braithr)
+	* openapps: Upate SWEEP3D output parse module to calculate overall memory usage
+	and to parse sweep3d_150std and sweep3d_long jobs. (braithr)
+	* openapps: Update SWEEP3D job generation to be much more dynamic.
+	* Add CBENCH NOTICE output parsing capabilities to all output_parse modules that
+	did not support it correctly. (braithr)
+	* Added existence and executability checks before job submission for
+	binaries used by jobs.  cbench_start_jobs.pl will now only submit or start a
+	job if the required binary can be found and is executable. (braithr)
+	* openapps: Added PHDMESH testset with a customized longer running test
+	* Fix a makefile bug in opensource/perftest when changing COMPILERCOLLECTION
+	* Update std_substitute() to do the JOBLAUNCH_CMD_HERE template variable
+	replacement earlier. This enables more sophisticated joblaunch_extraargs usage 
+	such as:
+		foo_gen_jobs.pl --ident t1 --joblaunch_extraargs "numa_wrapper --ppn=NUM_PPN_HERE"
+	* Added opensource/maketests area which contains tiny little make/link/include 
+	test cases for things like BLAS, LAPACK, and FFTW linkage. The idea is to have
+	some quick test cases to determine whethere certain tests/benchmarks/apps 
+	included in Cbench will link correctly with the external libraries.
+	* Upgrade to iozone version 3_323.
+	* Add LLNL's 'mdtest' benchmark.
+	* Add 'fdtree' from Scalable I/O Project.
+	* Add LLNL 'simul' filesystem test.
+	* Add LLNL 'miranda_io' Scalable I/O Project test
+	* Add support for building and instrumenting Cbench tests with TAU
+	(http://www.cs.uoregon.edu/research/tau/home.php). Most tests work,
+	but some more complicated ones (e.g. LAMMPS) don't quite work yet.
+	See https://apps.sourceforge.net/trac/cbench/wiki/doc/TAUandCbench
+	for information on using TAU. (braithr)
+	* collective_imball.in job template now runs all IMB tests.
+	* bandwidth_imb.in now runs all the bandwidth tests in IMB.
+	* openapps: Add support for the LAMMPS Chute benchmark. (braithr)
+	* Add the miranda_io test to the IO testset.
+	* openapps: Add Cbench support for sPPM. (braithr)
+	* Add a Stream test that uses ~11 GB of memory.
+	* Add some prototype support for parallel makes.
+	* Added a testset for the LLNL mpiGraph benchmark.
+	* openapps: tune down amg memory requirements to fit 1.5GB/core better.
+	* Ignore bogus 0.000 min values being reported for tests in 
+	nodehwtest_output_parse.pl (braithr)
+	* Updated to latest IOR version which is IOR-2.10.2
+	* Use nehalem flags as the default for intel compilers.
+	* Add Intel HPlinpack as another Linpack variant. (cashmont)
+	* Add linpackintel testset. (cashmont)
+	* New protyotype test set 'iometadata' aimed testing metadata 
+	performance/stability of a filesystem.
+	* Some updated Openmpi support. (mr_ep)
+	* Make slurm the default batch_method in cluster.def
+
+For a complete history of changes in Cbench 1.2.2 go to:
+    http://sourceforge.net/apps/trac/cbench/log/trunk/cbench?action=follow_copy&mode=follow_copy&rev=696&stop_rev=552&limit=200&verbose=on
+
+For a complete history of changes in the Openapps tree since Cbench 1.2.1 through Cbench 1.2.2 go to:
+	    http://sourceforge.net/apps/trac/cbench/log/trunk/openapps?action=follow_copy&mode=follow_copy&rev=696&stop_rev=552&limit=200&verbose=on
+
+
+* Cbench release (1.2.1)
+	* Made the Cbench release tarball conform to more common opensource
+	release "standards".
+	* Found that the LAMMPS eam.scaled and lj.scaled job templates
+	were blowing up memory. Tweak the scaling factors for them.
+	* Add a new LAMMPS job template, rhodolong.scaled, which will
+	be long running job (24-96 hours targeted) with restart file
+	dumping and restarting the job from a restart file within
+	the same batch job. This is a work in progress...
+	* When the cbench_output_parse.pl --customparse mode is used,
+	keep a hash summarizing the various matches (some of which will
+	likely be repeated) and print out a section with the summary information.
+	* Update LAMMPS output parse module to catch a LAMMPS memory allocation failure
+	message
+	* Added tools/cbench_rm_failed_jobs.pl as a Simple utility script to remove
+	output files from jobs that had ERROR states so they no longer show up in
+	output parsing.  The --force parameter must be given to actualy
+	delete anything. For example:
+		bandwidth_output_parse.pl --ident ompi13-intel11 --diag --report | cbench_rm_failed_jobs.pl
+
+	* cbench_output_parse.pl now intelligently deals with currently RUNNING
+	Slurm jobs and does not erroneously classify them with an ERROR state.
+	* Update cbench_output_parse.pl, cbench_start_jobs.pl, and cbench_gen_jobs.pl
+	to all accept the --maxnodes, --minnodes, --nodes options.
+	* Get rid of "make[1]: *** No rule to make target `distclean'.  Stop." errors
+	by making distclean targets where none existed.
+	* First-pass addition of High-Performance Linpack 2.0 to Cbench.
+	* Adding support for mpiBench collective benchmark from LLNL Phloem benchmarks
+	* Added support for LLNL Sequoia message rate benchmark named SQMR from the
+	Phloem benchmarks
+	* Make the --interactive mode JOBID generation more resistant to collisions
+	* Updated the BANDWIDTH and LATENCY testsets to use the newest 'com' bandwidth
+	benchmark found in the LLNL Phloem 1.0.0 benchmark suite.
+	* Adding Phloem MPI Benchmarks v1.0.0 from ASCI Sequoia benchmarks.  Phloem
+	has mpiBench and mpiGraph and Presta among others.
+	* Tweaked the IOR parameters used in the jobs in the IO and and IOSANITY
+	testsets.  Made the IOR jobs in the IO testset more stressful.
+	* Allow testsets to install alternate job templates or other files properly named.
+	* IO testset: remove the Nto1 test case as a default job
+	* In conjunction with the Cbench Openapps tree, added support for building
+	the SWEEP3D application and running it in a testset.
+	* Implemented slurm_query() so throttledbatch mode works with Slurm
+	* cbench/Makefile - add iotest target to allow just building IO testing
+	binaries
+	* mpi_tokensmash has been resurrected and debugged
+	* Various minor tweaks to custom parse filters for Slurm
+	* In cbench_output_parse.pl handle the case where open_and_slurp() attempts to
+	slurp a file that is too big to sanely parse more gracefully.
+	* Prototype code for the --usecache cache feature talked about in
+	ticket #13 (from the read-only Trac site at cbench.org)
+	* many other tweaks and bugfixes
+
+* Cbench release (1.2.0)
+	* added LLNL Matmult and Stride memory stress tests
+	* updated to IMB v 3.1
+	* memtester 4.0.8
+	* added Slurm batch system (sbatch) and job launching (srun) support
+	* several updates to the logic used for job generation with respect to
+	  multi-core multi-socket node complexities; --redundant flag
+	* capability for job templates to specifiy a file to be fed in via stdin
+	  on the job launch command line
+	* the multiple tools/*_gen_jobs.pl scripts were combined into an extensible
+	  grand unified gen_jobs_generic.pl script
+	* the core test harness scripts (gen, start, and output parse) were renamed
+	  to cbench_gen_jobs.pl, cbench_start_jobs.pl, and cbench_output_parse.pl
+	  and are suitable to be in the default PATH
+	* the core cbench scripts attempt to figure out what testset they are being
+	  invoked for
+	* --testset command line override for cbench_output_parse.pl
+	* added --xaxis_ppn and --xaxis_ppn_nodeview output parse options to slice
+	  data differently w.r.t. procs per node
+	* consistent sorting of gnuplot data series labels, i.e. the legend
+	* added HPCCG, LAMMPS, and Trilinos Epetra benchmark support and integration
+	  in the Cbench Openapps tree
+	* added LLNL AMG application to the Openapps tree
+	* rewrote the sbin/install* scripting framework into a single extensible
+	  sbin/install_cbench install script
+	* testsets are now installed using mainly symlinks to the core files at the top
+	  of the Cbench testing tree to remove needless duplication of code and to make
+	  updating things in the testing tree easier
+	* beta support for the --combobatch cbench_start_jobs mode (ticket #108)
+	* support for OSU message rate benchmark in the 'bandwidth' testset
+	* add --joblaunch_extraargs to let the user override cluster.def's
+	  $joblaunch_extraargs at gen_jobs time, similar to how they can
+	  override batch_extraargs at start_jobs time
+	* support an arbitrary filename extension for batch scripts, as
+	  defined by the <batchsystem>_batch_extension() function
+	* made the IMB output_parse module smarter and more dynamic
+	* added the 'shakedown' testset which we use for doing a medium hard set of
+	  test jobs across a cluster to requalify it for production after a full cluster
+	  downtime
+	* update current testset benchmarks to handle the one process case
+	  gracefully if the benchmark likes 2 or more processes,  i.e. generate a
+	  CBENCH NOTICE for the parser so that they aren't counted as errors
+	* assume for the COMPILERCOLLECTION=gcc case that we are using Gcc 4.X with
+	  Gfortran; COMPILERCOLLECTION=gcc3 can be used to get the older gcc behavior
+	* in job scripts, set OMP_NUM_THREADS explicitly based on number of processors,
+	  ppn, and number of nodes assuming maximum utilization of cores on a node
+		* also controllable via the cbench_gen_jobs.pl --threads flag
+	* add --nodes parameter to cbench_start_jobs.pl
+	* add --nodes, --maxnodes, --minnodes to cbench_output_parse.pl
+	* fixes to HP Linpack and HPCC for memory buffer byte count arithmetic when 
+	  we are dealing with buffers above ~16GB in size
+	* add --memory_util_factors command line override for the cluster.def setting
+	  to cbench_gen_jobs.pl
+	* added some nice cbench_output_parse.pl graphing options:
+	  --speedup, --paralleleff, --scaledparalleleff
+	* several more variations to compiling STREAMS tests including more Openmp
+	  versions
+	* add the --follow_symlinks option to parse through directories that are
+	  symlinks for cbench_output_parse.pl
+	* updated to mpiGraph 0-1.3
+	* cbench_output_parse.pl add --walltimedata option to extract and report
+	  elapsed walltime data
+	* added a workload oriented cbench_output_parse.pl view of job data via the
+	  --report option
+	* support in the Cbench make system for OpenMP compiled binaries, binaries
+	  needing LAPACK and FFTW linkages
+	* beta quality capability for Cbench to integrate itself into the LANL
+	  (Los Alamos National Lab) Gazebo test harness framework
+	* cbench_output_parse.pl will not print CBENCH NOTICEs by default in the --diag
+	  mode anymore, the --shownotice option is also required
+	* Cbench Addon functionality to allow seamless integration of other Cbench
+	  source trees into the makefile and scripting system (CBENCHADDON environement
+	  variable turns on integration with a tree)
+	* add the --showpassed cbench_output_parse.pl option
+	* Added the $walltime_method setting in cluster.def and a new way to deal with
+	  the walltimes associated with batch jobs. Walltimes can now be generated in a
+	  stepped fashion.
+    * Support for Moab Msub batch submissions
+	* Significant performance improvements in the cbench_output_parse.pl
+	  --customparse option courtesy of mr_ep
+	* ticket #7  HPCC source code tweaks
+	* ticket #9  remove script duplication in the cbench testing tree
+	* ticket #34  installing from source tree to test tree w/ bin identifiers
+	* ticket #57  add BEGIN block check for proper Cbench env variables
+	* ticket #63  nodehwtest_output_parse option to explicitly show tests that were
+	  in a target values file but not in parsed data
+	* ticket #90  upgrade to hpcc 1.2.0
+	* ticket #96  shakedown testset
+	* ticket #33  nodehwtest_parse_helper.pl improvements
+	* ticket #53  rework HP linpack setup to be a tarball plus patches
+	* ticket #70  add a random test ordering option to node_hw_test
+	* ticket #80  always show the correct filename with the --diag option of
+	  output_parse
+	* ticket #81  add some gcc4, gfortan compiled STREAMS binaries to the streams
+	  build
+	* ticket #83  capability to measure actual walltime of jobs
+	* ticket #97  update torque_header.in to grab nodeset used during a job
+	* ticket #99  update shakedown  IMB test to use smaller buffers
+	* ticket #100  --normalize dataval=NUMPROCS output_parse option
+	* ticket #101  job templates should test for 1 process runs and abort with notice
+	  if they won't run correctly
+	* ticket #103  npb -mcmodel compile fix for Intel (maybe gcc equivalent too?)
+	* ticket #111  IMB output_parse module needs update
+	* ticket #113  existing testset benchmarks and output parsers should deal with
+	  1 process failures gracefully
+	* ticket #117  gen_jobs needs a --mem_util_factor command line parameter
+
+* Cbench release (1.1.5)
+	* fix a bug with the HPL/HPCC N parameter calulation when using > 1ppn
+	* make the default hpcc input deck match that of linpack
+	* Marcus Epperson added the mpiGraph benchmark, by Adam Moody of LLNL,
+	  http://sourceforge.net/projects/mpigraph. The crunch_mpiGraph utility
+	  can be used to generate an HTML report from mpiGraph run output.
+	* added OSU messsage rate benchmark
+	* changed the IO testset to be a stress test of the
+	  parallel filesystem
+	* adding the IOSANITY to be used as a sanity checker
+	  of parallel filesystems, but not necessarily stressful
+	* Build some openmp versions of streams if we are using Intel compilers
+	* honor RPATH and BLASLIB set in the environment if
+	  found which allows one to recompile with a different
+	  BLAS linkage w/o doing any editing
+	* some under the covers openmpi 1.2.X specific support
+	* added the --waitall option for --throttledbatch mode which will keep 
+	  start_jobs from exiting until all jobs have exited the batch system
+	* add binary identifier support (--binident parameter) which analogous to
+	  test identifiers but for organizing multiple sets binaries in a Cbench
+	  testing tree
+	* update the --ident parameter to accept comma separated lists
+	* fixed a bug with --repeat when combined with with --throttledbatch
+	  or --serialbatch modes of start_jobs*
+	* added a --polldelay option for --throttledbatch/--serialbatch mode
+	* added more variations to compile streams
+	* more improvements to the Cbench testing tree rpm capabilities
+	* Adding initial (but working) support for 'yod' job launcher and 'pbspro'
+	  batch system
+	* Marcus Epperson added the very nice HPCC debug build which
+	  allows one to select on the command line which hpcc tests to run
+	* change the running as root/non-root logic to be smarter in node-level
+	  testing and not depend on privelege escelation
+
+* Cbench 1.1.4
+    o upgraded NPB support to use version 3.2.1
+	o added PSNAP OS noise measurement code from LANL
+	o added STREAM2 benchmark
+	o added the 'stress' UNIX OS system stress testing utility and
+	  included it in the standard NODEHWTEST node-level testing
+	o added NPB serial testing to NODEHWTEST test set
+	o added colorized text output to several key Cbench utilities
+	o switched Cbench self-contained (standalone) MPICH to use ch_shmem
+	o reverted to MPICH 1.2.6 for Cbench self-contained (standalone) MPI
+	o output_parse scripts --ident parameter accecpts comma separated test
+	  identifier lists now
+	o output_parse scripts support --minprocs and --maxprocs params
+	o workaround in output_parse_generic.pl for Perl<->Glibc memory allocation
+	  weirdness with large raw output files
+	o the Cbench test tree can now be used completely standalone:
+		- binaries are installed into a single 'bin' directory instead of scattering
+		the test binaries throughout the tree
+		- the 'tools' directory is installed into the test tree
+		- Cbench standalone MPI is installed into the test tree if built
+	o added tools/make_skel_testset.pl utility script to allow easy creation of
+	  a test set skeleton with appropriate generic utility scripts
+	o upgraded IOR to version 2.9.0
+	o upgraded iozone to version 3_263
+	o added --maxmem parameter to node_hw_test script for overriding the free
+	  memory detection algorithm
+	o added the capability to the NODEHWTEST test set to deal with hw_test modules
+	  that require root privelges to run correctly (like memtester and iozone)
+	o added a new mode for starting jobs called --throttledbatch; it allows you to
+	  control the number of simultaneous running+queued jobs Cbench will allow in
+	  the batch system at once
+	o added the capability to plot statistical distributions (aka dplot) of data
+	  using the 'dplot' utility from Egan Ford's STAB toolkit
+	o fixes to mpi_overhead.c to handle negative memory dececrease cases (i.e. memory
+	  increase after MPI_init)
+	o several new capabilities added to output_parse_generic.pl such as: PNG file
+	  output, persistent gnuplot windows, data normalization, additional plotlines
+	  specified on the command line, range control, collapsing of multiple test
+	  identifier data into a single set of data, key placement control...
+	o added a handly script tools/runsizes_list.pl that allows you to build comma-
+	  separated lists of runsizes that you can use with the --runsizes parameter
+	  of gen_jobs to generate custom runsize sets
+	o catch HPLinpack allocation failures and flag them during output parsing
+	o removed TODO file from source distribution (the TODO list is now on the Cbench
+	  TRAC website)
+	o added doc/ListOfSoftware as a new file mirrored from the Cbench wiki
+	o Changed the implementation of the custom parse filters to be multple Perl module
+	  files specified by the @parse_filter_include array in cluster.def; modules can
+	  easily be excluded or included by commenting out/in
+	o added OSU mpi benchmarks to the BANDWIDTH test set
+	o added an MPI message rate data point to the BANDWIDTH test set
+	o added support for running HPlinpack as a node-level test (i.e. added an xhpl.pm
+	  hw_test module)
+	o added --statsmode to output_parse_generic.pl to dump out a more statistically
+	  oriented tabular output
+	o Added the --grepable option to output_parse_generic.pl to output gathered data
+	  in a grep friendly fashion
+	o rename data metrics generated by the hpcc.pm output_parse module to be more
+	  consistent with what the HPCC website names them
+	o make CBENCHTEST environment variable a requirement; if it's not defined and you do
+	  a "make itests" as root, your /bin directory will be forcibly removed...this is not
+	  good!
+	o undo several implicit path assumptions
+	o added the 'nodehwtest' top-level Makefile target which takes care of building
+	  everything needed for node-level testing (i.e. the nodehwtest test set) and
+	  nothing more (e.g. no MPI builds occur)
+	o added the output_parse_customparse.pl script to allow usage of the custom parse
+	  filters without having to use the full output parsing framework
+	o added the rather nifty single_node_benchmark.pl script which uses various
+	  benchmarks and capabilities in Cbench for the singular purpose of benchmarking
+	  a single node and generating a nice PDF report of the data
+    o better support for the new realms of running greater than 2 ppn (processes per node)
+	  and for the new multi-core landscape
+	o started adding support for 'binary identifiers' which are very similar in
+	  concept to test identifiers but used for cleanly and dynamically managing multiple
+	  sets of test binaries
+	o several minor changes and under-the-cover capabilities to support the new Fixit123
+	  Hardware Qualification/Requalification Framework
+	o clean up some minor compile annoyances in various sources
+	o many other small bugfixes and tweaks....
+
+* Cbench 1.1.3
+	o add CBENCHTEST environment variable to easily support multiple
+	  Cbench testing trees
+	o Completely new output parsing framework that moves from a bunch of
+	  individual scripts to a core script that utilizes output parsing
+	  modules. The output parsing modules are responsible for each
+	  benchmark/test that Cbench will support output parsing. The core
+	  output parsing script was updated with much more analysis capabilities.
+	o custom parse filters add the capability to define custom regex matches
+	  and an associtated string that the core output parser code will apply
+	  while parsing output files. This allows you to define custom errors on
+	  the fly that you want to see flagged by the output parsers.
+	o redid how the stdout/stderr is grabbed for interactively run jobs making
+	  it easier to write job templates and have them just work
+	o all Cbench generated jobs are now contained in their own directory versus
+	  many job files in a single directory
+	o new --repeat, --procs, and --batchargs  parameters used by the start_jobs
+	  scripts
+	o new scaling study test sets
+		- mpisanity (tests the sanity of MPI code on a cluster)
+		- hpcc (HPC Challenge)
+	o fully implemented all partially implemented testsets
+		- io, latency, collective, mpioverhead
+	o support for IOR parallel filesystem benchmark in the 'io' testset
+	o added the ability to use Cbench testing trees completely isolated from
+	  the Cbench main source tree
+	o upgraded hpcc to version 1.0.0
+	o remove more code duplication in the *gen_jobs scripts
+	o support for using OpenMPI as a joblaunch method
+	o Lots of bugfixes and tweaks from ongoing Thunderbird cluster work
+	
+* Cbench 1.1.2
+	o !!! Formally approved GPL v2 licensed opensource release !!!
+	o Removed GOTO BLAS libs from Cbench distribution (we cannot distribute)
+	o improved job template generation structure; added common_header
+	  and common_footer templates
+	o several cleanups, bugfixes, and improvements by Marcus
+	o some under-the-hood changes to remove some code duplication
+	  (*_start_jobs and *_gen_jobs scripts)
+	o new rotate_latency benchmark
+	o added three new scaling study test sets (w/o output parsing support yet)
+	  - io
+	  - latency
+	  - collective
+	o HPlinpack updated with very helpful (for long runs anyway) timestamping
+	  output in ASYOUGO outputs
+	o several small Tbird derived bugfixes and tweaks
+	o about 70% done with the revamped output parsing structure, but not
+	  using it as the default yet
+
+* Cbench 1.1.1
+	o the nodehwtest capabilities received numerous upgrades and tweaks
+      to facilitate testing of a 4096+ node cluster including full
+      integration as a test set (i.e. *_start_jobs.pl and *_gen_jobs.pl
+      scripts were written), support for batch submission of node-level
+      tests (supports Torque only at this point) in addition to the default
+      remote execution method (i.e. pdsh via ssh), offloading of startup
+      work for remotely executed node-level test jobs (i.e. make the remote
+      execution start-up MUCH more scalable), more diags (cachebench, mpqc,
+      hpcc using a local Cbench ch_p4 compile of mpich), more fine grained
+      control of what nodes to include/exclude in testing
+	o transitioned to a separate CBench tree for opensource applications
+ 	  such as LAMMPS
+	o added MPQC as a semi-supported opensource application; the nodehwtest
+      capabilities can use MPQC as non-MPI node-level test to some extent
+    o lots of tweaks and bugfixes as a result of the Thunderbird cluster
+      integration
+    o *_start_jobs.pl scripts are all pretty much dumb shells now as all
+      the core functionality is in the Cbench library
+    o fixed bugs in the N value computation for the linpack test set
+    o added the mpi_overhead benchmark to measure the amount of memory
+      consumed by MPI to do MPI_init(); rolled the 'mpioverhead' test
+      set to generate nice graphs of MPI memory overhead scaling and MPI
+      job launch time scaling
+    o changed cluster.def to have $memory_per_node config paramater
+      instead of $memory_per_processor
+
+* Cbench 1.1
+	o nodehwtest capabilities added to facilitate scalable node-level
+	  testing, i.e. testing on a single node w/o any assumptions about
+      system-level integration or MPI
+    o added 'rotate' test set (rotate is a cross-sectional MPI bandwidth
+      benchmark developed at Sandia Labs)
+    o added NAS Parallel Benchmark (aka 'npb') test set
+	o added several new benchmarks into the opensource area including
+      OSU MPI benchmarks, Intel MPI Benchmarks v2.3, IOR, PIOB, HPCC
+
+* Cbench 1.0
+	o implemented the core Cbench infrastructure, such as cbench.pl
+      and cluster.def
+    o formalized the idea of test sets and implemented a couple:
+      the 'bandwidth' and 'linpack' test sets
+    o all the existing Cbench scripts were rewritten using the Cbench
+      trio of scripts test harness methodology (*_gen_jobs.pl,
+      *_start_jobs.pl,*_output_parse.pl)
+    o a couple of the output parsing scripts were updated with dynamic
+      GNUplot generation capabilities
+    
+* Cbench 0.9
+	o first semi-official tagging off Cbench code
+    o just a loose collection of scripts and a small amount
+      of build framework at this point

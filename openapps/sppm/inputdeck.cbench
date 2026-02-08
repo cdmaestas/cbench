@@ -1,0 +1,7 @@
+nodelayout NP_HERE 1 1
+nthreads   NUM_THREADS_HERE
+dtime      3.0e-04
+checkpoint 6
+dtdump 1.2e-03 1.2e-02
+stoptime   100 5.0
+

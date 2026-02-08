@@ -1,0 +1,35 @@
+#!/bin/bash
+# Well, this test isn't quite living up to its name, but it does handle
+# S.M.A.R.T. data.
+
+sleep 720
+
+smartctl -H /dev/$1
+if [ $? != 0 ] ; then 
+	echo "SMART Drive Failure Predicted: $1"
+	$smartctl -a /dev/$1
+	exit 1
+fi
+smartctl -q errorsonly -l selftest /dev/$1
+if [ $? != 0 ] ; then 
+	echo "Drive selftest failed: $1"
+	$smartctl -a /dev/$1
+	exit 1
+fi
+smartctl -q errorsonly -l error /dev/$1
+#To many non fatal errors are being logged here.
+#if [ $? != 0 ] ; then 
+#	smartctl -l error /dev/hda |grep -e "ATA Error Count: 1"
+#	if [ $? != 1 ] ; then 
+#		smartctl -l error /dev/hda |grep -e "SET FEATURES"
+#			if [ $? != 1 ] ; then 
+#			echo "Error setting features?"
+#			exit 0
+#			fi
+#	fi
+#	echo "Drive error logged: $1"
+#	exit 1
+#fi
+echo "No SMART errors on $1"
+exit 0
+

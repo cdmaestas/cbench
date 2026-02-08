@@ -1,0 +1,24 @@
+# iometadata_fileop job template
+# uses the fileop (from iozone source) benchmark to test io metadata performance
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/fileop
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/fileop
+
+cbench_runin_tempdir
+
+tst="CBENCHTEST_BIN_HERE/fileop"
+opts="-t -f 20"
+
+# this is pretty lame right now as it only works on a single 4 core node.
+if [ NUM_NODES_HERE -ne 1 ]; then
+        cbench_echo "CBENCH NOTICE: fileop only runs on 1 node currently"
+        exit
+fi
+
+
+CMD="$tst $opts"
+cbench_run_cmd $CMD
+sync

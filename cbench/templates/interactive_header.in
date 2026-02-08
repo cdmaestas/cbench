@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+############ Cbench interactive_header.in ######################
+# header template for cbench interactive jobs
+#
+
+# include the common Cbench functions used in job scripts
+. BENCH_TEST_HERE/cbench_functions
+
+# this tells us what type of cbench job this is
+CBENCH_RUN_TYPE=RUN_TYPE_HERE
+
+# if we are running under Gazebo, it should have set JOBID in the
+# environment appropriately
+if [ "$CBENCH_GAZEBO" == "YES" ]; then
+	if [ -z "$JOBID" ]; then
+		# why didn't Gazebo set the JOBID????
+		cbench_echo "Warning: did not find JOBID set by Gazebo"
+		JOBID=`date +%j%H%M%S%N`
+	else
+		cbench_echo "Cbench using Gazebo JOBID $JOBID"
+	fi
+else
+	# generate a unique job identifier, it can be used for uniquely
+	# naming output files
+	JOBID=`date +%j%H%M%S%N`
+fi
+
+# init files to catch stdout/stderr
+JOBDIR="TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE"
+JOBNAME=JOBNAME_HERE
+STDOUT_FILE="$JOBDIR/$JOBNAME".o$JOBID
+STDERR_FILE="$JOBDIR/$JOBNAME".e$JOBID
+touch $STDOUT_FILE
+
+# this tells us details of the Cbench job in the job output
+cbench_echo "Cbench numprocs: NUM_PROCS_HERE"
+cbench_echo "Cbench numnodes: NUM_NODES_HERE"
+cbench_echo "Cbench ppn: NUM_PPN_HERE"
+cbench_echo "Cbench benchmark: BENCHMARK_NAME_HERE"
+cbench_echo "Cbench jobname: JOBNAME_HERE"
+cbench_echo "Cbench testset: TESTSET_NAME_HERE"
+cbench_echo "Cbench joblaunchmethod: JOBLAUNCHMETHOD_HERE"
+cbench_echo ""
+
+

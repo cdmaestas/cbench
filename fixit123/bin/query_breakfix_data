@@ -1,0 +1,448 @@
+#!/usr/bin/perl
+# vim: syntax=perl tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+use Getopt::Long;
+use Data::Dumper;
+#use Time::localtime;
+use Date::Manip;
+use Net::Ping;
+
+GetOptions(
+	'debug' => \$DEBUG,
+	'node=s' => \$onlynode,
+	'full' => \$full,
+	'logfile=s' => \$logfile,
+	'step3' => \$step3,
+);
+
+$log_dir = "$ENV{FIXIT123_DB_HOME}";
+$main_logfile = "$log_dir/breakfix.log";
+$step3_logfile = "$log_dir/breakfix_step3.log";
+$hwt_dir = "$ENV{FIXIT123_CBENCHTEST}";
+$hwt_output = "$hwt_dir/nodehwtest/$ENV{FIXIT123_STEP2_TESTIDENT}";
+
+
+# need to be on a login node with /scratch3 mounted
+#my $tmp = `/bin/hostname | grep login`;
+#if ($tmp !~ /login/) {
+#	print "ERROR: Need to run $0 from a login node with appropriate mounts\n";
+#	exit 1;
+#}
+my $tmp = `cat /proc/mounts | grep $ENV{FIXIT123_CHECKMOUNT_REGEX}`;
+if ($tmp !~ /$ENV{FIXIT123_CHECKMOUNT_REGEX}/) {
+	print "ERROR: Need to run $0 from a login node with appropriate mounts\n";
+	exit 1;
+}
+
+(defined $logfile) and $main_logfile = $logfile;
+
+# minimum time in minutes a step2a job must run beofre
+# classifiying it as eligible for step2b
+$min_step2a_time = 60 * 10.5;
+
+# how many days are breakfix log entries considered valid and not stale
+$max_entry_age = 8 * 24 * 60;
+
+# data structure that will ultimately have the collated
+# log for each node  that breakfix information is found on
+%full_bf_log = ();
+
+read_breakfix_log($main_logfile);
+(defined $step3) and read_breakfix_log($step3_logfile);
+#print Dumper (%full_bf_log);
+
+# now we need to query more sources of information like the
+# step2a testing logs, i.e. Cbench nodehwtest output files,
+# and the scheduler
+foreach $node (keys %full_bf_log) {
+    (defined $onlynode) and next unless ($node eq $onlynode);	
+	#print "NODE $node\n";
+    
+	# We want to check and see how long ago the newest breakfix entry was on
+	# the node. If it is beyond the breakfix time window, then add an entry saying
+	# that all entries are stale with respect to driving step2 and step3 
+	# testing decisions.
+	$laststamp = '';
+	foreach $stamp (sort sort_timestamp_newest_first(keys %{$full_bf_log{$node}}) ) {
+		$laststamp = $stamp;
+		last;
+	}
+	$date2 = ParseDate($laststamp);
+	$delta = DateCalc($date2,"today",\$err,0);
+	# convert the raw delta format to the delta in minutes
+	$delta_min = Delta_Format($delta,0,"%mh");
+	#print "$laststamp   $date2    $delta  $delta_min    $max_entry_age\n";
+	if ($delta_min > $max_entry_age) {
+		$numdays = int ($delta_min / (60 * 24));
+		push @{$full_bf_log{$node}{get_timestamp()}},
+			"NODE $node => BREAKFIX ENTRIES ARE STALE, last entry is $numdays days old";
+	}
+
+    # some state variables so we know what log events we have seen on 
+    # each node we look at
+    $step2a_started = 0;
+    $step2b_found = 0;
+    $step3_found = 0;
+    $step1_found = 0;
+    
+	foreach $stamp (sort sort_timestamp_newest_first(keys %{$full_bf_log{$node}}) ) {
+    	#print "NODE $node $stamp\n";
+    	foreach $entry (@{$full_bf_log{$node}{$stamp}}) {
+            	(defined $DEBUG) and print "heuristic loop: $node: $entry\n";
+           
+            # we are looking for specific log entries that we'll key off of
+            # to go search for more information
+            if ($entry =~ /STEP3. (\S+)\s+(.*)$/) {
+            	$step3_found = $stamp;
+			}
+            elsif ($entry =~ /STEP2B (\S+)\s+(.*)$/) {
+            	$step2b_found = $stamp;
+            }
+            elsif ($entry =~ /STEP1\s+(.*)$/) {
+            	$step1_found = $stamp;
+            }
+            elsif ($entry =~ /STEP2A INITIATED$/) {
+            	($step2a_started or $step2b_found or $step3_found) and next;
+            	($step1_found and ($step1_found ne $stamp)) and next;
+                
+                # there might be a step2 job running that did not generate
+                # a STEP2A STARTED RUNNING record... blasted text appends
+                # to a log file aren't completely reliable... :)
+            	$jobid = '';
+                $found_job_state = 0;
+                
+                #ask Torque about the state of the job
+                @buf = `qstat -a | grep hwt-$node`;
+                foreach $l (@buf) {
+                	if ($l =~ /(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) {
+                    	$state = $10;
+                        if ($state eq 'R') {
+				if (node_is_alive($node)) {
+					push @{$full_bf_log{$node}{get_timestamp()}},
+					"NODE $node => STEP2A RUNNING for $11";
+				}
+				else {
+					push @{$full_bf_log{$node}{get_timestamp()}},
+					"NODE $node => STEP2A ERROR, job running in Torque but node dead";
+				}
+                            $found_job_state = 1;
+                        }
+                        elsif ($state eq 'Q') {
+                        	push @{$full_bf_log{$node}{get_timestamp()}},
+                            	"NODE $node => STEP2A QUEUED";
+                            $found_job_state = 1;
+                        }
+                    }
+                }
+                
+                ($found_job_state) and $step2a_started = 1;
+            }
+            elsif ($entry =~ /STEP2A STARTED RUNNING, jobid (\S+)$/) {
+            	($step2b_found or $step3_found) and next;
+            	($step2a_started and ($step2a_started ne $stamp)) and next;
+            	($step1_found and ($step1_found ne $stamp)) and next;
+                $step2a_started = 1;
+
+            	$jobid = $1;
+                $found_job_state = 0;
+                
+                #ask Torque about the state of the job
+                @buf = `qstat -a | grep $jobid`;
+                foreach $l (@buf) {
+                	if ($l =~ /(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) {
+                    	$state = $10;
+                        if ($state eq 'R') {
+				if (node_is_alive($node)) {
+					push @{$full_bf_log{$node}{get_timestamp()}},
+					"NODE $node => STEP2A RUNNING for $11";
+				}
+				else {
+					push @{$full_bf_log{$node}{get_timestamp()}},
+					"NODE $node => STEP2A ERROR, job running in Torque but node dead";
+				}
+                            $found_job_state = 1;
+                        }
+                        elsif ($state eq 'Q') {
+                        	push @{$full_bf_log{$node}{get_timestamp()}},
+                            	"NODE $node => STEP2A QUEUED";
+                            $found_job_state = 1;
+                        }
+                    }
+                }
+                
+                # if we found the state of the step2a from Torque, we are done
+                ($found_job_state) and next;
+                
+                # otherwise, we need to keep looking for the state of the step2a job
+                # in the latest step2a output file
+                %laststep2a = summarize_latest_step2a_run($node);
+                
+                # Figure out the time delta between the STARTED RUNNING record and
+                # the first timestep in the step2a output file. If they are 'close
+                # enough', we'll say they correspond to the same step2a run.
+                $date1 = ParseDate($stamp);
+                $date2 = ParseDate($laststep2a{'start'});
+                #print "$date1,  $date2 ($laststep2a{'start'})\n";
+                $delta = DateCalc($date1,$date2,\$err,0);
+                # convert the raw delta format to the delta in minutes
+                $delta_min = Delta_Format($delta,0,"%mh");
+                if ($delta_min > 5) {
+                	print "$node: STEP2a started running record did not correspond with the latest ".
+                    	"step2a output file\n";
+                    next;
+                }
+                
+                # otherwise, log an entry for this node saying how long the step2a test ran
+                if ($laststep2a{'elapsed'} >=  $min_step2a_time) {
+                            $hours = $laststep2a{'elapsed'} / 60;
+                            $tmp_entry = sprintf "NODE %s => READY for STEP2B, step2a ran for %0.1f hours (%0.1f minutes)",
+                                $node,$hours,$laststep2a{'elapsed'};
+                            push @{$full_bf_log{$node}{get_timestamp()}}, $tmp_entry;
+                }
+                else {
+                            $hours = $laststep2a{'elapsed'} / 60;
+                            $tmp_entry = sprintf "NODE %s => DIAGNOSE short step2a runtime and RERUN step2a, ".
+                            	"only ran for %0.1f hours (%0.1f minutes), last test was %s",
+                                $node,$hours,$laststep2a{'elapsed'},uc $laststep2a{'lasttest'};
+                            push @{$full_bf_log{$node}{get_timestamp()}}, $tmp_entry;
+                }
+            }
+        }
+    }
+}
+
+#print Dumper (%full_bf_log);
+
+# if we are querying just one node and there are no breakfix entries
+# for that node, dump out a message to that effect
+if (defined $onlynode) {
+	$foundmynode = 0;
+	foreach my $node (keys %full_bf_log) {
+    	($node eq $onlynode) and $foundmynode = 1;
+    }
+    (!$foundmynode) and printf "%s NODE %s => NO BREAKFIX LOG ENTRIES\n",
+    	get_timestamp(),$onlynode;
+}
+
+if (defined $full) {
+    # dump all the entres for a node or nodes
+    foreach $node (sort by_node_name keys %full_bf_log) {
+        #next unless ($node eq $onlynode);	
+	    #print "NODE $node\n";
+
+        # some state variables so we know what log events we have seen on 
+        # each node we look at
+        $step2a_started = 0;
+
+	    foreach $stamp (sort sort_timestamp_oldest_first(keys %{$full_bf_log{$node}}) ) {
+    	    #print "NODE $node $stamp\n";
+    	    foreach $entry (@{$full_bf_log{$node}{$stamp}}) {
+        	    print "$stamp $entry\n";
+		    }
+        }
+    }
+}
+else {
+    # dump out the latest entry for a node or nodes which is the important one
+    foreach $node (sort by_node_name keys %full_bf_log) {
+        #next unless ($node eq $onlynode);	
+	    #print "NODE $node\n";
+
+        # some state variables so we know what log events we have seen on 
+        # each node we look at
+        $step2a_started = 0;
+
+	    foreach $stamp (sort sort_timestamp_newest_first(keys %{$full_bf_log{$node}}) ) {
+    	    #print "NODE $node $stamp\n";
+    	    foreach $entry (@{$full_bf_log{$node}{$stamp}}) {
+        	    print "$stamp $entry\n";
+		    }
+            last;
+        }
+    }
+}
+
+
+
+sub read_breakfix_log {
+	my $main_logfile = shift;
+    
+    # open the main breakfix log and grok the entries in it
+    open (IN,"<$main_logfile") or do {
+	    print "NO BREAKFIX LOG DATA: Could not open $main_logfile ($!)\n";
+		exit 1;
+	};
+
+    for my $l (<IN>) {
+	    chomp $l;
+	    if (($dstamp,$tstamp,$node,$entry) = $l =~
+    		    /(\S+)\s+(\S+)\s+NODE\s+(\S+) => (.*)$/) {
+
+            (defined $onlynode) and next unless ($node eq $onlynode);
+			$dstamp =~ s/\-/\//g;
+    	    if ($tstamp =~ /^(\d+)\:(\d+)\:(\d+)$/) {
+        	    # time stamp w/ seconds, remove seconds
+                $tstamp = "$1\:$2";
+            }
+            $key = "$dstamp $tstamp";
+            push @{$full_bf_log{$node}{$key}}, "NODE $node => $entry";
+            (defined $DEBUG) and print "read_breakfix_log() $node: $key $entry\n";
+        }
+    }
+    close(IN);
+}
+
+
+sub summarize_latest_step2a_run {
+	my $node = shift;
+    
+    my $file = get_latest_step2a_file($node);
+    
+    my %data;
+    
+    open (IN,"<$file") or do {
+	(defined $DEBUG) and print "Could not open $file ($!)\n";
+	return;
+	};
+
+    foreach my $l (<IN>) {
+    	chomp $l;
+        if ($l =~ /\<Cbench\>[=]+\> TIMESTAMP elapsed=(\d+\.\d+) min,\s+(.*)/) {
+            #print "$1 $2\n";
+            $data{'elapsed'} = $1;
+        	$date = ParseDate($2);
+            #print "$date\n";
+            (!exists $data{'start'}) and $data{'start'} = UnixDate($date,"%m/%d/%y %H:%M"); 
+            $data{'last'} = UnixDate($date,"%m/%d/%y %H:%M"); 
+        }
+        elsif ($l =~ /\<Cbench\>[=]+\> MODULE (\S+)/) {
+		$data{'lasttest'} = $1;
+	}
+    }
+    close(IN);
+
+	return %data;
+}
+
+sub get_latest_step2a_file {
+	my $hn = shift;
+    
+    my @oldrunfiles = `cd $hwt_output; ls -1 $hn\.node_hw_test\.run???? 2>&1`;
+    my $maxrunnum = 0;
+    for (@oldrunfiles) {
+        (/no such file/) and last;
+        chomp $_;
+        my ($num) = $_ =~ /^\S+\.node_hw_test\.run(\d+)$/;
+        if ($num > $maxrunnum) {
+            $maxrunnum = $num;
+        }
+    }
+
+    my $runidnum = $maxrunnum;
+
+    my $output_file = sprintf "%s/%s\.node_hw_test\.run%04d",$hwt_output,$hn,$runidnum;
+    (defined $DEBUG) and print "DEBUG:get_latest_step2a_file() $output_file\n";
+    
+	return $output_file;
+}
+
+sub get_timestamp {
+	my ($sec, $min, $hour, $day, $mon, $year, $wday, $yday, $isdst) = localtime;
+    
+    $year = $year - 100;
+    $stamp = sprintf "%02d/%02d/%02d %02d:%02d",$mon+1,$day,$year,$hour,$min;
+    return $stamp;
+}
+
+# a timestamp sorting routine for hash keys
+sub sort_timestamp_oldest_first {
+	my ($a_date, $a_time) = $a =~ /(\S+)\s+(\S+)/;
+	my ($b_date, $b_time) = $b =~ /(\S+)\s+(\S+)/;
+
+	my ($a_m,$a_d,$a_y) = $a_date =~ /(\d+)[\-\/](\d+)[\-\/](\d+)/;
+    my ($b_m,$b_d,$b_y) = $b_date =~ /(\d+)[\-\/](\d+)[\-\/](\d+)/;
+    
+	my ($a_h,$a_min,$a_sec) = $a_time =~ /(\d+)\:(\d+)/;
+    my ($b_h,$b_min,$b_sec) = $b_time =~ /(\d+)\:(\d+)/;
+
+	#print "$a_m,$a_d,$a_y $a_h,$a_min,$a_sec\n";
+    #print "$b_m,$b_d,$b_y $b_h,$b_min,$b_sec\n";
+    
+	$a_y <=> $b_y
+    	or
+	$a_m <=> $b_m
+    	or
+	$a_d <=> $b_d
+    	or
+	$a_h <=> $b_h
+    	or
+	$a_min <=> $b_min
+}
+
+sub sort_timestamp_newest_first {
+	my ($a_date, $a_time) = $a =~ /(\S+)\s+(\S+)/;
+	my ($b_date, $b_time) = $b =~ /(\S+)\s+(\S+)/;
+
+	my ($a_m,$a_d,$a_y) = $a_date =~ /(\d+)[\-\/](\d+)[\-\/](\d+)/;
+    my ($b_m,$b_d,$b_y) = $b_date =~ /(\d+)[\-\/](\d+)[\-\/](\d+)/;
+    
+	my ($a_h,$a_min,$a_sec) = $a_time =~ /(\d+)\:(\d+)/;
+    my ($b_h,$b_min,$b_sec) = $b_time =~ /(\d+)\:(\d+)/;
+
+	#print "$a_m,$a_d,$a_y $a_h,$a_min,$a_sec\n";
+    #print "$b_m,$b_d,$b_y $b_h,$b_min,$b_sec\n";
+    
+	$b_y <=> $a_y
+    	or
+	$b_m <=> $a_m
+    	or
+	$b_d <=> $a_d
+    	or
+	$b_h <=> $a_h
+    	or
+	$b_min <=> $a_min
+}
+
+sub by_node_name {
+        my ($a_pre, $a_num) = $a =~ /(\D+)(\d+)/;
+        my ($b_pre, $b_num) = $b =~ /^(\D+)(\d+)$/;
+
+        #print "by_name: $a $a_pre $a_num $b $b_pre $b_num\n";
+        $a_pre cmp $b_pre
+                or
+        $a_num <=> $b_num
+}
+
+
+sub node_is_alive {
+	my $n = shift;
+
+	my $p = Net::Ping->new();
+	$pingstat = $p->ping($n);
+	$p->close();
+
+	($pingstat) and return 1;
+	return 0;
+}

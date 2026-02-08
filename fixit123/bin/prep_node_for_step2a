@@ -1,0 +1,141 @@
+#!/bin/bash
+#set -x
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+if [ -z $1 ]; then
+	echo $0 NODE
+	exit 1
+fi
+
+NODE=$1
+NODERESLIST=`mktemp`
+
+get_pbsmoab_data()
+{
+    TEMP=`mktemp`
+
+    pbsnodes -l > $TEMP
+    grep "$NODE " $TEMP | grep down
+    DOWN=$?
+    grep "$NODE " $TEMP | grep offline
+    OFFLINE=$?
+
+    showres -n > $TEMP 
+	check_node_in_step2 $NODE $TEMP
+    STEP2RES=$?
+	check_node_in_step1 $NODE $TEMP
+    STEP1RES=$?
+	check_node_in_step3 $NODE $TEMP
+    STEP3RES=$?
+    grep -P "$NODE\s+Job.*Running\s+" $TEMP
+    USERJOB=$?
+
+	grep -P "$NODE\s+" $TEMP > $NODERESLIST
+
+    rm -f $TEMP
+}
+
+TRYAGAIN=0
+get_pbsmoab_data
+
+# if the node is clearly running a job, abort
+if [ $USERJOB -eq 0 -a $STEP2RES -eq 0 ]; then
+	echo "$1 is running a STEP2 job already"
+	exit 1
+fi
+
+if [ $USERJOB -eq 0 ]; then
+	echo "$1 is running a job...stop messing with it!"
+	exit 1
+fi
+
+# if the node is clearly reserved for step1 or step3, abort
+if [ $STEP1RES -eq 0 -o $STEP3RES -eq 0 ]; then
+	echo "$1 is reserved for Step 1 or Step 3...nothing to do"
+	exit 1
+fi
+
+# if there is already a step2 job queued/running on the node, nothing
+# for us to do, exit with a helpful message
+qstat -a | grep -P "hwt-$NODE\s+" > /dev/null
+if [ $? -eq 0 ]; then
+	echo "$1 already has a step2 job running/queued on it"
+	exit 1
+fi
+
+# Check to see if the node has a step2 reservation but is also
+# stacked with other reservations.
+# If we are using a file to list what is in step2, we need to
+# ignore reservations I think...
+if [ -z $FIXIT123_STEP2_NODELIST_FILE ]; then
+	if [ `wc -l $NODERESLIST | cut -f1 -d' '` != '1' ]; then
+		TEMP3=`mktemp`
+		TEMP4=`mktemp`
+		grep -v STEP2 $NODERESLIST | perl -ne '/\-(\d+).*\s+INFINITE/ and print' > $TEMP3
+		cat $TEMP3 | grep -v -P $FIXIT123_RESERVATION_IGNORE_REGEX > $TEMP4
+		if [ `wc -l $TEMP4 | cut -f1 -d' '` != '0' ]; then
+			echo "$1 has stacked reservations and will be ignored!"
+			#/bin/rm -f $TEMP3 $TEMP4
+			exit 1
+		fi
+		#/bin/rm -f $TEMP3 $TEMP4
+	fi
+fi
+
+if [ $DOWN -eq 0 ]; then
+	# the node is down according to Torque
+
+	ping -c 1 $1 > /dev/null
+	if [ $? -eq 0 ]; then
+		echo "$1 is DOWN.. attempting pbs_mom restart"
+		pdsh -u 30 -w $1 "/etc/init.d/pbs_mom restart" 2>&1 > $TEMP
+		sleep 20
+		$FIXIT123_ONLINE_CMD $1
+        TRYAGAIN=1
+	else
+		echo $1 appears to be DEAD
+        exit 1
+	fi
+fi
+
+if [ $OFFLINE -eq 0 -a $DOWN -eq 1 ]; then
+	# node is offline but NOT down
+	echo "$1 TRYING TO ONLINE"
+	$FIXIT123_ONLINE_CMD $1
+    TRYAGAIN=1
+fi
+
+if [ $STEP2RES -eq 1 -a $DOWN -eq 1 -a $OFFLINE -eq 1 ]; then
+	echo "$1 NO STEP2 RESERVATION...but online"
+	exit 1
+fi
+
+# FIXME: not sure what to do about handling port checking in general here
+#check_node_ib_port.sh $1 > $TEMP
+#grep "up" $TEMP > /dev/null
+#if [ $? -eq 0 ]; then
+#	echo "$1 IB port is up, should be down" 
+#	exit 1
+#fi
+
+if [ $TRYAGAIN -eq 0 -a $STEP2RES -eq 0 ]; then
+	echo "$1 is READY FOR STEP2"
+	exit 0
+fi
+
+get_pbsmoab_data
+
+if [ $OFFLINE -eq 1 -a $DOWN -eq 1 -a $STEP2RES -eq 0 ]; then
+	echo "$1 is READY FOR STEP2"
+    exit 0
+fi 
+
+if [ $OFFLINE -eq 1 -a $DOWN -eq 1 -a $STEP2RES -eq 1 ]; then
+	echo "$1 NO STEP2 RESERVATION...but online"
+    exit 0
+fi 
+
+echo "$1 is NOT READY for step2a testing"
+exit 1

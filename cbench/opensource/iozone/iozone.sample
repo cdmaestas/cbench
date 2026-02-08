@@ -1,0 +1,10 @@
+#!/bin/sh -ex
+FILE=`hostname`.iozone
+./iozone/src/current/iozone -I -i0 -i1 -r64k -s100m -f /boot/${FILE} 
+rm -f /boot/${FILE}
+./iozone/src/current/iozone -I -i0 -i1 -r64k -s800m -f /tmp/${FILE} 
+rm -f /tmp/${FILE}
+./iozone/src/current/iozone -I -i0 -i1 -r64k -s4g -f /usr/${FILE} 
+rm -f /usr/${FILE}
+./iozone/src/current/iozone -I -i0 -i1 -r64k -s22g -f /${FILE} 
+rm -f /${FILE}

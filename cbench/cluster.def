@@ -1,0 +1,190 @@
+#!/usr/bin/perl
+
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+# String to identify the cluster, and check for CBENCHCLUSTER env var
+$cluster_name = $ENV{CBENCHCLUSTER} ? $ENV{CBENCHCLUSTER} : "test";
+
+# Total number of nodes in the cluster
+$max_nodes = 1;
+
+# Number of processors in a node
+$procs_per_node = 8;
+
+# Total number of processors in the cluster to build/run benchmarks on
+# (assuming a homogeneous cluster, which is more often the case)
+$max_procs = $max_nodes * $procs_per_node;
+
+# The max number of processors available at a given level of processor-per-
+# node (aka, ppn) usage. In other words, how many processors are available
+# when using 1ppn, 2ppn, etc..
+%max_ppn_procs = (
+	'1' => (1 * $max_nodes),
+	'2' => (2 * $max_nodes),
+	'4' => (4 * $max_nodes),
+	'8' => (8 * $max_nodes),
+);
+
+# The raw (i.e. how much do the DIMMs add up to) amount of RAM available.
+#
+# This is specified in MBytes.  So 1GB is specified as 1024 for example.
+$memory_per_node = 2048;
+$memory_per_processor = $memory_per_node / $procs_per_node;
+
+# This parameter sets the default walltime specifier used when submitting
+# batch jobs. The parameter can be overidden on the *_start_jobs.pl 
+# command line with the --batchargs parameter.
+$default_walltime = "04:00:00";
+
+# These parameters control how walltimes are generated for batch jobs.
+#
+# $walltime_method tells cbench_gen_jobs which algorithm to use in
+# calculating the walltime for a job:
+#    0 - Method 0 is simply a constant value equal to $default_walltime.
+#        This has always been the Cbench default behavior.
+#    1 - Method 1 is an algorithm that discretely steps up the walltime for
+#        each job of increasing runsize (number of processes) by the constant
+#        time in minutes controlled by the $walltime_steptime option. In
+#        this method, the $default_walltime option is used as the minimum
+#        starting walltime from which all others are increased.  The
+#        stepped walltimes help schedulers backfill better in general.
+$walltime_method = 0;
+# The amount of time in minutes to step increase walltimes in method 1
+$walltime_steptime = 10;
+
+# This parameter controls the number of extra nodes added to Cbench jobs.
+# For example, a 256 proc 1ppn job would normally allocate 128 nodes, but
+# with extra_job_nodes=1 the job would allocate 129 nodes.  This is currently
+# mostly useful in tandem with job launchers that support a -nolocal type
+# option, i.e. don't run an mpi process on the node from which the job
+# is being launched.  Both mpiexec and the OpenMPI job launcher (orterun)
+# support a -nolocal option.
+$extra_job_nodes = 0;
+
+# Benchmarks/tests/test sets may use this array to generate parameters for
+# various jobs. At least a single value should be present. For normal linux,
+# 80% is a good starting point. Multiple comma separated values can be specified
+# to generate more test permutations using different amounts of memory.
+# Currently only the Linpack test set uses this.
+@memory_util_factors = (0.25,0.80,0.85);
+
+# Select the parallel job launch mechanism. The job launch mechanism
+# must be correctly supported in cbench.pl.
+#
+# NOTE: This is not necessarily the name of the job launching binary,
+#       just the name of a configuration.
+$joblaunch_method = "openmpi";
+
+# optional parameter to specify the exact binary, including path,
+# used for job launching
+#
+# NOTE: The binary must behave correctly with respect to what the
+#       $joblaunch_method setting specifies. So you can specify
+#       "/home/bob/bobcmd" here but it better behave like
+#       $joblaunch_method expects it too.... or else....
+$joblaunch_cmd = "";
+
+# optional parameter to add extra arguments to the launch command line
+$joblaunch_extraargs = "";
+
+# Select the batch system to use
+$batch_method = "slurm";
+
+# optional parameter to set the exact binary, including path, used
+# for batch system submissions
+#
+# NOTE: This binary must behave like the setting for $batch_method expects
+#       it too...
+$batch_cmd = "";
+
+# optional parameter to add extra arguments to the batch command line
+$batch_extraargs = "";
+
+# Select the remote command execution method to use.
+# The nodehwtest_start_jobs.pl script is currently the only start_jobs script
+# that supports the --remote parameter.
+$remotecmd_method = "pdsh";
+
+# optional parameter to add extra arguments to the remote execution command line
+$remotecmd_extraargs = "-f 700";
+
+#
+# This section controls custom parse filters that will optionally be
+# employed by the Cbench output parsers when looking at job output.
+# With these filters, the user can dynamically tell the output parsers
+# to look for user-defined errors. These filters are only used when
+# the --customparse parameter is given to the *_output_parse.pl scripts.
+#
+# Each filter is composed of a key/value pair.  The key is is a Perl
+# regular expression including capturing. The value is a string that will
+# be used to identify when an occurrence of the regex is found. The value
+# can include the $1,$2,... etc variables that would be captured by
+# the Perl regular expression
+#
+# The filters are defined in simple Perl modules organized generally
+# around what software the filters are matching output from. The
+# filter modules are in the perllib/parse_filter directory.  The 
+# filters defined in the modules can be edited at any time and assuming
+# the parse_filter module is in the include array below, the output
+# parse engine will use the edited filters at the next invocation.
+@parse_filter_include = (
+	'openmpi',
+	'slurm',
+	'mpiexec',
+	'torque',
+	'mvapich',
+	'misc',
+);
+
+
+#
+# The NODEHWTEST test set provides node-level testing capabilities within Cbench.
+# Some of the hw_test modules (see perllib/hw_test) that are used have 
+# configuration parameters that control their behavior.
+#
+
+# This controls what ppn count the nodehwtest xhpl (linpack) module uses.
+$nodehwtest_xhpl_ppn = 1;
+#$nodehwtest_xhpl_ppn = $procs_per_node;
+
+# This controls whether the NAS Parallel Benchmark nodehwtest module runs D class
+# tests that can take many hours to run with a single process.
+$nodehwtest_npb_longjobs = 0;
+
+# This controls how many minutes the stress_cpu module runts the test
+$nodehwtest_stress_minutes = 120;
+
+# @nodehwtest_local_filesystems() array is used to tell disk testing modules, e.g.
+# iozone.pm, local filesystems they can use to test local disks. It is optional,
+# but if you are not running NODEHWTEST stuff as root, you'll probably need it. The
+# paths specified must exist and have write permissions.
+@nodehwtest_local_filesystems = (
+#	"/scratch47",
+#	"/tmp/$ENV{'USER'}",
+);
+
+
+1;
+
+# vim: syntax=perl

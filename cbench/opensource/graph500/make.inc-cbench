@@ -1,0 +1,20 @@
+# -*- Makefile -*-
+# Copyright 2010, Georgia Institute of Technology, USA.
+# See COPYING for license.
+#
+# Based on graph500-1.2/make-incs/make.inc-gcc
+#
+
+include $(CBENCHOME)/make.def
+
+#CFLAGS = -g -std=c99
+#CFLAGS = -g -std=c99 -O3 -march=native -fgcse-sm -fgcse-las -fgcse-after-reload -floop-strip-mine -ftree-loop-im -fivopts -funswitch-loops
+LDLIBS = -lm -lrt
+CPPFLAGS = -DUSE_MMAP_LARGE -DUSE_MMAP_LARGE_EXT
+
+# Uncomment the following two lines to compile the OpenMP version
+#BUILD_OPENMP = Yes
+CFLAGS_OPENMP = $(OPENMP_ENABLE)
+
+# Build the MPI Version
+BUILD_MPI = Yes

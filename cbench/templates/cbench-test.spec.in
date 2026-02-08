@@ -1,0 +1,70 @@
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+# #    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+Name:         RPM_NAME_HERE
+Packager:     cbench_AT_sandia_DOT_gov
+Version:      RPM_VERSION_HERE
+Release:      RPM_RELEASE_HERE
+BuildArch:    %{_arch}
+License:      GPL
+Summary:      Cbench Testing Tree 
+Group:        Benchmarking/Testing/Clustering/Computing
+URL:          http://cbench.org
+#Source0:      http://cbench.org/downloads/%{name}-%{version}.tar.gz
+Requires:     bash perl
+AutoReqProv: no
+
+#BuildRoot:    %{_tmppath}/%{name}-%{version}-%{release}-build
+
+%description
+Cbench Testing Tree
+
+%prep
+
+%build
+
+%install
+INSTALL_STUFF_HERE
+
+%clean
+#[ "$RPM_BUILD_ROOT" != "/" ] && [ -d $RPM_BUILD_ROOT ] && rm -rf $RPM_BUILD_ROOT
+
+%pre
+
+%post
+chown OWNER_HERE.OWNER_HERE CBENCHTEST_DESTDIR_HERE
+chmod 755 CBENCHTEST_DESTDIR_HERE
+touch CBENCHTEST_DESTDIR_HERE/rpm_install.log
+date >> CBENCHTEST_DESTDIR_HERE/rpm_install.log
+echo "Installing RPM_NAME_HERE RPM_VERSION_HERE-RPM_RELEASE_HERE on $HOSTNAME" >> CBENCHTEST_DESTDIR_HERE/rpm_install.log
+
+%preun
+touch CBENCHTEST_DESTDIR_HERE/rpm_install.log
+date >> CBENCHTEST_DESTDIR_HERE/rpm_install.log
+echo "Uninstalling RPM_NAME_HERE RPM_VERSION_HERE-RPM_RELEASE_HERE on $HOSTNAME" >> CBENCHTEST_DESTDIR_HERE/rpm_install.log
+
+%files
+%defattr(-,OWNER_HERE,OWNER_HERE)
+FILES_STUFF_HERE
+
+%changelog
+CHANGELOG_STUFF_HERE

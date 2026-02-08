@@ -1,0 +1,247 @@
+# -*-Shell-script-*-
+#
+# panfs_functions     This file contains panasas functions to be used by most or all
+#                     shell scripts in the nodechecks
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+PANFS_VERSION=2.3.4
+PANFS_RPM_VERSION=panfs-2.6.9-15.EL.root-mp-2.3.4-182875.13
+PANFS_SERVER_IP=205.137.90.1
+PANFS_SERVER_NAME=panfs1
+PANFS_DFLOW_MOUNT=/scratchp3
+PANFS_NFS_MOUNT=/scratchn3
+PANFS_NFS_MANUAL_BALANCE=1
+PANFS_NFS_SERVER_NAME=$PANFS_SERVER_NAME
+PAN_NFS_SERVER_NUMBER=5
+PANFS_SERVER_BASENAME="panfs"
+WANT_PANFS_NFS_MOUNT=0
+
+check_panfs_software() {
+	local panfs_version=$1
+	local panfs_rpm=$2
+	echo
+	echo -n "Checking for Panasas software $panfs_version: "
+	rpm -q $panfs_rpm > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+}
+
+check_panfs_dflow_mount() {
+	echo
+	echo -n "Checking for Panasas Direct Flow Mount ${PANFS_DFLOW_MOUNT}: "
+	mount | grep ${PANFS_DFLOW_MOUNT}  > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+check_panfs_nfs_mount() {
+	local panfs_nfs_server=$1
+	echo
+	echo -n "Checking for Panasas NFS mount ${PANFS_NFS_MOUNT}: "
+	mount | grep ${PANFS_NFS_MOUNT}  > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo_failure
+	else
+		if [ -z $panfs_nfs_server ]; then
+			panfs_nfs_server=${PANFS_NFS_SERVER_NAME}
+		else
+			PANFS_NFS_SERVER_NAME=${panfs_nfs_server}
+		fi
+		mount | grep ${PANFS_NFS_SERVER_NAME} > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			echo_failure
+		else
+			echo_success
+		fi
+	fi
+
+}
+
+update_fstab_panfs_nfs_mount() {
+	unmount_panfs $PANFS_NFS_MOUNT
+	grep -v $PANFS_NFS_MOUNT /etc/fstab > /tmp/fstab
+	echo "$PANFS_NFS_SERVER_NAME://home $PANFS_NFS_MOUNT  nfs   rw,proto=tcp,vers=3,rsize=32768,wsize=32678,hard,intr,timeo=600 0 0" >> /tmp/fstab
+	cp -f /tmp/fstab /etc/fstab
+}
+
+check_num_of_panfs_mounts() {
+	local mnt_cnt=$1
+	echo
+	echo -n "Checking for $mnt_cnt Panasas mounts: "
+	if [ `mount | grep panfs | wc -l` -ne $mnt_cnt ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+check_panfs_mount_option() {
+		echo
+		echo -n "Checking for proper Panasas mount options: "
+		if [ `mount | grep callback-address-ping | wc -l` -ne 1 ]; then
+			echo_failure
+		else
+			grep panauto /etc/fstab > /dev/null 2>&1
+			if [ $? -ne 0 ]; then
+				echo_failure
+			else
+				echo_success
+			fi
+		fi
+}
+
+update_panfs_mounts() {
+	unmount_panfs /scratch
+	fix_panfs_dirs
+	update_fstab_for_panfs
+	#update_panfs_sysctl_var
+	/sbin/service ntpd restart
+	if [ $WANT_PANFS_NFS_MOUNT -ne 0 ]; then
+		mount $PANFS_NFS_MOUNT
+	fi
+	mount $PANFS_DFLOW_MOUNT
+}
+
+fix_panfs_dirs() {
+	unmount_panfs /scratch
+	if [ -d /scratch3 ]; then
+		rmdir /scratch3 > /dev/null 2>&1
+	fi
+	if [ -h /scratchp3 ]; then
+		rm -f /scratchp3
+	fi
+	mkdir -p ${PANFS_NFS_MOUNT} ${PANFS_DFLOW_MOUNT}
+	cd /
+	ln -s ${PANFS_DFLOW_MOUNT} /scratch3
+}
+
+check_fstab_for_panfs() {
+	echo
+	echo -n "Checking Pansasas options in fstab: "
+	grep ${PANFS_DFLOW_MOUNT} /etc/fstab > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		if [ $PANFS_NFS_MANUAL_BALANCE -eq 1 ] ; then
+			PANFS_NFS_MOUNT=`mod_panfs_mount panfs 5`
+		fi
+		grep ${PANFS_NFS_MOUNT} /etc/fstab > /dev/null 2>&1
+   		if [ $? -eq 0 ]; then
+			grep panauto /etc/fstab > /dev/null 2>&1
+			if [ $? -eq 0 ]; then
+				echo_success
+			else
+				echo_failure
+			fi
+		else
+			echo_failure
+		fi
+	else
+		echo_failure
+	fi
+}
+
+update_panfs_rpm() {
+#	unmount_panfs /scratch
+	local panrpmlocation=$1
+#	PVER=`rpm -qa | grep panfs`
+#	if [ $? -eq 0 ]; then
+#		#rpm -e --noscripts --nodeps $PVER
+#		rpm -e $PVER
+#	fi
+	rpm -Fvh $panrpmlocation
+
+}
+
+update_panfs_software() {
+	unmount_panfs /scratch
+	PVER=`rpm -qa | grep panfs`
+	if [ $? -eq 0 ]; then
+		#rpm -e --noscripts --nodeps $PVER
+		rpm -e $PVER
+	fi
+	#up2date --nox -i panfs-2.6.9-15.EL.root-mp
+	up2date --nox -i panfs-2.6.9-42.0.2.EL_lustre.1.4.7.3-mp
+	update_panfs_mounts
+}
+
+update_fstab_for_panfs() {
+	local panfs_server="panfs"
+	grep -v $panfs_server /etc/fstab > /tmp/fstab
+	echo "panfs://${PANFS_SERVER_NAME}/home    /scratchp3  panfs   rw,noauto,panauto,callback-address-ping=0 0 0" >> /tmp/fstab
+#	if [ $PANFS_NFS_MANUAL_BALANCE -eq 1 ] ; then
+#		local panfs_server=`mod_panfs_mount panfs 5`
+	#fi
+	#echo "${panfs_server}://home /scratchn3  nfs   noauto,rw,proto=tcp,vers=3,rsize=32768,wsize=32678,hard,intr,timeo=600 0 0" >> /tmp/fstab
+	cp -f /tmp/fstab /etc/fstab
+}
+
+update_panfs_sysctl_var() {
+	/apps/contrib/install/cap-updateclient.sh > /dev/null 2>&1
+	/etc/rc.d/rc.updateclient
+	sysctl -p | grep vm.min_free_kbytes
+}
+
+unmount_panfs() {
+	local mount_point=$1
+	for pmount in `mount | grep $mount_point | awk '{print $3}' | grep 3`
+	do
+		for n in `lsof $pmount | awk '{print $2}' | grep -v PID`; do kill $n; done
+		sleep 5
+		for n in `lsof $pmount | awk '{print $2}' | grep -v PID`; do kill -9 $n; done
+		/sbin/fuser -k $pmount
+		umount $pmount
+	done
+}
+
+#
+# given a base name and a number of nfs panasas hosts, 
+#	and a numerical value of the hostname (usually 1 if cn1),
+#	return the remainder to use for nfs mount
+#
+mod_panfs_mount() {
+    local base=$1
+    local nfs_num=$2
+    local temp1=`mktemp`
+    /usr/bin/perl -e 'my $h=`hostname`; chomp $h; my ($base, $num) = split(/\D+/,$h); print $num' > $temp1;
+    hnum=`cat $temp1`
+    rm -f $temp1
+    local n=`expr $hnum % $nfs_num`
+    local n=`expr $n + 1`
+    echo ${base}${n}
+}
+#
+# setup for clustered nfs balancing
+#
+if [ $PANFS_NFS_MANUAL_BALANCE -eq 1 ]; then
+	PANFS_NFS_SERVER_NAME=`mod_panfs_mount $PANFS_SERVER_BASENAME $PAN_NFS_SERVER_NUMBER`
+fi
+

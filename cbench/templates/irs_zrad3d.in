@@ -1,0 +1,21 @@
+# LLNL IRS application with zrad3d input deck job template
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/irs
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/irs
+
+# need to make an isolated directory for each IRS run to keep them
+# from stepping on each others output files
+TEMPDIR="job$JOBID"
+mkdir -p $PWD/$TEMPDIR
+cd $TEMPDIR
+# symlink the input files
+ln -s TESTSET_PATH_HERE/decks/zrad3d .
+cbench_echo "Cbench job tempdir: $PWD"
+
+
+# Run irs in MPI only mode, no Openmp
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/irs -k zNUM_PROCS_HERE zrad3d -def NDOMS=NUM_PROCS_HERE"
+cbench_run_cmd $CMD
+

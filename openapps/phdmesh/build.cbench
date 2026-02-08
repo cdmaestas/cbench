@@ -1,0 +1,51 @@
+#!/bin/bash 
+
+#----------------------------------------------------------------------
+# Paths
+
+# should be set by Cbench wrapper makefile
+#export PHDMESH_PATH="${HOME}/Trilinos/packages/phdmesh"
+echo "PHDMESH_PATH=$PHDMESH_PATH"
+
+#----------------------------------------------------------------------
+# The configuration is dependent upon this file
+
+export PHDMESH_CONFIG_DEPS=$0
+
+#MPICH_HOME="/usr/local/mpi/sierra/32Bit/1.2.7/intel-9.0"
+#export PATH="${MPICH_HOME}/bin:${PATH}"
+
+# save CC, CXX, and LDCXX since the next source command wipes them out
+SAVECC="${CC}"
+SAVECXX="${CXX}"
+SAVELDCXX="${CXX}"
+
+compiler=${COMPILERCOLLECTION}
+opts="mpi"
+if [ ${COMPILERCOLLECTION} == "gcc" ]; then
+	compiler=gnu
+	opts="mpich"
+fi
+source ${PHDMESH_PATH}/config/${compiler} ${opts}
+
+# save CC, CXX, and LDCXX since the next source command wipes them out
+CC="${SAVECC}"
+CXX="${SAVECXX}"
+LDCXX="${SAVECXX}"
+
+# if you have trouble compiling phdMesh with Intel 11.0, uncomment the following
+# two lines
+#CC="${SAVECC} -diag-disable 980"
+#CXX="${SAVECXX} -diag-disable 980"
+
+#----------------------------------------------------------------------
+# SNL ACCESS ExodusII and NemesisI library configuration:
+
+#source ${PHDMESH_PATH}/config/exodusII /usr/local/eng_sci/struct/i686/current
+
+#----------------------------------------------------------------------
+
+make -f ${PHDMESH_PATH}/Make.in $*
+
+#----------------------------------------------------------------------
+

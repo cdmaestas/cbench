@@ -1,0 +1,27 @@
+set verbose 1
+
+timer 10m
+bg 0 DATA0 data /dev/sda1 16
+bg 0 DATA1 data /dev/sda1 16
+bg 0 DATA2 data /dev/sda1 16
+bg 0 DATA3 data /dev/sda1 16
+bg 0 DATA4 data /dev/sda1 16
+bg 0 DATA5 data /dev/sda1 16
+bg 0 DATA6 data /dev/sda1 16
+bg 0 DATA7 data /dev/sda1 16
+bg 0 DATA8 data /dev/sda1 16
+bg 0 DATA9 data /dev/sda1 16
+bg 0 DATA10 data /dev/sda1 16
+bg 0 DATA11 data /dev/sda1 16
+bg 0 DATA12 data /dev/sda1 16
+bg 0 DATA13 data /dev/sda1 16
+bg 0 DATA14 data /dev/sda1 16
+bg 0 DATA15 data /dev/sda1 16
+bg 0 DATA16 data /dev/sda1 16
+bg 0 DATA17 data /dev/sda1 16
+bg 0 DATA18 data /dev/sda1 16
+bg 0 DATA19 data /dev/sda1 16
+
+wait
+exit
+

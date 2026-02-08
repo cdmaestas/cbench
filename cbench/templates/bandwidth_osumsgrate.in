@@ -1,0 +1,20 @@
+# bandwidth_osumsgrate job template
+# Uses the OSU message rate test
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/osu_mbw_mr
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/osu_mbw_mr
+
+
+# does not run on less than 2 processes 
+ONEPROC=`expr NUM_PROCS_HERE \< 2`
+if [ "$ONEPROC" == "1" ]; then
+	cbench_echo "CBENCH NOTICE: osumsgrate needs at least 2 processes"
+	exit
+fi
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/osu_mbw_mr"
+
+cbench_run_cmd $CMD
+

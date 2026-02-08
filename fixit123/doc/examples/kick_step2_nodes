@@ -1,0 +1,28 @@
+#!/bin/bash
+
+TEMP=`mktemp`
+STEP2NAME=`showres  | grep STEP2 | cut -f1 -d' '`
+showres -n $STEP2NAME | cut -f1 -d' ' | grep [abcde]n > $TEMP
+Alist=`grep an $TEMP | /projects/tbird/jbogden/machines_to_pdshlist`
+Blist=`grep bn $TEMP | /projects/tbird/jbogden/machines_to_pdshlist`
+Clist=`grep cn $TEMP | /projects/tbird/jbogden/machines_to_pdshlist`
+Dlist=`grep dn $TEMP | /projects/tbird/jbogden/machines_to_pdshlist`
+Elist=`grep en $TEMP | grep -v -P '^en[1-9]$|^en[1-2][0-9]$|^en3[0-2]$' | /projects/tbird/jbogden/machines_to_pdshlist`
+
+
+echo $Alist
+do_node_cmd pwr $Alist $1
+sleep 30
+echo $Blist
+do_node_cmd pwr $Blist $1
+sleep 30
+echo $Clist
+do_node_cmd pwr $Clist $1
+sleep 30
+echo $Dlist
+do_node_cmd pwr $Dlist $1
+sleep 30
+echo $Elist
+do_node_cmd pwr $Elist $1
+
+# 114  do_node_cmd pwr en[54,57,62,85,105,127,183,195,197,218,279,358] on

@@ -1,0 +1,34 @@
+#!/usr/bin/perl
+# Takes numeric values from the command line or standard input (space- or
+# line- separated) and prints out various statistics.
+# - Marcus R. Epperson, Sandia National Laboratories
+
+use warnings;
+use strict;
+use lib $ENV{'CBENCHOME'} . '/perllib';
+
+use Statistics::Descriptive;
+
+my @data = @ARGV;
+if (! @data) {
+    while (<STDIN>) {
+        chomp;
+        push @data, split / +/;
+    }
+}
+
+my $stats = Statistics::Descriptive::Full->new();
+$stats->add_data(@data);
+
+select(STDOUT);
+$~ = "RESULTS";
+write for qw/ get_data count sum max min sample_range mean geometric_mean
+              harmonic_mean median mode variance standard_deviation /;
+
+exit;
+
+
+format RESULTS =
+@<<<<<<<<<<<<<<<<<<<<< = @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<...
+$_,(join ',', defined $stats->$_() ? $stats->$_() : 'undef')
+.

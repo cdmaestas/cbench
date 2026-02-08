@@ -1,0 +1,110 @@
+#
+#	@       @                  @       @           @@        
+#	@@     @@             @    @@     @@            @    @   
+#	@ @   @ @  @@@@@@  @@@@@@@ @ @   @ @ @       @  @ @@@@@@@
+#	@  @ @  @        @    @    @  @ @  @ @       @  @    @   
+#	@   @   @  @@@@@@@    @    @   @   @ @       @  @    @   
+#	@       @ @     @@    @  @ @       @  @     @@  @    @  @
+#	@       @  @@@@@ @@    @@  @       @   @@@@@ @ @@@    @@ 
+#
+#	This makefile compiles and runs the Matrix  Multiply benchmarks.  This
+#	benchmark looks  at how the fortran and  C compilers  rate mono-i-mono
+#	and looks at the effect of do/for loop strides.  To  make and run this
+#	benchmark do the following:
+#		1) Edit the FC, CC, FFLAGS, and CFLAGS directives as indicated
+#		   below.  Then type "make all" to compile and load.
+#		2) Edit the  C-Shell  script  run.matmult as described in that 
+#		   script.  Then type "make run" to run  the  benchmark.   The
+#		   results are deposited in the file called "RESULTS."
+#
+#		Send results to:
+#			Dr. Mark K. Seager
+#			Advanced Technology
+#			Lawrence Livermore National Laboratory
+#			PO Box 808, L-60
+#			Livermore, CA 94551-9900
+#			seager@llnl.gov
+#
+#	Call with questions to: 925-423-3141 during normal working hours.
+#
+
+SHELL		= /bin/sh
+
+#FC		= mpipathf90
+
+#FFLAGS		= -O3 -mp -DLINUX
+
+#CC		= mpipathcc
+
+#CFLAGS		= -O3 -mp -DDGEMM -DMXMD16 -DLINUX
+
+#LDFLAGS		= -L/usr/local/tools/pathscale/acml/lib -lacml -lm -Wl,--print-map
+
+# Default rule for compiling Fortran.
+
+.f.o:		$<
+	$(FC) $(FFLAGS) -c $<
+
+all:		mmf mmc
+
+run : all
+	/bin/csh -f run.matmult > RESULTS 2>&1
+
+clean :
+	rm -f mmf mmc dmmf dmmc *.o *.list core gmon.out
+
+secc.o : secc.c
+
+ranfc.o : ranfc.c
+
+vfillc.o : vfillc.c
+
+mxmdc.o : mxmdc.c mmc.h
+	$(CC) ${CFLAGS} -c mxmdc.c
+
+mxmrc.o : mxmrc.c mmc.h
+	$(CC) ${CFLAGS} -c mxmrc.c
+
+mmc.o : mmc.c mmc.h
+
+mmc : mmc.o mxmrc.o mxmdc.o ranfc.o secc.o vfillc.o 
+	$(CC) ${CFLAGS} mmc.o mxmrc.o mxmdc.o ranfc.o secc.o vfillc.o -o mmc ${LDFLAGS}
+
+dmmc : dmmc.c secc.c
+	$(CC) ${CFLAGS} dmmc.c secc.c -o dmmc ${LDFLAGS}
+
+blas2.o : blas2.f
+
+secf.o : secf.f
+
+secfaix.o : secfaix.c
+
+my_etime.o : my_etime.c
+
+ranff.o : ranff.f
+
+vfillf.o : vfillf.f
+
+mxmc.o : mxmc.f
+	$(FC) ${FFLAGS} -c mxmc.f
+
+mxmd.o : mxmd.f
+	$(FC) ${FFLAGS} -c mxmd.f
+
+mmf.o : mmf.f 
+
+mmf : mmf.o mxmc.o mxmd.o secc.o secfaix.o ranff.o vfillf.o 
+	$(FC) ${FFLAGS} mmf.o mxmc.o mxmd.o secc.o secfaix.o ranff.o vfillf.o -o mmf ${LDFLAGS}
+
+pmmf : mmf.o mxmc.o mxmd.o secf.o my_etime.o ranff.o vfillf.o 
+	$(FC) ${FFLAGS} mmf.o mxmc.o mxmd.o secf.o my_etime.o ranff.o vfillf.o -o pmmf -ldxmlp -lm
+
+dmmf : dmmf.f secf.f my_etime.o
+	$(FC) ${FFLAGS} dmmf.f secf.f my_etime.o -o dmmf ${LDFLAGS}
+
+SRC=makefile mmc.h mmc.c mmf.f mxmd.f mxmdc.c mxmc.f mxmrc.c secf.f secc.c secfaix.c \
+	ranff.f ranfc.c vfillf.f vfillc.c blas2.f run.matmult run.pmatmult run.mmf run.mmc \
+	run.bench.bash 
+
+matmult.sh : $(SRC)
+	shar $(SRC) > matmult.sh

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# depends on chartst in the current directory
+
+echo sending $1 as repeating output to printer...
+exec ./chartst $* >> /dev/lp0 2>&1

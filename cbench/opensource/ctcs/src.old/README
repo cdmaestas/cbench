@@ -1,0 +1,30 @@
+BE WARNED.  This software can and will destroy data on your system, so
+don't run it until you have went over the documentation and understood
+what the software does.  If your hardware/kernel is flaky, data loss is
+very possible.  Do not run on a production system!  That said, people do
+do it anyway, but I can't be responsible if you lose data because of it.  
+See README.FIRST for details.
+
+
+Cerberus Test Control System index
+
+Doc index:
+./README.FIRST: READ THIS BEFORE DOING ANYTHING!
+./FAQ:		Read this before posting to the mailing list :)
+./README:	Description of documentation, etc
+./README.TCF:	Documentation on the .tcf file format used by the run
+		program
+./CHANGELOG:	Revision history
+./COPYING:	Licensing and credits
+./sample/test*.tcf:
+		Sample .tcf files that demonstrate features of the test
+		control language.
+
+./runin/README: Index for the runin directory.
+./runin/README.runtest: Description of the runtest mid-level control
+			program that actually runs each test.
+./runin/README.tests: Description of each test and their parameters.
+
+--
+The documentation here is fairly complete.  Please at least read README.FIRST
+before trying to do anything with this software package.

@@ -1,0 +1,48 @@
+= Using SWEEP3D with Cbench =
+
+''Page last modified 31 March 2009''
+
+[wiki:doc/CbenchDocumentation Back to Cbench documentation]
+
+From [http://www.c3.lanl.gov/pal/software/sweep3d/sweep3d_readme.html] "The benchmark code SWEEP3D represents the heart of a real ASCI application. It solves a 1-group time-independent discrete ordinates (Sn) 3D cartesian (XYZ) geometry neutron transport problem. The XYZ geometry is represented by an IJK logically rectangular grid of cells. The angular dependence is handled by discrete angles with a spherical harmonics treatment for the scattering source. The solution involves two steps: the streaming operator is solved by sweeps for each angle and the scattering operator is solved iteratively."
+
+The SWEEP3D benchmark is used on many DOE clusters to test the performance of a real computational code on the machine.  SWEEP3D is available in the openapps tree of Cbench for use as a benchmarking testset.
+
+How to use SWEEP3D and Cbench:
+
+ 1. Check out Cbench
+ 2. Check out the openapps tree
+ 3. Compile and install to Cbench testing tree
+{{{
+cd $CBENCHOME
+make -C openapps/sweep3d
+make installtests
+}}}
+ 4. Go to $CBENCHTEST/sweep3d and generate, run, and analyze jobs just like with other Cbench testsets.
+
+== Notes about SWEEP3D's input decks ==
+
+The input file can be modified to scale memory usage or runtime.  Here is a typical input deck (input.150.16proc from openapps/sweep3d/input_files):
+
+ 4 4 10 3 2[[BR]]
+ 150 150 150 6 1[[BR]]
+ .1 .1 .1 -12.0[[BR]]
+ 0 0 0[[BR]]
+ 0 1 -7
+
+To scale memory usage, change the number of x, y, and z points in the simulation with these parameters:
+
+ 4 4 10 3 2[[BR]]
+ '''300 150 250''' 6 1[[BR]]
+ .1 .1 .1 -12.0[[BR]]
+ 0 0 0[[BR]]
+ 0 1 -7
+
+To scale runtime, change the following parameter (yes, the value is negative, see the README for more info):
+
+ 4 4 10 3 2[[BR]]
+ 300 100 200 6 1[[BR]]
+ .1 .1 .1 '''-25.0'''[[BR]]
+ 0 0 0[[BR]]
+ 0 1 -7
+ 	  	 

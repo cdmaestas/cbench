@@ -1,0 +1,9 @@
+# longstress_stress job template
+# 'stress' MPI benchmark from the MPICH perftest code
+# using the all-to-all nonblocking pattern
+# NOTE: bash syntax is used here
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/stress -async -all -ttime 08:00"
+
+cbench_run_cmd $CMD
+

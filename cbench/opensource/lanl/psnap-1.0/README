@@ -1,0 +1,125 @@
+P-SNAP v1.0 -- PAL System Noise Activity Program -- LA-CC-06-025
+       http://www.c3.lanl.gov/pal/software/psnap/
+
+Copyright (C) 2006, The Regents of the University of California
+
+               PAL -- Performance and Architecture Laboratory
+                 <http://www.c3.lanl.gov/pal/>
+               Los Alamos National Laboratory
+                 <http://www.lanl.gov/>
+
+Unless otherwise indicated, this software has been authored by an
+employee or employees of the University of California, operator of the
+Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with the
+U.S.  Department of Energy. The U.S. Government has rights to use,
+reproduce, and distribute this software. Neither the Government nor the
+University makes any warranty, express or implied, or assumes any
+liability or responsibility for the use of this software.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Contact: Greg Johnson <gjohnson@lanl.gov>
+
+P-SNAP is a system benchmark for quantifying operating system
+interference or noise.
+
+
+Description
+
+It consists of a spin loop which is calibrated to take a given amount of
+time (typically 1ms).  This loop is repeated for a number of iterations.
+The actual time each iteration takes is recorded.
+
+
+Compiling
+
+P-SNAP depends on MPI.  MPICH (http://www-unix.mcs.anl.gov/mpi/) and
+Open MPI (http://www.open-mpi.org/) are examples of freely available MPI
+implementations.  P-SNAP is written in C.  Any modern C compiler should
+be fine.
+
+To compile P-SNAP, edit the Makefile provided and define the C compiler
+and paths to MPI include files and libraries.  Then type 'make'.
+
+
+Timers
+
+P-SNAP uses MPI_Wtime() by default for microsecond timing.
+gettimeofday() can be used by compiling P-SNAP with the
+-DUSE_GETTIMEOFDAY flag.
+
+
+Running
+
+P-SNAP should be run like any other MPI program.  To accurately measure
+the noise on your system, run one psnap process per CPU (core) on each
+node.  To obtain an accurate sample of the system noise a typical run
+would be for 1000000 repetitions.  Such runs take approximately 1/2 hour
+to run not counting any I/O time.  P-SNAP writes its output to stdout.
+All output is from MPI rank 0.
+
+The full set of options:
+
+Usage: psnap [OPTIONS]
+
+  -n <reps>   number of repetitions
+                default: 100000
+  -w <reps>   number of warm-up repetitions
+                default: 10% of the number of reps
+  -c <count>  calibration count
+                default: perform a calibration to match granularity
+  -g <usecs>  granularity of the test in microseconds
+                default: 1000
+  -b          perform a barrier between each loop
+                default: no
+  -h          this message
+
+  Example: psnap -n 1000000 -w 10 > psnap.out
+    runs a test with 1000000 repetitions and 10 warm-up reps.
+
+
+Output format
+
+The main output from P-SNAP is a histogram of the actual time taken to
+run the loop for each MPI task.  The lines of the histograms are in the
+following format:
+
+MPI rank, time (microseconds), count, hostname
+
+At the beginning of a run the program calibrates the timing loop to take
+<granularity> microseconds.  As the calibration is running, the program
+outputs lines such as:
+
+# count = 1000000, time = 1358
+# count = 736377, time = 1001
+
+The loop count is "count" and the minimum time the loop took is "time".
+After the loop has been calibrated once, subsequent runs on the same
+machine can skip the calibration step by specifying the '-c' parameter
+with the count from the previous run.
+
+At the beginning of each histogram a line appears with a '#' in the
+first column:
+
+# 1 0.009036 1002103 pal0
+
+The columns are 
+
+MPI rank, correlation, total time, hostname.
+
+The correlation is computed between the time series measured on each
+process and the time series measured on MPI rank 0.  If the noise is
+correlated in time across the system, the correlation should be close to
+one.  The total time is the total amount of time taken to run the loops.

@@ -1,0 +1,263 @@
+How to create a test:
+
+Each test should send to stdout whatever you want to be logged, and should
+return 0 if OK, and 1 if failed.  Other error codes will be interpreted as
+test configuration errors.  Tests should either terminate eventually
+within a reasonable length of time, or simply run continuously until a
+failure is detected, and then exit.
+
+If a test makes use of temporary files or other resources, you should
+install a signal handler for SIGINT and have the program clean up after
+itself when it receives this signal.
+
+testname-info is used to setup an environment that will be present for
+each iteration of the loop.  It should return 0 and output command line
+parameters for testname on stdout (nothing else on stdout).  Failure to
+setup environment can be indicated with a nonzero errorcode.
+                                                             
+Tests:
+
+This is some documentation for the test programs themselves, and the
+parameters they take when being run with runtest or the test control
+program.  The actual executables here may require different or additional
+parameters than that given, see README.runtest for details on why this is.
+
+
+allmessages
+	Scans and prints all syslog messages, for debugging purposes.
+
+[s]blockrdtst <device> [blocks]
+	Runs a badblocks test on device <device> (give full device filename,
+	/dev/hda for example).  It will use the maximum size of the device
+	or the number of blocks specified, whichever is fewer.  If there is
+	no blocks parameter, the whole disk is tested.  This is a readonly
+	test that will not harm data existing on the drive.
+	Adding an 's' to the beginning of the test name indicates the
+	test should sleep for a random length of time (<60 sec) before
+	starting.
+	Setting the environment variable "CERBERUS_FLUSH_BUFFERS" will
+	activate running hdparm -f <device> from time to time, intending
+	to beat more on the hardware. (this check is implemented in
+	bin/flushb).  Currently this causes filesystem corruption.
+	By default the badblocks process is niced by 5.  This doesn't
+	affect badblocks much, especially when it is running solo, but
+	it does seem to give more CPU time to other CPU intensive
+	programs.
+
+burnBX [param]
+	Memory tester by RR (see entried from burnCPU, burnMMX).  Some
+	docs here paraphrased from his README in src/cpuburn-1.2/README.
+		[param] is 0 to 7:
+		[param] size tested
+		0	1 KB		L1 cache
+		1	4 KB		 ..
+		2	16 KB		L2 cache
+		3	64 KB		 ..
+		4	256 KB		Main Memory
+		5	1 MB		 ..
+		6	4 MB (default)	 ..
+		7	16 MB		 ..
+	The program exits with Sig11 if insufficient memory is available.
+
+burnCPU
+	Runs the programs from Robert Redelmeier's cpuburn
+	package.   Uses autodetection to run burnP6 on Pentium cores,
+	and burnK7 on other CPUs.
+	This heats up the CPU to detect problems with the CPU
+	cooling and heatsink.  A problem usually shows up by locking the
+	system, but on the occasion of a non fatal error it will be
+	reported.
+
+burnMMX
+	Same as burnCPU, but runs the burnMMX code instead.  Errors
+	however may not be directly reported on this version.
+
+crashme
+	Runs the "crashme" program with a random seed.  Logs the seed
+	used so that failures can be reproduced.  Synchronous writes on
+	ext2fs are a must to insure that the seed used is logged (done
+	by newburn by default)
+	crashme always returns OK, you should check the DMESG/SYSLOG
+	tests for any problems here -- problems may lock up the machine.
+
+dac960 [current_status file] [unique_id] [BROKEN_BACKPLANE]
+	Watches a file formatted like the DAC960 driver's current status
+	file in /proc to see if it contains any information about drive
+	resets or errors.  If it does, the test fails and exits,
+	otherwise, it waits again.  The test looks for problems 
+	after a 2 minute snooze, and is intended to be used in a large 
+	test loop.
+
+	Unique ID is for the state information storage.  Primitive, yes, but
+	it works.  Just use a small, unique identifier for each test.
+
+	The presence or absence of BROKEN_BACKPLANE as the third parameter
+	specifies whether you want to have a broken backplane (as on the
+	Intel Koa/VA 4450 Chassis) and ignore under 10 resets.  This
+	is a broken hack and is not enabled by default.
+
+[s]data <device/NFS specification> [maxsize]
+	Finds existing mountpoint for <device/NFS specification> or creates
+	a temporary mountpoint, mounts it if necessary, and performs a
+	read/write file test.  The test writes a file 1/6 of the remaining
+	device freespace or [maxsize], if specified, and reads it
+	back, comparing md5sum checksum results.  The test deletes the
+	temp file afterwards.
+	Adding an 's' to the beginning of the test name indicates the
+	test should sleep for a random length of time (<60 sec) before
+	starting.
+	Setting the environment variable "CERBERUS_FLUSH_BUFFERS" will
+	activate running hdparm -f <device> from time to time, intending
+	to beat more on the hardware. (this check is implemented in
+	bin/flushb).  This is now the default.
+
+[s]destructiveblocktst <device> [blocks]
+	Runs badblocks in the exact manner given for blockrdtst, above,
+	except the destructive mode is enabled.  This means that the test
+	will destroy all data on <device>, but a very thorough pattern-based
+	read/write test will be performed.
+	Adding an 's' to the beginning of the test name indicates the
+	test should sleep for a random length of time (<60 sec) before
+	starting.
+	Setting the environment variable "CERBERUS_FLUSH_BUFFERS" will
+	activate running hdparm -f <device> from time to time, intending
+	to beat more on the hardware. (this check is implemented in
+	bin/flushb).  Currently this causes filesystem corruption.
+
+dmesg [sleepdelay]
+	Runs a dmesg scanner similar in purpose to the messages test.
+	Sleeps 15 seconds or [sleepdelay] after every empty cycle to keep
+	it from occupying too many resources.
+	dmesg returns a success if non-error messages are detected, and
+	returns FAIL otherwise.
+	Note that dmesg-info clears the contents of the ring
+	buffer so that old error messages do not show up during the test.
+
+fastkernel [parallelization] [directory]
+	System kernel compiler very similar to the kernel test.  See that
+	test for usage.  The only difference is that this version only
+	does a single tree copy during initialization.
+
+fcompare <device> <file> <source>
+	Compares [file] on [device] to [source], passes if identical.
+	Automatically mounts [device] somewhere a la the data test.
+	[source] should be an absolute path, i.e. /tmp/myfile not myfile.
+	[file] must be a relative path.  If the file is in the directory
+	"something" on your CD, you should use something/file to get at
+	it.
+
+kernel [parallelization] [directory]
+	System kernel compiler.  Copies the system kernel to
+	[directory] or /tmp/linux and attempts to compile it.  Errors will
+	result if more than one is run in the same directory at a
+	time.  The [parallelization] is given as a number to "make -j"
+	which determines the maximum number of parallel compile
+	processes.  Omitting this will result in a non-parallel build.  If
+	you give a [parallelization] parameter, you may also specify which
+	[directory] the kernel test should build kernels in.  NOTE: The
+	original contents of this directory or file will be forfeit.  The
+	default is /tmp/linux.  The kernel test requires a buildable
+	kernel source tree in /usr/src/linux, to use as a source when
+	copying.  Do not modify the contents of /usr/src/linux while
+	running the test.
+
+ltp [ltpdir]
+	Runs the SGI Linux Test Project tests in a loop.  You need
+	to pass the installed location of the SGI Linux Test Project as
+	a parameter.
+
+memtst -12345 -B -c [ceiling] -f [free_vm] -n [processes] -v
+	Runs the new memory test module. 
+	Pattern Options: -12345i
+		At least one pattern option is required.
+		-1	Larry's 0xaaaaaaaa increment test
+		-2 through 4  Different variations on the Larry test
+		-5	0FA5 test (bit patterns)
+	-c [ceiling]
+		Defines the maximum memory size for testing.  This
+		new version actually will nearly hit this ceiling,
+		so be careful.
+	-f [free_vm]
+		Failsafe mechanism, leave a minimum of free_vm free
+		at all times.
+	-n [processes]
+		memtst will automatically fork with the same options
+		except [processes - 1] and an additional -B to insure 
+		that very large memory machines will work. 
+	-v
+		Verbose mode.  This used to be the default.
+
+messages
+	A simple test that follows /var/log/messages for kernel errors
+	and returns a failure if any occur while the test is
+	running.  This allows us to catch certain types of low level
+	errors that are abstracted away by the kernel.
+
+modem <device>
+	Checks a modem on device <device> using its internal loopback tests.
+
+monitor <timeout> <pattern>
+	Opens a new virtual console, switches to it, and outputs <pattern>
+	to the screen repeatedly, for <timeout> seconds or infinitely
+	if <timeout> = 0.
+
+nbench
+	Runs the BYTE benchmarking suite, including floating point and other
+	exercises.
+	
+printer <timeout> <pattern>
+	Sends <pattern> repeatedly to /dev/lp0.  Terminates after
+	<timeout> seconds or infinitely if <timeout> = 0.  Intended
+	for compliance testing.
+
+sensors
+	First attempt at an lm_sensors test.  It assumes that lm_sensors
+	is already installed and configured on the system, and merely
+	looks for alarms by parsing the output from "sensors".
+
+smart <device> <device> 
+	Runs the S.M.A.R.T. control software to predict problems with hard
+	disks.  Pass it a hard drive device (i.e. sda sdb sdc hda)
+	and it will poll every 12 minutes to check for errors.  Requires
+	the smartmontools from http://smartmontools.sourceforge.net/ .
+
+test1
+test2
+	Tests that wait for a while and return random results.  Used for
+	testing the test control program.
+
+timestamp
+	Sleeps 15 minutes and returns OK.  This is for timing hard
+	crashes.
+
+[s]traverseread <device/NFS specification/directory> [size]
+	Reads every regular file for [size] bytes (rounded up to the nearest
+	8192), traversing subdirectories, on the given 
+	filesystem.  Also does an ls -la on the given directory, or on the
+	root of the filesystem.  If there is an error, exits immediately.  Not
+	guaranteed to work on read/write filesystems.
+
+	An 's' at the beginning indicates that the test is to sleep
+	for up to 300 seconds (determined randomly) before beginning.
+	If [size] is 0, read the whole file.
+[s]wblockrdtst <device> [blocks]
+        Runs a badblocks test on device <device> (give full device filename,
+        /dev/hda for example).  It will use the maximum size of the device
+        or the number of blocks specified, whichever is fewer.  If there is
+        no blocks parameter, the whole disk is tested.  This is a read and 
+        write that will not harm filesystems unless the system crashes in
+	in which you may corrupt your filesystem.  Don't run this on a system
+	you care about.
+
+        Adding an 's' to the beginning of the test name indicates the
+        test should sleep for a random length of time (<60 sec) before
+        starting.
+        Setting the environment variable "CERBERUS_FLUSH_BUFFERS" will
+        activate running hdparm -f <device> from time to time, intending
+        to beat more on the hardware. (this check is implemented in
+        bin/flushb).  Currently this causes filesystem corruption.
+        By default the badblocks process is niced by 5.  This doesn't
+        affect badblocks much, especially when it is running solo, but
+        it does seem to give more CPU time to other CPU intensive
+        programs.
+

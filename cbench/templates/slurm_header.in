@@ -1,0 +1,57 @@
+#!/bin/bash
+#
+############ Cbench slurm_header.in ######################
+#SBATCH -t WALLTIME_HERE
+#SBATCH SLURM_NODESPEC_HERE
+#
+# other attributes you might use but are hidden from slurm processing
+#HIDESBATCH --mpi=openmpi
+#HIDESBATCH -p somepartition
+#HIDESBATCH --comment="some comment"
+#HIDESBATCH --cpus-per-task=<ncpus>
+#HIDESBATCH --constraint=...
+
+# slurm batch environment variables that might be useful...
+#  SLURM_JOB_ID
+#  SLURM_JOB_CPUS_PER_NODE
+#  SLURM_JOB_NODELIST
+#  SLURM_JOB_NUM_NODES
+#  SLURM_TASKS_PER_NODE
+#  MPIRUN_NOALLOCATE
+#  MPIRUN_NOFREE
+#  MPIRUN_PARTITION
+
+# include the common Cbench functions used in job scripts
+. BENCH_TEST_HERE/cbench_functions
+
+# this tells us what type of cbench job this is
+CBENCH_RUN_TYPE=RUN_TYPE_HERE
+
+NODELIST="$SLURM_JOB_NODELIST"
+
+# this tells us details of the Cbench job in the job output
+cbench_echo "Cbench numprocs: NUM_PROCS_HERE"
+cbench_echo "Cbench numnodes: NUM_NODES_HERE"
+cbench_echo "Cbench ppn: NUM_PPN_HERE"
+cbench_echo "Cbench benchmark: BENCHMARK_NAME_HERE"
+cbench_echo "Cbench jobname: JOBNAME_HERE"
+cbench_echo "Cbench testset: TESTSET_NAME_HERE"
+cbench_echo "Cbench joblaunchmethod: JOBLAUNCHMETHOD_HERE"
+cbench_echo "Cbench nodelist: $NODELIST"
+cbench_echo ""
+
+# grab the jobid
+JOBID="$SLURM_JOB_ID"
+
+# dump out some information on the environment the job is running in for
+# posterity
+cbench_echo "======= Slurm Job Environment Info ========"
+# dump some key environmental variables
+env | egrep 'SLURM' | sort | while read tmp
+do
+	cbench_echo "$tmp"
+done
+
+cbench_echo "==========================================="
+cbench_echo ""
+

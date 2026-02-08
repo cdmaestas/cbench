@@ -1,0 +1,4 @@
+#!/bin/bash
+files="$*"
+renice -20 $$
+tail -n 0 -f $files

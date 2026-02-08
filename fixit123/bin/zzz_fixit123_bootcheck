@@ -1,0 +1,219 @@
+#!/bin/sh
+# zbootcheck: This script will run certain node checks on startup
+# chkconfig: 345 99 99
+# description: zzz_fixit123 bootcheck is a component of fixit123
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+# Source the library functions
+. /etc/rc.d/init.d/functions
+
+# ass/u/me a profile script has been sourced, else try it, else try other things
+if [ -z $FIXIT123_HOME ]; then
+	if [ -f /etc/profile.d/fixit123.sh ]; then
+		. /etc/profile.d/fixit123.sh
+	elif [ ! -z $FIXIT123_CONF ]; then
+		. $FIXIT123_CONF
+	elif [ -f /etc/sysconfig/fixit123 ]; then
+		. /etc/sysconfig/fixit123
+	else
+		echo -n "BOOTCHECK FAILURE on `hostname`:"
+		logger "BOOTCHECK FAILURE on `hostname`: fixit123 configuration does not exist!" 
+		echo_failure
+		echo
+		exit 1
+	fi
+fi
+
+offline_cmd() {
+	env | grep FIXIT123_OFFLINE_CMD > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		logger "BOOTCHECK FAILURE on `hostname`: fixit123 offline command not defined!" 
+		echo_failure
+	fi
+	$FIXIT123_OFFLINE_CMD `hostname`
+	
+}
+
+if [ -z $FIXIT123_HOME ]; then
+	logger "BOOTCHECK FAILURE on `hostname`: fixit123 not defined!" 
+	offline_cmd
+fi
+
+# log file names
+FIXIT123_bootcheck_LOG=$FIXIT123_LOGDIR/fixit123_bootcheck.log
+FIXIT123_bootcheck_failure_LOG=$FIXIT123_LOGDIR/fixit123_bootcheck_failure.log
+
+
+prog=`basename $0`
+RETVAL=0
+start() {
+	echo -n "Starting $prog: "
+
+$FIXIT123_HOME/bin/run_bootcheck > $FIXIT123_bootcheck_LOG 2>&1
+grep FAILED $FIXIT123_bootcheck_LOG > $FIXIT123_bootcheck_failure_LOG 2>&1
+
+if [ `wc -l $FIXIT123_bootcheck_failure_LOG | awk '{print $1}'` -gt 0 ]; then
+	RETVAL=1
+	logger "BOOTCHECK FAILURE on `hostname`: see $FIXIT123_bootcheck_failure_LOG"
+	offline_cmd
+else
+	logger "BOOTCHECK OK on `hostname`"
+	RETVAL=0
+fi
+	if [ $RETVAL -eq 0 ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+	echo
+}
+
+
+stop() {
+	# cleanup log files
+	echo -n $"Shutting down $prog: "
+	rm -f $FIXIT123_bootcheck_LOG $FIXIT123_bootcheck_failure_LOG  > /dev/null 2>&1
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]; then
+		echo_success
+	else
+		logger "BOOTCHECK FAILURE on `hostname`: STOP cannot clean up log files!" 
+		echo_failure
+	fi
+	echo
+}
+
+status() {
+	if [ -f $FIXIT123_bootcheck_LOG -a -f $FIXIT123_bootcheck_failure_LOG ]; then
+		echo -n "$prog has run and: "
+		if [ `wc -l $FIXIT123_bootcheck_failure_LOG | awk '{print $1}'` -gt 0 ]; then
+			echo_failure
+		else
+			echo_success
+		fi
+		echo
+	else
+		echo "$0 has NOT run"
+	fi
+}
+
+#
+# check for stale log data, and update if necessary
+#
+condrestart() {
+	if [ ! -f $FIXIT123_bootcheck_LOG ]; then
+		/sbin/chkconfig $prog on
+		start
+	else
+set -ex
+		CMP_FILE=`/bin/mktemp`
+		date +"%b%e %R" > $CMP_FILE
+		ls -l $FIXIT123_bootcheck_LOG | awk '{print $6,$7,$8}' >> $CMP_FILE
+		cat $CMP_FILE 
+uniq $CMP_FILE -s 6 | cut -f2 -d':' 
+		# check month
+		if [ `uniq -d $CMP_FILE -w 3 -c | wc -l` -ne 0 ]; then
+			# check date
+			if [ `uniq -d $CMP_FILE -w 6 -c | wc -l` -ne 0 ]; then
+				# check the hour
+				if [ `uniq -d $CMP_FILE -s 6 | cut -f1 -d':' | wc -l` -ne 0 ]; then
+					echo "check the minutes ... > 10"
+				else
+					echo start
+				fi
+			else
+				echo start
+			fi
+		else
+			echo start
+		fi
+		#if [ `uniq -d $CMP_FILE -w 3 -c | awk '{print $1}'` -
+	if [ $? -eq 0 ]; then
+		echo start
+	else
+		echo_success
+	fi
+#	echo_failure
+#	start
+	fi
+}
+
+
+showfailure() {
+	if [ -f $FIXIT123_bootcheck_failure_LOG ]; then
+		cat $FIXIT123_bootcheck_failure_LOG
+	else
+		echo "$FIXIT123_bootcheck_failure_LOG does not exist!  $prog perhaps needs to run?"
+	fi
+}
+
+showfailurestate() {
+	echo -n "$prog sees FAILURE and STATE in: "
+	if [ `wc -l $FIXIT123_bootcheck_failure_LOG | awk '{print $1}'` -gt 0 ]; then
+		$FIXIT123_CHECKSTATE_CMD  | grep STEP | grep -w `hostname`  > /dev/null 2>&1
+		RETVAL=$?
+		if [ $RETVAL -eq 0 ]; then
+			$FIXIT123_CHECKSTATE_CMD  | grep STEP | grep -w `hostname` | awk '{print $3}'
+		else
+			echo "NO STEP123 STATE!" 
+		fi
+	fi
+}
+
+# See how we were called.
+case "$1" in
+    start)
+	start
+	;;
+    stop)
+	stop
+	;;
+    restart|reload)
+	stop
+	start
+	RETVAL=$?
+	;;
+    condrestart)
+	condrestart
+	;;
+    status)
+	status $prog
+	RETVAL=$?
+	;;
+    chkconfigon)
+	/sbin/chkconfig $prog on
+	;;
+    showfailure)
+	showfailure
+	;;
+    showfailurestate)
+	showfailurestate
+	;;
+    *)
+	echo $"Usage: $0 {start|stop|restart|condrestart|status|showfailure|showfailurestate}"
+	exit 1
+esac
+
+exit $RETVAL
+

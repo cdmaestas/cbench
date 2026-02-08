@@ -1,0 +1,11 @@
+--- src/makefile.orig	2011-03-18 16:52:56.801489004 -0600
++++ src/makefile	2011-03-18 16:53:06.480983772 -0600
+@@ -25,7 +25,7 @@
+ CXX		= g++
+ CXXOPTS		= -Wfloat-equal -Wpointer-arith  -DATI_OS_LINUX -g3 -ffor-scope -O3 -march=barcelona -ftree-vectorize -msse3 -fkeep-inline-functions -fweb -frename-registers -minline-all-stringops -funit-at-a-time -mfpmath=sse -ftracer -finline-limit=1200 -fpeel-loops
+ #CXXOPTS		= -Wfloat-equal -Wpointer-arith  -DATI_OS_LINUX -O0 -ggdb -D_NO_AMD_CPU
+-LIBS		= -lpthread -ldl -L/usr/X11R6/lib -laticalrt -laticalcl -lgfortran ../GotoBLAS2/libgoto2.a
++LIBS		= -lpthread -ldl -L/usr/X11R6/lib -laticalrt -laticalcl -lgfortran ../GotoBLAS2/libgoto2.a -lrt
+ 
+ INCLUDE		= -I ../GotoBLAS2 -I $(ATISTREAMSDKROOT)/include
+ 

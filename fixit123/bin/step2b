@@ -1,0 +1,134 @@
+#!/bin/bash
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+#set -x
+
+# check for what profile script gives us
+if [ -z FIXIT123_HOME ]; then
+    echo "FAILURE  FIXIT123_HOME variable not defined!"
+    exit 1
+fi
+
+if [ -z $1 ]; then
+	echo "USAGE:  $0 <nodename>"
+	echo "e.g.    $0 an450"
+	exit 1
+fi
+
+BINDIR=$FIXIT123_HOME/bin
+LOGDIR=$FIXIT123_DB_HOME
+MAINLOG=$LOGDIR/breakfix.log
+STEP2BLOG=$LOGDIR/step2b/$1.log
+HWTDIR=$FIXIT123_CBENCHTEST/nodehwtest
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+check_for_step2_pausefile
+
+# need to be on a login node with /scratch3 mounted
+#/bin/hostname | grep login > /dev/null
+#if [ $? -eq 1 ]; then
+#	echo "ERROR: Need to run $0 from a login node with appropriate mounts"
+#	exit 1
+#fi
+cat /proc/mounts | grep "$FIXIT123_CHECKMOUNT_REGEX" > /dev/null
+if [ $? -eq 1 ]; then
+	echo "ERROR: Need to run $0 from a login node with appropriate mounts"
+	exit 1
+fi
+
+# we want to make sure that step2a was the last event on the node so
+# we try to prevent the case where step2b runs multiple times on the
+# same step2a data
+TEMP=`mktemp`
+$BINDIR/query_breakfix_data --node $1 > $TEMP
+grep -P "STEP2B requires manual review" $TEMP
+if [ $? -eq 0 -a "$2" != "force" ]; then
+	echo "Looks like STEP2A needs to be run or rerun"
+	exit 1
+fi
+
+#
+# analyze results
+#
+
+# have cbench nodehwtest output parser parse results for the node and 
+# compare with the cluster_target_values
+TEMP2=`mktemp`
+$BINDIR/run_outputparse_for_step2a $1 | sed 's/\o033\[0m//g' > $TEMP
+grep -q "Could not open" $TEMP 
+if [ $? -eq 0 ]; then
+	MSG="NODE $1 => STEP2B FAILED, could not open cluster_target_values file" 
+	steplogentry "$MSG" $MAINLOG
+	exit 1
+fi
+# make sure we actually looked at some data
+grep -P "Parsing .*$1" $TEMP
+if [ $? -eq 1 ]; then
+    echo "Looks like STEP2A has not been run yet"
+	exit 1
+fi
+
+# further refine the cbench report to look for data points more clearly out
+# of range
+$BINDIR/nodehwtest_report $TEMP > $TEMP2
+
+# make sure we can write to the step2b logfile
+TMPDIR=`dirname $STEP2BLOG`
+mkdir -p $TMPDIR
+chown $FIXIT123_USER.$FIXIT123_USER $TMPDIR
+touch $STEP2BLOG
+chown $FIXIT123_USER.$FIXIT123_USER $STEP2BLOG
+chmod ug+w $STEP2BLOG
+
+echo "====== Cbench nodehwtest_output_parse output ==============" >> $STEP2BLOG 
+date >> $STEP2BLOG
+cat $TEMP >> $STEP2BLOG
+echo "====== Cbench nodehwtest report output ==============" >> $STEP2BLOG
+cat $TEMP2 >> $STEP2BLOG
+echo "=====================================================================" >> $STEP2BLOG
+echo "" >> $STEP2BLOG
+echo "" >> $STEP2BLOG
+echo "" >> $STEP2BLOG
+
+grep -i -P 'fail' $TEMP 
+if [ $? -ne 1 ]; then
+	MSG="NODE $1 => STEP2B FAILED, see $STEP2BLOG for details"
+	steplogentry "$MSG" $MAINLOG
+	cat $TEMP2
+	exit 1
+fi
+
+NUM=`wc -l $TEMP2 | cut -f1 -d' '`
+if [ "$NUM" -gt 0 ]; then
+	MSG="NODE $1 => STEP2B requires manual review, see $STEP2BLOG for details"
+    steplogentry "$MSG" $MAINLOG
+	exit 1
+else
+	MSG="NODE $1 => STEP2B PASSED, READY for STEP3A"
+    steplogentry "$MSG" $MAINLOG
+fi
+
+/bin/rm -f $TEMP $TEMP2

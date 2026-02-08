@@ -1,0 +1,135 @@
+#!/bin/bash
+#set -ex
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+# vim: syntax=sh tabstop=4
+
+#. /projects/contrib/fixit/fixit-env.sh
+
+if [ -z $FIXIT123_HOME ]; then
+	logger "$0: FIXIT123 config environment variables not found!"
+	echo "$0: FIXIT123 config environment variables not found!"
+	exit 1
+fi
+
+# do any common nodecheck framework init work
+. $FIXIT123_HOME/libexec/nodechecks/common_functions
+nodecheck_init
+
+. $FIXIT123_HOME/libexec/nodechecks/panfs_functions
+. $FIXIT123_HOME/libexec/nodechecks/lustrefs_functions
+. $FIXIT123_HOME/libexec/nodechecks/os_functions
+. $FIXIT123_HOME/libexec/nodechecks/hp_functions
+. $FIXIT123_HOME/libexec/nodechecks/myrinet_functions
+
+if [ -f /etc/sysconfig/cap ]; then
+	. /etc/sysconfig/cap
+else
+	logger "$0: Please define the role of this node"
+	exit 1
+fi
+
+WANT_REBOOT=0;
+
+# check link speed right off the bat
+check_eth_link_speed eth0 1000Mb/s
+
+# HP PSP checks
+psp_check_install
+if [ $? -eq 0 ]; then
+	HP_PSP_OK=1
+	psp_start_services
+	
+	psp_check_bios_version "02/14/2006" P52 dl360g4
+	if [ $? -ne 0 ]; then
+		#failed
+		psp_update_bios_firmware "02/14/2006" P52 dl360g4
+	fi
+	psp_check_ilo_version 1.89
+	if [ $? -ne 0 ]; then
+		#failed
+		psp_update_ilo_firmware 1.89
+	fi
+	psp_check_storage_version 2.76 SMART6I
+	if [ $? -ne 0 ]; then
+		#failed
+		psp_update_storage_firmware 2.76 SMART6I
+	fi
+	psp_check_bios_settings /projects/global/src/svn/capvc/trunk/biosconf/dl360g4_bios.dat
+	if [ $? -ne 0 ]; then
+		#failed
+		psp_update_bios_settings /projects/global/src/svn/capvc/trunk/biosconf/dl360g4_bios.dat
+	fi
+	psp_update_ilo_admin_passwd Administrator
+	psp_check_ilo_settings
+	if [ $? -ne 0 ]; then
+		#failed
+		psp_update_ilo_settings /projects/global/src/svn/capvc/trunk/biosconf/dl360g4_ilo.dat.in
+	fi
+
+	# do the NIC checking last since if we updated it is tricky and the easiest
+	# case is to just reboot..
+	psp_check_nic_version 3.26
+	if [ $? -ne 0 ]; then
+		#failed
+		psp_update_nic_firmware 3.26
+	fi
+else 
+	HP_PSP_OK=0
+	psp_install
+fi
+
+
+
+if [ $CAPROLE = "worker" ]; then
+	check_kernel_version 2.6.9-55.0.9.EL_lustre.1.4.11.1smp
+	if [ $? -ne 0 ]; then
+		#failed
+		updated_kernel_version 2.6.9-55.0.9.EL_lustre.1.4.11.1smp
+	fi
+	check_for_mount /home
+	check_for_mount /projects
+	check_dir_sanity /var
+	check_dir_sanity /var/spool/pbs
+	check_dir_sanity /tmp
+	#check_panfs_software 2.3.8.a panfs-2.6.9-42.0.8.EL_lustre.1.4.10-mp-2.3.8.a-202058.20
+	#check_panfs_software 2.3.8.a panfs-2.6.9-42.0.10.EL_lustre.1.4.10-mp-2.3.8.a-202058.20
+	#check_num_of_panfs_mounts 1
+	#check_panfs_mount_option
+	#check_for_mount /gscratch3
+	check_for_mount /scratch1
+	#check_for_mount /scratch3_old
+	check_sysctl
+
+	check_for_myrinet_card
+	check_for_myrinet_mx_driver
+	check_myrinet_mx_state
+
+elif [ $CAPROLE != "worker" ]; then
+	check_kernel_version 2.6.9-42.ELsmp
+fi
+echo
+
+[ $HP_PSP_OK -eq 1 ] && psp_stop_services
+
+# do any common cleanup, shutdown, post fixit stuff
+nodecheck_finalize

@@ -1,0 +1,59 @@
+--- hpl-new-asyougo/testing/ptest/HPL_pddriver.c-orig	2005-05-11 16:48:24.947837210 -0600
++++ hpl-new-asyougo/testing/ptest/HPL_pddriver.c	2005-05-11 16:49:37.273122041 -0600
+@@ -49,6 +49,15 @@
+  */
+ #include "hpl.h"
+ 
++// Make use of DGEMM workspace
++
++#ifdef _GLOBAL_DGEMM_WORKSPACE
++// #define DGEMM_LWORK 240000  
++   #define DGEMM_LWORK 4604*1024
++   int DGEMM_LWORK_GLOBAL = DGEMM_LWORK;
++   double *DGEMM_WORK_GLOBAL = NULL;
++#endif
++
+ #ifdef STDC_HEADERS
+ int main
+ (
+@@ -152,6 +161,17 @@ int main( ARGC, ARGV )
+                &ntps, topval, &ndhs, ndhval, &fswap, &tswap, &L1notran,
+                &Unotran, &equil, &align );
+ 
++#ifdef _GLOBAL_DGEMM_WORKSPACE
++   if ( rank == 0 ) fprintf(stdout,"\nDGEMM_LWORK=%6d\n", DGEMM_LWORK_GLOBAL );
++   DGEMM_WORK_GLOBAL = (double *) malloc( DGEMM_LWORK * sizeof( double ) );
++/*
++   DGEMM_WORK_GLOBAL = (double *) malloc( DGEMM_LWORK * omp_get_max_threads() * sizeof( double ) );
++*/
++   if ( DGEMM_WORK_GLOBAL == NULL ) fprintf(stderr,"Malloc failed\n");
++   else if ( rank == 0 ) fprintf(stdout,"Malloc finished\n"); 
++   fflush(stderr);
++   fflush(NULL);
++#endif
+ #ifdef HPL_DETAILED_TIMING
+    if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with HPL_DETAILED_TIMING\n");
+ #endif
+@@ -170,6 +190,9 @@ int main( ARGC, ARGV )
+ #ifdef ENDEARLY
+    if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with ENDEARLY\n");
+ #endif
++#ifdef _GLOBAL_DGEMM_WORKSPACE
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with _GLOBAL_DGEMM_WORKSPACE\n");
++#endif
+ 
+ /*
+  * Loop over different process grids - Define process grid. Go to bottom
+@@ -256,6 +279,12 @@ label_end_of_npqs: ;
+ /*
+  * Print ending messages, close output file, exit.
+  */
++
++#ifdef _GLOBAL_DGEMM_WORKSPACE
++   fflush(NULL);
++   if ( DGEMM_WORK_GLOBAL ) free( (void*) DGEMM_WORK_GLOBAL );
++#endif
++
+    if( rank == 0 )
+    {
+       test.ktest = test.kpass + test.kfail + test.kskip;

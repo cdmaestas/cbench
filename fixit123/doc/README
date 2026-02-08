@@ -1,0 +1,45 @@
+= Fixit 123 =
+
+Node breakfix processes vary widely and can miss necessary repairing, 
+checking and testing in production environments.  The three step fixit 
+framework adds scriptable functions and leverages cbench to qualify 
+"production" nodes.  Step1 is entered when a node functions incorrectly 
+either due to hardware/firmware/software problems.  Node hardware is serviced,
+vendor diagnostics are run and various firmware/software versions are 
+checked/set to correct versions.  Step2 uses the cbench node level testset 
+that stress individual components and determine if results are within 
+acceptable bounds.  Step3 requires at least 2 nodes and runs cbench testsets 
+across communication/interconnect networks.
+
+Step1 and Step2 states can be run during bootup processes and check for 
+firmware/driver versions as well as run a minimal node level test.  Failure 
+results in an "offlined" node.  The fixit framework is used on 4000+ node 
+systems and integrated into scheduling environments.  Node breakfix can be 
+addressed in three easy steps, just "fixit!" 
+
+STEP1: protected from users (via reservation or some other manner), all ports down, hardware work can be done, run bootcheck
+STEP2: passed bootcheck, use a scheduled method to run cbench nodehwtest test sets
+		step2a: run job
+		step2b: check results
+STEP3: passed nodehwtest test, use a scheduled method to run cbench mpi test sets
+		step3a: run job
+		step3b: check results
+
+=== old ===
+Node breakfix processes can vary and easily miss the necessary checking, reparing and testing that arise in normal operations.  The fixit framework builds upon the cbench toolset to aid in node hardware qualifcation.  There are three node states before returning to prodcution.  Step1 is the state a node enters when a node functions incorrectly either due to hardware, firmware or driver problems.  At this stage the node can be services by hardware technicians, server level diagnostics can be run (e.g. smart start or dell diags) and its firmware and software versions are checked and fixed to the proper state.  Typical checks and fixes include BIOS and os filesystem drivers.  Step2 uses the node level testing framework withing cbench to run an exhastive test suite that stress cpu, cpucache, memory, localdisk if present, hca loopback testing and determine if the node performs withing the standard deviation of what is acceptable.  Step3 requires at least 2 nodes and runs  testing across varying communication and interconnect networks.  At this level the primary focus is on how a node interoperates with others.  
+
+
+Step1 and Step2 can also be implemented in a boot process of a node.  Step1 checks and updates firmware and drivers during and a subset of step2 node level testing can be run on the initial boot.  Should Step 1 or Step2 indicate any errors, the node would not enter any production state.  This framework is being used on 4000+ node systems and has been easy to integrate into Maui/Torque scheduling environments.
+
+
+Node failure can be addressed in three easy steps, just "fixit!"
+
+=== old stuff ===
+
+Breakfix process - cashmont
+
+    * 3 steps
+    * nodecehcks
+    * node integrity
+          o check vs. update 
+S

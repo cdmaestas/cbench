@@ -1,0 +1,154 @@
+#!/bin/bash
+#
+#
+#PBS -l nodes=TORQUE_NODESPEC_HERE
+#PBS -l walltime=WALLTIME_HERE
+#PBS -q step3
+
+# this tells us details of the Cbench job in the job output
+echo "STEP3A numnodes: NUM_NODES_HERE"
+echo "STEP3A ident: IDENT_HERE"
+echo "STEP3A logfile: LOGFILE_HERE"
+echo ""
+
+IDENT=IDENT_HERE
+NUMNODES=NUM_NODES_HERE
+#FIXME: this is a 2ppn only construct.... needs to be multippn dynamic
+NUMPROCS=`expr $NUMNODES + $NUMNODES`
+MAINLOG=BREAKFIX_LOG_HERE
+STEP3LOG=LOGFILE_HERE
+
+# get setup with the right FIXIT123 environment
+. FIXIT123_CONF_HERE
+. $FIXIT123_HOME/etc/profile.d/fixit123.sh
+if [ $? -eq 1 ]; then
+	# we have trouble... can't depend on our config vars at this point
+	echo "FATAL ERROR: cannot source fixit123.sh profile script"
+	exit 1
+fi
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+# setup Cbench environment variables based on FIXIT123 setup
+. $FIXIT123_CBENCHTEST/cbench-init.sh
+
+COMMON_STARTJOBS_OPTS=""
+
+steplogentry "STEP3A testing STARTED, jobid $PBS_JOBID" $STEP3LOG
+
+# record breakfix log entries for the nodes we'll be testing
+for node in `cat $PBS_NODEFILE`; do
+	steplogentry "NODE $node => STEP3A testing STARTED, jobid $PBS_JOBID" $MAINLOG
+done
+sync
+
+run_cmd()
+{
+	$@
+}
+
+
+find_linpack_numnodes()
+{
+	local orignodes=$1
+    
+    iter=`expr $orignodes / 4`
+    for ((i=1; i<=$iter; i++)); do
+    	local trynodes=`expr $orignodes - $i`
+        $CBENCHOME/tools/find_p_q.pl -n $trynodes | grep DECENT
+        if [ $? -eq 0 ]; then
+			echo "$trynodes passed PQ decency test"
+        	return $trynodes
+		else
+			echo "$trynodes failed PQ decency test"
+        fi
+    done
+    
+    return 0
+}
+
+do_npb_testset()
+{
+	local testset=$1
+    local use2ppn=$2
+    local nodes=$NUMNODES
+    local procs=$NUMPROCS
+    
+    pushd $CBENCHTEST/$testset
+    
+	# need to find the power of 2 and perfect square <= to $nodes and $procs
+    local pof2=`$CBENCHOME/tools/find_npb_numprocs.pl -n $nodes | grep "two" | cut -f2 -d'='`
+    local pof2_2ppn=`$CBENCHOME/tools/find_npb_numprocs.pl -n $procs | grep "two" | cut -f2 -d'='`
+    local square=`$CBENCHOME/tools/find_npb_numprocs.pl -n $nodes | grep "square" | cut -f2 -d'='`
+    local square_2ppn=`$CBENCHOME/tools/find_npb_numprocs.pl -n $procs | grep "square" | cut -f2 -d'='`
+	steplogentry "$testset params: pof2=$pof2 pof2_2ppn=$pof2_2ppn square=$square square_2ppn=$square_2ppn" $STEP3LOG
+    
+    steplogentry "Generating jobs in Cbench testset $testset" $STEP3LOG
+    ./"$testset"_gen_jobs.pl --ident $IDENT --runsizes $pof2,$pof2_2ppn
+    ./"$testset"_gen_jobs.pl --ident $IDENT --runsizes $square,$square_2ppn
+    if [ "$use2ppn" == '1ppn' -o "$use2ppn" == 'all' ]; then
+		steplogentry "Running 1ppn jobs in Cbench testset $testset" $STEP3LOG
+		run_cmd ./"$testset"_start_jobs.pl $COMMON_STARTJOBS_OPTS --ident $IDENT --interactive --match 1ppn --procs $pof2
+		run_cmd ./"$testset"_start_jobs.pl $COMMON_STARTJOBS_OPTS --ident $IDENT --interactive --match 1ppn --procs $square
+	fi
+    if [ "$use2ppn" == '2ppn' -o "$use2ppn" == 'all' ]; then
+        steplogentry "Running 2ppn jobs in Cbench testset $testset" $STEP3LOG
+        run_cmd ./"$testset"_start_jobs.pl $COMMON_STARTJOBS_OPTS --ident $IDENT --interactive --match 2ppn --procs $pof2_2ppn
+        run_cmd ./"$testset"_start_jobs.pl $COMMON_STARTJOBS_OPTS --ident $IDENT --interactive --match 2ppn --procs $square_2ppn
+    fi    
+    
+    popd
+}
+
+
+do_cbench_testset()
+{
+	local testset=$1
+    local use2ppn=$2
+    local nodes=$NUMNODES
+    local procs=$NUMPROCS
+    
+    pushd $CBENCHTEST/$testset
+    
+    # HPCC/Linpack require special handling
+    if [ "$testset" == 'hpcc' -o "$testset" == 'linpack' ]; then
+    	$CBENCHOME/tools/find_p_q.pl -n $NUMNODES | grep DECENT
+        if [ $? -eq 1 ]; then
+        	find_linpack_numnodes $NUMNODES
+            nodes=$?
+            steplogentry "Using $nodes procs for $testset" $STEP3LOG
+        fi
+    fi
+    
+    steplogentry "Generating jobs in Cbench testset $testset" $STEP3LOG
+    ./"$testset"_gen_jobs.pl --ident $IDENT --runsizes $nodes,$procs
+	steplogentry "Running 1ppn, $nodes proc jobs in Cbench testset $testset" $STEP3LOG
+    run_cmd ./"$testset"_start_jobs.pl $COMMON_STARTJOBS_OPTS --ident $IDENT --interactive --match 1ppn --procs $nodes
+    if [ "$use2ppn" == 'yes' ]; then
+        steplogentry "Running 2ppn, $procs proc jobs in Cbench testset $testset" $STEP3LOG
+        run_cmd ./"$testset"_start_jobs.pl $COMMON_STARTJOBS_OPTS --ident $IDENT --interactive --match 2ppn --procs $procs
+    fi    
+    
+    popd
+}
+
+# run several Cbench test sets 
+do_cbench_testset mpioverhead yes
+do_cbench_testset mpisanity yes
+do_cbench_testset latency yes
+do_cbench_testset bandwidth yes
+do_cbench_testset rotate yes
+do_cbench_testset collective yes
+do_cbench_testset longstress no
+do_npb_testset npb 2ppn
+do_cbench_testset linpack yes
+do_cbench_testset hpcc yes
+
+
+steplogentry "STEP3A testing FINISHED, jobid $PBS_JOBID" $STEP3LOG
+
+# record breakfix log entries for the nodes we'll be testing
+for node in `cat $PBS_NODEFILE`; do
+	steplogentry "NODE $node => STEP3A testing FINISHED, jobid $PBS_JOBID" $MAINLOG
+done
+sync

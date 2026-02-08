@@ -1,0 +1,17 @@
+
+= HOWTO Check out Cbench =
+[wiki:doc/CbenchDocumentation Back to top-level of Documentation]
+
+[wiki:doc/HOWTO-QuickInstall_1.2 Back to HOWTO Quick Install 1.2 Page]
+
+''Last updated 22 May 2009''
+
+ 1. Make sure you have subversion installed
+ 2. Make subversion is set up properly for your proxy setup
+ 3. Do this:
+{{{
+~ $ svn checkout https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench
+}}}
+
+and watch as your checkout of the Cbench source tree magically appears.
+ 	  	 

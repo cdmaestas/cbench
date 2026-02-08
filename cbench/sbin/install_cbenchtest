@@ -1,0 +1,361 @@
+#!/usr/bin/perl
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+# vim: syntax=perl tabstop=4
+
+# Generic script to deal with all CBench testing tree install duties
+
+
+# need to know where everything cbench lives!
+BEGIN {
+	die "Please define CBENCHOME!\n" if !defined($ENV{CBENCHOME});
+}
+use lib $ENV{CBENCHOME};
+require "cbench.pl";
+$CBENCHOME = $BENCH_HOME = $ENV{CBENCHOME};
+
+our $bindir = 'bin';
+
+use Getopt::Long;
+use Data::Dumper;
+
+my $force = 0;
+
+GetOptions(
+	'testset=s' => \$testset,	
+	'testtop|top' => \$testtop,	
+	'allsets' => \$allsets,
+	'force' => \$force,
+	'bindir=s' => \$bindir,
+	'addon' => \$doaddon,
+	'onlyaddon' => \$onlyaddon,
+	'debug=i' => \$DEBUG,
+	'help' => \$help,
+);
+
+if (defined $help) {
+	usage();
+	exit;
+};
+
+(!defined $testtop and !defined $testset and !defined $allsets) and do {
+	print "--testtop or --testset or --allsets paramter is required\n";
+	usage();
+	exit 1;
+};
+
+# add any Cbench addon perllib areas into our Perl include path
+my $addon = get_cbench_addon();
+if (defined $addon) {
+	# add this to the Perl lib path
+	unshift @INC, "$addon/perllib";
+}
+eval "require 'install.pl'";
+#require "install.pl";
+
+
+# this hash defines files that need to be installed into various
+# testsets that are atypical, i.e. non generic
+#
+# symlink - relative symlink to Cbenchtest tree into testset directory
+# rsync - rsync from CBENCHOME into CBENCHTEST tree relative path
+# rsyncaddon - rsync from CBENCHADDON into CBENCHTEST tree relative path
+%special_testset_files = (
+	'linpack' => {
+		'symlink' => [
+			"templates/xhpl_dat.in",
+		],
+	},
+        'linpack2' => {
+                'symlink' => [
+                        "templates/xhpl_dat.in",
+                ],
+        },
+	'hpcc' => {
+		'symlink' => [
+			"templates/hpccinf_txt.in",
+		],
+
+	},
+	'nodehwtest' => {
+		'symlink' => [
+			"tools/node_hw_test",
+			"templates/xhpl_dat.in",
+			"templates/hpccinf_txt.in",
+		],
+		'rsync' => {
+			"opensource/NPB/bin/" => "$bindir/npb/",
+		},
+	},
+	'npb' => {
+		'rsync' => {
+			"opensource/NPB/bin/" => "$bindir/npb/",
+		},
+	},
+	'shakedown' => {
+		'symlink' => [
+			"templates/xhpl_dat.in",
+		],
+	},
+	'lammps' => {
+		'rsync' => {
+                        "openapps/lammps/bench/" => "lammps/bench/",
+		},
+	},
+	'amg' => {
+		'rsync' => {
+                        "openapps/amg/src/test/sstruct.in.AMG.FD" => "amg/",
+		},
+	},
+	'irs' => {
+		'rsync' => {
+                        "openapps/irs/decks/" => "irs/decks/",
+		},
+	},
+        'sweep3d' => {
+                'rsync' => {
+                        "openapps/sweep3d/input_files/" => "sweep3d/input_files/",
+                },
+        },
+        'sppm' => {
+                'rsync' => {
+                        "openapps/sppm/inputdeck.cbench" => "sppm/",
+                },
+        },
+);
+
+# get the testing tree location
+$CBENCHTEST = $bench_test = get_bench_test();
+
+# if Cbench addon is found, setup to process them for install work
+if (defined $addon and (defined $doaddon or defined $onlyaddon)) {
+	debug_print(2,"DEBUG: setting up for Cbench addon $addon");
+	foreach my $k (keys %addon_testset_files) {
+		$special_testset_files{$k} = $addon_testset_files{$k};
+	}
+	$core_testsets .= " $addon_testsets";
+}
+#print Dumper (%special_testset_files);
+
+# check for the existence of the testing tree
+if ( ! -d "$bench_test" ) {
+	warning_print("Didn't find CBENCHTEST tree, will create it...");
+	$testtop = 1;
+}
+
+# install the top of the Cbench testing tree if this has been requested
+# one way or another
+if (defined $testtop) {
+	system("mkdir -m 0750 -p $bench_test");
+
+	print "Installing core files to the Cbench testing tree ($bench_test)...\n";
+
+	# setup the list of things to install into the top of the cbench test tree and do it
+	my @files = (
+		"cbench.pl",
+		"perllib",
+		"sbin/start_jobs.pl",
+		"sbin/gen_jobs.pl",
+		"templates/cbench_functions",
+	);
+
+	# only sync cluster.def if is the first time
+	if (! -f "$bench_test/cluster.def") {
+		push (@files, "cluster.def");
+	} else {
+		system ("diff -aurN $CBENCHOME/cluster.def $bench_test/cluster.def > $bench_test/cluster.def.patch");
+		print "  The diff of cluster.def is in $bench_test/cluster.def.patch\n";
+		sleep 2;
+	}
+	print "  Syncing files in $bench_test...\n";
+	rsync_filelist(\@files,$CBENCHOME,$bench_test);
+
+	# stuff to sync to CBENCHTEST/sbin
+	print "  Syncing files in $bench_test/sbin...\n";
+	@files = ("sbin/get_*");
+	rsync_filelist(\@files,$CBENCHOME,"$bench_test/sbin");
+	@files = (
+		"sbin/dbuck",
+		"sbin/hostgrep",
+		"sbin/hostlist",
+		"sbin/hostlist.py",
+		"sbin/pshbak",
+	);
+	rsync_filelist(\@files,$CBENCHOME,"$bench_test/sbin");
+
+	# sync all of tools to CBENCHTEST/tools
+	print "  Syncing files in $bench_test/tools...\n";
+	@files = ("tools/*");
+	rsync_filelist(\@files,$CBENCHOME,"$bench_test/tools");
+
+	# sync all of tools to CBENCHTEST/templates
+	print "  Syncing files in $bench_test/templates...\n";
+	@files = ("templates/*");
+	rsync_filelist(\@files,$CBENCHOME,"$bench_test/templates");
+
+	# create init files that can be sourced
+	print "  Writing $bench_test/cbench-init.{sh.csh}...\n";
+	my $cbinitfile="$bench_test/cbench-init";
+	open (CBINIT, ">$cbinitfile.sh") or die "Can't create CBENCH INIT FILE $cbinitfile.sh $!";
+	print CBINIT "#!/bin/sh
+CBENCHOME=$bench_test
+CBENCHTEST=\$CBENCHOME
+export CBENCHOME
+export CBENCHTEST\n";
+	close (CBINIT);
+	open (CBINIT, ">$cbinitfile.csh") or die "Can't create CBENCH INIT FILE $cbinitfile.sh $!";
+	print CBINIT "#!/bin/csh
+setenv CBENCHOME $bench_test
+setenv CBENCHTEST \$CBENCHOME
+	\n";
+	close (CBINIT);
+}
+
+if (defined $doaddon or defined $onlyaddon) {
+	# sync all of tools to CBENCHTEST/templates
+	print "  Syncing files in $addon/{templates,perllib}...\n";
+	@files = (
+		"templates",
+		"perllib",
+	);
+	rsync_filelist(\@files,$addon,"$bench_test");
+}
+
+# could be a list of testset names so we treat it as an array
+my @testset_list = split(',',$testset);
+(defined $allsets) and @testset_list = split(' ',$core_testsets);
+(defined $allsets and defined $onlyaddon) and @testset_list = split(' ',$addon_testsets);
+debug_print(1,"DEBUG: list of testsets: ". join(' ',@testset_list));
+
+foreach my $set (@testset_list) {
+	my $skel = 0;
+	# do we know about this testset?
+	($core_testsets !~ /$set/) and ($skel = 1 and $skel_mode = 'skeleton mode');
+
+	print "Installing files for the ".uc($set)." testset...$skel_mode\n";
+	$testset_path = "$bench_test/$set";
+	debug_print(1,"DEBUG: testset_path: $testset_path");
+
+	# build the directory tree
+	mk_test_dir($set,$bench_test);
+
+	# symlink install the core test harness scripts
+	testset_symlink_file("tools/cbench_start_jobs.pl","$testset_path/$set\_start_jobs.pl",$force);
+	testset_symlink_file("tools/cbench_gen_jobs.pl","$testset_path/$set\_gen_jobs.pl",$force);
+	testset_symlink_file("tools/cbench_output_parse.pl","$testset_path/$set\_output_parse.pl",$force);
+
+	# nodehwtest testset still has some necessarily unique scripts
+	if ($set eq 'nodehwtest') {
+		testset_symlink_file("tools/nodehwtest_gen_jobs.pl",
+			"$testset_path/$set\_gen_jobs.pl",$force);
+		testset_symlink_file("tools/nodehwtest_start_jobs.pl",
+			"$testset_path/$set\_start_jobs.pl",$force);
+		testset_symlink_file("tools/nodehwtest_output_parse.pl",
+			"$testset_path/$set\_output_parse.pl",$force);
+	}
+
+	if (!$skel) {
+		# symlink install the core templates used by the testset
+		my @files = `cd $CBENCHTEST; ls -1 templates/$set\_*.* 2>&1`;
+		foreach my $file (@files) {
+			($file =~ /no such/i) and next;
+			chomp $file;
+			my ($filename) = $file =~ /\/(\S+)$/;
+			testset_symlink_file("$file","$testset_path/$filename",$force);
+		}
+
+		# symlink install atypical files
+		if (exists $special_testset_files{$set}{symlink}) {
+			foreach my $file (@{$special_testset_files{$set}{symlink}}) {
+				my ($filename) = $file =~ /\/(\S+)$/;
+				testset_symlink_file("$file","$testset_path/$filename",$force);
+			}
+		}
+
+		# rsync requested files
+		if (exists $special_testset_files{$set}{rsync}) {
+			foreach my $file (keys %{$special_testset_files{$set}{rsync}}) {
+				rsync_to_cbenchtest("$CBENCHOME/$file",
+					"$bench_test/$special_testset_files{$set}{rsync}{$file}");
+			}
+		}
+		if (exists $special_testset_files{$set}{rsyncaddon}) {
+			foreach my $file (keys %{$special_testset_files{$set}{rsyncaddon}}) {
+				rsync_to_cbenchtest("$addon/$file",
+					"$bench_test/$special_testset_files{$set}{rsyncaddon}{$file}");
+			}
+		}
+	}
+	else {
+		# do slightly different skeleton testset install
+		my @files = `cd $CBENCHTEST; ls -1 templates/$set\_*.in 2>&1`;
+		foreach my $file (@files) {
+			if ($file =~ /no such/i) {
+				# install skeleton job template
+				system("rsync $CBENCHOME/templates/skeleton_hello.in $testset_path/$set\_hello.in");
+			}
+			else {
+				chomp $file;
+				my ($filename) = $file =~ /\/(\S+)$/;
+				print "  Found job template \'$filename\' for testset ".uc($set).", installing...\n";
+				testset_symlink_file("$file","$testset_path/$filename",$force);
+			}
+		}
+	}
+}
+
+
+sub rsync_to_cbenchtest
+{
+	my $src = shift;
+	my $dest = shift;
+
+	# check for existence of source, could be a directory or file
+	if ( ! -d "$src" and ! -f "$src" ) {
+		warning_print("rsync_to_cbenchtest() rsync source \'$src\', does not exist.");
+		return;
+	}
+
+	my $cmd = "rsync -a $src $dest";
+	(! -d "$dest" and -d "$src" ) and
+		system("mkdir -p $dest");
+	debug_print(1,"DEBUG:rsync_to_cbenchtest() $cmd");
+	system($cmd);
+}
+
+
+sub usage {
+    print "USAGE: $0 \n";
+    print "Cbench script to install one or more testsets into the testing tree\n".
+          "   --testset <name>   The name of the testset or a comma-separated\n".
+		  "                      list of testset names\n".
+		  "   --allsets          Install all the supported Cbench testsets\n".
+		  "   --testtop          Install the top of the Cbench testing tree\n".
+		  "   --bindir <name>    Name of the binary directory in the Cbench test\n".
+		  "                      tree, e.g. --bindir bin.gcc\n".
+		  "   --addon            Enable installation tasks from a Cbench Addon (which\n".
+		  "                      requires the CBENCHADDON environment variable) in\n".
+		  "                      addition to normal install tasks\n".
+		  "   --onlyaddon        Enable installation tasks ONLY from a Cbench Addon (which\n".
+		  "                      requires the CBENCHADDON environment variable)\n".
+          "   --debug <level>    Turn on debugging at the specified level\n";
+}

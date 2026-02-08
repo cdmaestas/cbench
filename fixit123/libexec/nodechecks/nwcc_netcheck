@@ -1,0 +1,34 @@
+#!/bin/bash
+#set -ex
+
+#. /projects/contrib/fixit/fixit-env.sh
+
+if [ -z $FIXIT123_HOME ]; then
+	logger "$0: FIXIT123 config environment variables not found!"
+	exit 1
+fi
+
+. $FIXIT123_HOME/libexec/nodechecks/os_functions
+. $FIXIT123_HOME/libexec/nodechecks/hp_functions
+
+if [ -f /etc/sysconfig/cap ]; then
+	. /etc/sysconfig/cap
+else
+	logger "$0: Please define the role of this node"
+	exit 1
+fi
+
+WANT_REBOOT=0;
+
+# check link speed right off the bat
+check_eth_link_speed eth0 1000Mb/s
+echo
+check_ping_state /bin/ping 5 $CAPBOSS
+echo
+hp_ping_ilo `hostname` sadmin1
+echo
+
+
+# would be nice to ping ilo.... but can't seem to yet
+#check_ping_state /bin/ping 5 `hostname`-ilo $CAPBOSS
+#echo

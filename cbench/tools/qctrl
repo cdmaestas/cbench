@@ -1,0 +1,346 @@
+#!/usr/bin/perl 
+#############################################################################
+#
+# Name:			qctrl
+# File Type:	qctrl.pl
+# Purpose:      Control the state of the jobs in a queue (PBS/LSF/SGE/LL/?).
+# Author :      Christopher D. Maestas
+# Bug Reports:	cdmaest@sandia.gov
+# Last Modified: svn info qctrl.pl
+# Change Log:    svn log qctrl.pl
+############################################################################ 
+# TODO: fix qpeek to be more generic
+
+# $$$$$$$$$$$$$$$$$$
+# begin main program
+# $$$$$$$$$$$$$$$$$$
+
+use Getopt::Long;
+use warnings;
+use strict;
+ 
+my ($openpbs, $pbspro, $lsf, $maui, $sge, $debug, $verbose, $dryrun, $sysgroup, $help, $job_base, $runningonly, $queuedonly, $qpeek, $qopts, $qshow);
+my (@delcmds, @holdcmds, @rlscmds, $qstate_cmd);
+my $num_of_args = 2;
+
+$debug=0;
+$openpbs=1;
+$maui=0;
+GetOptions (
+            'torque'       => \$openpbs,
+            'openpbs'      => \$openpbs,
+            'pbspro'       => \$openpbs,
+            'maui'         => sub { $maui = 1; },
+            'moab'         => sub { $maui = 1; },
+            'nomaui'       => sub { $maui = 0; },
+            'nomoab'       => sub { $maui = 0; },
+            'jobbase=s'    => \$job_base,
+            'qopts=s'      => \$qopts,
+            'lsf'          => \$lsf,
+            'sge'          => \$sge,
+            'sysgroup=s'   => \$sysgroup,
+            'runningonly'  => \$runningonly,
+            'queuedonly'   => \$queuedonly,
+            'dry-run'      => \$dryrun,
+            'dryrun'       => \$dryrun,
+            'all'          => sub { $num_of_args = 1; },
+            'verbose'      => \$verbose,
+            'debug=i'      => \$debug,
+            'man'          => sub { system ("perldoc $0"); exit; },
+            'perldoc'      => sub { system ("perldoc $0"); exit; },
+            'help'         => \$help
+);
+
+$maui = 0 if $job_base;
+
+$sysgroup="wheel" unless $sysgroup;
+
+PrintHelp() if scalar @ARGV != $num_of_args || $help;
+
+my @cmds = qw(hold delete run release show peek);
+my $command=$ARGV[0];
+my $user=$ARGV[1] if $num_of_args > 1;
+print "$command is an invalid command\n" and PrintHelp() if not grep /$command/, @cmds;
+
+if ($command eq "peek") {
+	$qpeek=`which qpeek` or die "Cannot find qpeek!";
+	chomp $qpeek;
+	$runningonly=1;
+	$qopts="" if !defined $qopts;
+}
+
+if ($command eq "show" and $qopts and $openpbs) {
+	$qshow=`which qstat` or die "Cannot find qstat command for qshow!";
+	chomp $qshow;
+	$qopts="" if !defined $qopts;
+}
+
+our %job_states = (
+	"Running" => "R",
+	"R" => "R",
+	"Idle" => "Q",
+	"Q" => "Q",
+	"Hold" => "H",
+	"H" => "H",
+	"E" => "E",
+	"Deferred" => "H"
+);
+
+# idea is to try to use a sequence of canceljob, qdel, qsig -s SIGNULL path
+if ($maui and $openpbs) {
+	@delcmds = ("canceljob", "qdel", "qsig -s SIGNULL");
+	@holdcmds = ("qhold");
+	@rlscmds = ("releasehold -a", "qrls");
+	$qstate_cmd = "showq"
+} elsif ($openpbs) {
+	@delcmds = ("qdel", "qsig -s SIGNULL");
+	@holdcmds = ("qhold");
+	@rlscmds = ("qrls");
+	$qstate_cmd = "qstat"
+}
+
+# Get job info
+open (QSTATE_INFO, "$qstate_cmd|");
+my @qstate_data=<QSTATE_INFO>;
+close QSTATE_INFO;
+
+# cycle through data and execute command on match 
+our $jrecref="";
+foreach my $jline (@qstate_data) {
+	chomp ($jline);
+        next if $jline =~ /^(\s)*$/;  # skip blank lines
+
+print "DEBUG 9: $jline\n" if $debug ge 9;
+
+	$jrecref = parse_q_line($jline);
+	next if !$jrecref;
+	next if $num_of_args != 1 and $user ne $$jrecref[0];
+	# USER, JOBID, STATE, JOBNAME
+print "DEBUG 4: @$jrecref\n" if $debug ge 4;
+print "DEBUG 2: Running $command on $$jrecref[1]\n" if $debug ge 2;
+	# operate command on each job
+	next if defined $job_base and $$jrecref[3] !~ /$job_base/;
+	if ($command eq "peek") {
+		next if $runningonly and ($$jrecref[2] eq "Q" or $$jrecref[2] eq "H");
+		system ("$qpeek $qopts $$jrecref[1]");
+	} elsif ($command eq "show") {
+		next if $runningonly and ($$jrecref[2] eq "Q" or $$jrecref[2] eq "H");
+		next if $queuedonly and $$jrecref[2] eq "R";
+		if ($qshow) {
+			system ("$qshow $qopts $$jrecref[1]");
+		} elsif (defined $user and $$jrecref[0] = $user ) {
+			print "$jline\n";
+		} else {
+			print "$jline\n";
+		}
+	} elsif ($command eq "delete") {
+		next if $runningonly and ($$jrecref[2] eq "Q" or $$jrecref[2] eq "H");
+		next if $queuedonly and $$jrecref[2] eq "R";
+		run_cmd(\@delcmds);
+	} elsif ($command eq "hold") {
+		if ($$jrecref[2] eq "R" or $$jrecref[2] eq "H") {
+			print "DEBUG 3: Skipping $$jrecref[1] for $$jrecref[0] cause in $$jrecref[2] state and running $command command\n" if $debug ge 3;
+			next;
+		}
+		run_cmd(\@holdcmds);
+	} elsif ($command eq "release")  {
+		if ($$jrecref[2] eq "R" or $$jrecref[2] eq "Q") {
+			print "DEBUG 3: Skipping $$jrecref[1] for $$jrecref[0] cause in $$jrecref[2] state and running $command command\n" if $debug ge 3;
+			next;
+		}
+		run_cmd(\@rlscmds);
+	} else {
+		die "$command is unknown or not implemented $!"; 
+	}
+}
+
+#
+# parse line info, based on qstate_data
+# Return USER, JOBID, STATE
+sub parse_q_line {
+	my $l = shift;
+	my @r;
+# looks like (
+# STATES: Idle, Running, Hold, Deferred
+#JOBID       USERNAME       STATE     PROCS    WALLTIME  DAY MO DAYofMO TIME
+	if ($maui) {
+		@r = split(/\s+/, $l);
+		return "" if scalar @r ne 9;
+print "$r[1], $r[0], $job_states{$r[2]}\n" if $debug ge 9;
+		return [ $r[1], $r[0], $job_states{$r[2]} ];
+
+# looks like (
+# STATES: R, Q, H, E
+#JOBID.STUFF  JOBNAME     USERNAME          TIME STATE QUEUE          
+	} elsif ($openpbs) {
+		@r = split(/\s+/, $l);
+		return "" if scalar @r ne 6;
+		my @t = split(/\./, $r[0]);
+		return "" unless $t[0] =~ /^[+-]?\d+$/;
+print "$r[2], $t[0], $job_states{$r[4]}, r[1]\n" if $debug ge 9;
+		return [ $r[2], $t[0], $job_states{$r[4]}, $r[1] ];
+	} else {
+		return "";
+	}
+}
+
+#
+# run the command
+#
+sub run_cmd {
+	my $cmdlstref = shift;
+	my $success=0;
+	foreach my $cmd (@$cmdlstref) {
+print "DEBUG 9: Success: $success\n" if $debug ge 9;
+		next if $success;
+		if ($dryrun) {
+			print "$cmd $$jrecref[1]\n";
+		} else {
+			system ("$cmd $$jrecref[1]"); 
+			if ($? ne 0) {
+				warn "failed to $command using $cmd, attempting next command method."; 
+			} else {
+				$success=1;
+print "DEBUG 8: Success! $success \n" if $debug ge 8;
+			}
+		}
+	}
+	warn "All command methods for $command failed to $command @$jrecref $!" if $success eq 0 and !$dryrun;
+}
+
+sub PrintHelp {
+    print "Usage: $0 [options] hold|delete|run|release|show <username>\n";
+    print "       --torque | --openpbs  => Print out node queue state in torque/openpbs format.\n";
+    print "       --pbspro              => Print out node queue state in pbspro format.\n";
+    print "       --lsf                 => Print out node queue state in lsf format (NOT YET).\n";
+    print "       --sge                 => Print out node queue state in SUN Grid Engine format (NOT YET).\n";
+    print "       --moab | --maui       => Print moab/maui scheduler resevations.\n";
+    print "       --nomaui | --nomoab   => Ignore maui/moab commands.\n";
+    print "       --all                 => Run command on all jobs.\n";
+    print "       --runningonly         => Run command on running jobs.\n";
+    print "       --queuedonly          => Run command on queued jobs.\n";
+    print "       --jobbase=BASE-X      => Run command on jobs matching BASE-X.\n";
+    print "       --qopts=\"-l -n\"       => Run command with extra options.\n";
+    print "       --dryrun | --dry-run  => Run a dry run.\n";
+    print "       --verbose             => Turn on Verbose Printing.\n";
+    print "       --debug=N             => Turn on Debug Level, where N=0-9.\n";
+    print "       --man | --doc         => Display perldoc message.\n";
+    print "       --help                => Display this message.\n";
+    exit (1);
+}
+
+=head1 qctrl
+
+qctrl - Print an ascii map of a batch scheduler's data.
+
+=head1 SYNOPSIS
+
+  $ qctrl delete|hold|release|show username
+  $ qctrl --dry-run delete|hold|release|show username
+  $ qctrl --all hold|delete|release|show
+  $ qctrl --dryrun --all hold|delete
+  $ qctrl --man|--doc
+  $ qctrl --help 
+
+=head1 DESCRIPTION
+
+qctrl is meant to help admins control the queue.  It can be run by normal users on their job sets.  It allows users and administrators to operate on a queue structure that is instantiated on their system.
+
+=head1 COMMANDS
+
+username
+ specified username to run command on if not using --all
+
+delete
+ Run delete command on jobset
+
+hold
+ Run hold command on jobset
+
+hold
+ Run release command on jobset
+
+show
+ Show the state of jobset
+
+peek
+ Using qpeek, try and see the output/error file of the job (specific to pbs only).
+
+=head1 OPTIONS
+
+--torque | --openpbs  | --pbspro
+ This mode parses commands used with Torque, OpenPBS and PBSPro.
+
+--lsf
+ This mode parses commands used with LSF.
+
+--sge
+ This mode parses commands used with Sun Grid Engine (SGE).
+
+--maui | --moab
+ This mode parses commands used with the Maui/Moab Scheduler.
+
+--nomaui | --nomoab
+ This mode disables use of commands used with the Maui/Moab Scheduler.
+
+--all
+ This runs command accross all the jobs in the queue.  Do not supply a username for this command.
+
+--runningonly
+ This runs command accross only on running jobs in the queue. 
+
+--queuedonly
+ This runs command accross only on queued jobs in the queue. 
+
+--jobbase=JOB_1ppn
+ This runs command accross only on jobs matching JOB_1ppn
+
+--qopts="options"
+ This appends options to the command to be run.  For example:
+ qctrl peek user --qopts="-l -o"
+
+--dryrun | --dry-run
+ This will print out what commands will execute on the jobs and not take any action.
+
+--verbose
+ Display verbose messages.
+
+--debug=LEVEL
+ Display debug messages with a certain level.  Levels 0-9 are supported, with 0 being none.
+
+--help
+ This displays a small help message.
+
+--man | --doc
+ This displays this man page.
+
+=head1 SEE ALSO
+
+Local documentation should be accessible in 
+  /usr/share/man 
+
+Submit any questions/requests/gripes to the AUTHOR.
+
+=head1 AUTHOR
+
+Christopher D. Maestas E<lt>cdmaest@sandia.govE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (2005) Christopher D. Maestas, Sandia National Labs
+
+qctrl is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+any later version.
+
+qctrl is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with qctl; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+=cut

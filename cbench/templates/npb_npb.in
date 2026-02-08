@@ -1,0 +1,28 @@
+# NAS Parallel Benchmarks job template
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/npb/NPB_HERE
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/npb/NPB_HERE
+
+# The ft.D.* mpi binaries seem to need more than 2GB of memory and seem
+# to run fine at 6GB of memory.  So, for now, check cluster.def for the
+# memory_per_node setting and ignore ft.D if < ~6GB of memory
+echo "NPB_HERE" | grep -q "ft\.D"
+if [ $? -eq 0 ]; then
+	MEM_PER_NODE=`$CBENCHTEST/sbin/get_clusterdef_param --param memory_per_node | egrep '[1-9]+'`
+	if [ $? -eq 1 ]; then
+		# couldn't query cluster.def correctly so just assume we'll run ft.D
+		cbench_echo "Cbench Info: could not query cluster.def for memory_per_node correctly"
+	else
+		if [ $MEM_PER_NODE -lt 6000 ]; then
+			# the expression evaluated false, so we DO NOT have enough memory
+			cbench_echo "CBENCH NOTICE: not running ft.D due to INSUFFICIENT MEMORY"
+			exit 1
+		fi
+	fi
+fi
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/npb/NPB_HERE"
+
+cbench_run_cmd $CMD

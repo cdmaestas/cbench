@@ -1,0 +1,8 @@
+#!/bin/bash
+if [ -d "$2" ] ; then {
+	rm -rf $2
+} ; else {
+	if [ -e "/tmp/linux" ] ; then {
+		rm -rf /tmp/linux
+	} ; fi
+} ; fi

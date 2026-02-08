@@ -1,0 +1,32 @@
+Milestones
+	sandia beta
+		* redrose only for vplant
+		* init file need to check for stale data
+			update vs. modification time on log data
+			condrestart option
+		* os_checks
+			add ping check
+				check for ethernet, management, hpc
+		* update step1 script
+		step2a, step2b, step3a, step3b
+	release 1.0
+		configurablility
+		db backend for data to store
+		dbd::anydata
+			file,sqlite,mysql
+
+seperate checks
+	for sandia beta use printrecord to determine hardware type
+
+	common checks
+	icc
+		login dl380
+		compute dl360
+	feynman 
+		ganymede
+			2650
+		callisto
+			1750
+		europa
+			ws530
+

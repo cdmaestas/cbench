@@ -1,0 +1,215 @@
+#!/usr/bin/perl -w
+
+# Everything in path_needed must show up in the path.
+my %path_needed = (
+"/sbin" => "1",
+"/usr/sbin" => "1",
+"/bin" => "1",
+"/usr/bin" => "1"
+);
+
+# Fail if a directory in path_never shows up.
+my %path_never = (
+"." => "1",
+"/etc" => "1"
+);
+
+
+my @required = (
+"/sbin/rmmod",
+"/sbin/modprobe",
+"badblocks",
+"basename",
+"bash",
+"cat",
+"chattr",
+"cp",
+"cut",
+"clear",
+"date",
+"df",
+"dialog",
+"diff",
+"dmesg",
+"egrep",
+"gcc",
+"grep",
+"head",
+"kill",
+"ln",
+"make",
+"modprobe",
+"mount",
+"nice",
+"perl",
+"pstree",
+"pwd",
+"renice",
+"rm",
+"rmmod",
+"setterm",
+"sync",
+"sed",
+"sleep",
+"tail",
+"tee",
+"umount",
+"yes");
+
+
+my @optional = (
+"/usr/sbin/chat",
+"sensors",
+"smartctl",
+"switchto",
+"stty",
+"tw_cli");
+
+system("uname -a | grep -q ' ppc ' ");
+if ($? == 0) {
+	push(@required, "pdisk");
+	push(@optional, "fdisk");
+} else {
+	push(@required, "fdisk");
+}
+
+@kernelsrc= `ls -d /usr/src/linux*`;
+chomp $kernelsrc[0];
+my @kernelcheck = (
+"$kernelsrc[0]/kernel/panic.c",
+"$kernelsrc[0]/Makefile",
+"$kernelsrc[0]/include/linux/kernel.h");
+
+my $param = shift(@ARGV);
+my $i;
+my $j;
+my $x;
+my $y;
+my $exitvalue = 0;
+
+if ( defined($param) and $param eq "--withrpms" ) {
+	# for this, set the path.  I want to be able to build RPMS
+	# as non root, including the specfile.
+	$ENV{PATH}="/usr/sbin:/sbin:$ENV{PATH}";
+	my %packages;
+	foreach $i (@required,@kernelcheck) {
+		## Find the real path of $i, put in $j
+		$j = $i;
+		$j=`which $i 2>/dev/null` unless -e $i;
+		$j =~ s/\s//g;
+		die "$i not found" unless -e $j;
+		## Is $j in an RPM, and if so which one
+		$x=`rpm -qf $j`;
+		$x =~ s/\s//g;
+		die "$j not in an rpm" if (! $x);
+		## What is the base name of that RPM
+		$y=`rpm -qi $x | head -n 1 | awk \'{ print \$3;}\'`;
+		$y =~ s/\s//g;
+		## Put that basename in the $packages hash.
+		$packages{$y} = 1;
+	}
+	print "Requires: ";
+	$j = "";
+	foreach $i (keys %packages) {
+		if (!$j) {
+			print ("$i");
+			$j = 1;
+		} else {
+			print (", $i");
+		}
+	}
+	print "\n";
+	exit (0);
+} else {
+	# I need to check the contents of the PATH so that it doesn't
+	# contain anything stupid.
+	my %required_found;
+	my $d;
+	print "** Checking PATH variable **\n";
+	my @path = split( ':', $ENV{PATH});
+	d: foreach $d (@path) {
+		#print "$d: ";
+		if (defined($path_needed{$d})) {
+			#print "is required\n";
+			--$path_needed{$d};
+			if ($path_needed{$d} < 0) {
+				print "Warning: $d is in the path multiple times.  Recommend\n";
+				print "deleting the duplicates for performance reasons.\n";
+			}
+			$required_found{$d} = "1";
+			next d;
+		}
+		if (defined($path_never{$d})) {
+			#print "is never\n";
+			print "Directory $d not permitted in path.  Please remove this\n";
+			print "from your path before running the software.\n";
+			exit(1);
+		}
+		#print"\n";
+	}
+	my @rkeys = sort(keys %path_needed);
+	my @fkeys = sort(keys %required_found);
+	dout: if (scalar(@fkeys) != scalar(@rkeys)) {
+		my $i;
+		my $flag = 0;
+		foreach $i (@rkeys) {
+			if ($i eq $fkeys[0]) {
+				shift @fkeys;
+			} else {
+				print "You need $i in the path.\n";
+				++$flag;
+			}
+		}
+		if ($flag) {
+			exit 1;
+		}
+	}
+}
+
+print "** Checking required executables **\n";
+
+I: foreach $i (@required) {
+	if (-x $i) { next I; }
+	$j = $i;
+	$j = `which $i 2>/dev/null`;
+	$j =~ s/\s//g;
+	do {	
+		print "$i not found in path\n";
+		$exitvalue = 1;
+	} unless -x $j;
+}
+
+print "** Checking for compilable kernel source tree **\n";
+
+I2: foreach $i (@kernelcheck) {
+	if (-e $i) { next I2; }
+	print "$i not found:  you do not have the kernel sources installed\n";
+	$exitvalue = 1;
+}
+
+print "** Checking perl **\n";
+system ("./selftest/perltest");
+if ($? != 0) {
+	print "You are missing some required perl libraries.  See selftest/perltest for\na list.\n";
+	$exitvalue = 1;
+};
+
+print "** Checking for root access **\n";
+
+if ($> != 0) {
+        print "Effective UID must be 0 to run burn (is $>)\n";
+        $exitvalue = 1;
+}
+
+print "** Checking optional executables **\n";
+I: foreach $i (@optional) {
+        if (-x $i) { next I; }
+        $j = $i;
+	$j = `which $i 2>/dev/null`;
+        $j =~ s/\s//g;
+        do {    
+                print "optional: $i not found in path\n";
+        } unless -x $j;
+}
+
+exit ($exitvalue);

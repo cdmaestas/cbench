@@ -1,0 +1,27 @@
+# HPCC job template
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/hpcc
+
+cbench_echo "Cbench memory_util_factors: MEM_UTIL_FACTORS_HERE"
+cbench_echo
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/hpcc
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/HPCC_BIN_HERE"
+
+# note for posterity what hpcc binary was used in case
+# of symlinking
+/bin/ls -al CBENCHTEST_BIN_HERE/HPCC_BIN_HERE
+
+# need to make an isolated directory for each HPCC run to keep them
+# from stepping on each others hpccoutf.txt file
+TEMPDIR=`mktemp $PWD/hpcc.job$JOBID.XXXXXX -d`
+ln -s $TEMPDIR/hpccoutf.txt hpccoutf.txt.$JOBID
+cd $TEMPDIR
+ln -s ../hpccinf.txt .
+
+cbench_run_cmd $CMD
+
+# cat the hpccoutf.txt contents into STDOUT
+cat hpccoutf.txt

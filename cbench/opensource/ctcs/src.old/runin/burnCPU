@@ -1,0 +1,20 @@
+#!/bin/bash
+cat /proc/cpuinfo | grep -q GenuineIntel 
+if [ $? = 0 ] ; then {
+	nice ./bin/burnP6
+} ; else {
+	 nice ./bin/burnK7
+} ; fi
+x="$?"
+if [ $x != 0 ] ; then {
+	echo burnCPU exited code $x
+	if [ $x = 254 ] ; then {
+		echo integer error
+	} ; elif [ $x = 255 ] ; then {
+		echo floating point error
+	} ; else {
+		echo unknown error
+	} ; fi
+	exit 1
+} ; fi
+exit 0

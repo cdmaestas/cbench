@@ -1,0 +1,12 @@
+# NOTE: bash syntax is used here
+
+# whitespace
+cbench_echo ""
+
+# ending timestamp of the job
+end_time=`date --iso-8601=seconds`
+end_epoch=`date +%s`
+elapsed_secs=$((end_epoch - begin_epoch))
+cbench_echo "Cbench end timestamp: $end_time"
+cbench_echo "Cbench elapsed seconds: $elapsed_secs"
+

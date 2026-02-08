@@ -1,0 +1,18 @@
+#!/bin/bash
+# fcompare:  Cerberus module that compares a file on a disk
+# with a given file on the system.
+# fcompare [device] [mountpoint] [file] [compareto]
+
+if [ ! -e "$4" ] ; then
+	echo Unable to find file "$4" to compare to.
+	exit 2
+fi
+
+if [ ! -e "$2/$3" ] ; then
+	echo unable to find file "$2/$3" to check.
+	exit 1
+fi
+
+diff --brief $2/$3 $4
+exit $?
+

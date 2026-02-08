@@ -1,0 +1,9 @@
+MPI_HOME    = ${MPICH}
+MPI_INCLUDE = $(MPI_HOME)/include 
+LIB_PATH    =
+LIBS        =
+CC          = ${MPI_HOME}/bin/mpicc 
+OPTFLAGS    = -O
+CLINKER     = ${CC}
+LDFLAGS     = 
+CPPFLAGS    =

@@ -1,0 +1,838 @@
+-- Release 1.3.0 ( 2003) sflory
+	-Created a blocktest that uses badblock -n option
+	-Created 3ware smart test.
+	-Use smartmonutils syntax for smart tests.
+	-Fix report script to use the log directory.
+	-Added new test that does a diff of the kernel tree.  It's
+	faster at finding filesystem corruption than the kcompile
+	tests.
+	- Compile cpuburn with -m32 this fixes amd64, and doesn't 
+	seem to break x86 builds.  Cpuburn isn't 64 bit, but it's 
+	better nothing.
+-- Release 1.3.0pre10 (25 Apr 2003) sflory
+	- Don't attempt to compile cpuburn on amd64
+-- Release 1.3.0pre9 (21 Apr 2003) sflory
+	- Converted blockrdtst-info to perl and fixed ydl issues.
+	- Applied Daniel Roesen's regexp patterns fix to fpdisk.pm 
+	on slackware
+	- Changed deprecated -mpentiumpro to -mcpu=pentiumpro
+	- Added x86_64 support
+	- add hail mary kernel source check
+	- fixed requirements check for kernel sources
+	- added 3ware test requires tw_cli to be installed
+	- Filehandle adjustment claims 4K when we do 512K.
+	- minor update to compile on ia64
+-- Release 1.3.0pre8 (4 Dec 2002) sflory
+	- fix the /usr/src/linux-2.4 patch
+	- Nice destructiveblocks test to 3.
+	- Removed borrow percentage from memtst as it has not worked 
+	for a long time.
+	- Move log files to log directory and don't hide them
+	- Nice cpu tests as their intent is really to suck down unused 
+	cpu cycles.
+        - Revert to old rw data test.
+	- End jtc releases. Begin sflory releases
+	- Updated FAQ entry for Linux Test Project.
+	- Added the /usr/src/linux-2.4 patch.  Whew, we're back.
+	- The general matching doesn't work for Linux swap.  So I reverted
+	  it.  The tighter matching should work now on all locales since
+	  I'm overriding it when parsing.
+	- Keep users from shooting themselves in the foot by putting "."
+	  or "/etc" in the root path.  Yes, someone did this.
+	- More general matching for Linux partitions in the ident field
+	  (get_linux_partitions())
+	- Took some suggestions by Thomas Kniep.  fpdisk.pm now sets
+	  locale to C before launching fdisk.
+	- Added support for /dev/ida/* style RAID devices.  I'm beginning
+	  to like BSD's /dev/disk...
+	- Applied Linux-SPARC patch by David Miller (davem@redhat.com)
+-- Release 1.3.0pre4 (6 Nov 2001) jtc
+	- -p test now by default uses a 2 TB maximum file size limit.
+	  If you need the old behaviour, pass the -2 option to newburn.
+	- Increased the default patience of the test controller waiting
+	  for possibly defunct test processes to terminate.
+	- Rescan scsi bus as part of newburn, to insure /proc/scsi/scsi
+	  is up-to-date on hot-swap systems.
+	- Kernel compile does make vmlinux instead of bzImage because
+	  bzImage only exists on x86.
+	- Hide another USB warning that isn't really bad.
+	- Excellent, ppc seems to be working.  Shut off the (useless)
+	  attempt to ignore SIGCHLD in run.  Why'd I do that?
+	- Changed setterm calls to redirect setterm to the console.
+	  This way we will shut off the console screensaver regardless
+	  of whether we're actually at the console. (newburn)
+	- Removed all literal calls to fdisk from all scripts, using
+	  the fpdisk library instead.  This is the first version I hope
+	  will work on both Linux-ppc and Linux-x86.
+	- For Linux on PPC and Darwin:  a new library, fpdisk.pm, attempts
+	  to abstract away a lot of uglyness in the ways different unixen
+	  handle the /dev structure.  I'll be testing this out and then
+	  converting the rest of CTCS to use it instead of calling
+	  fdisk directly, manipulating /dev filenames, etc.
+	- Make newburn-generator avoid USB/SCSI floppies by default, or at 
+	  least the one attached to my workstation.
+	- Second attempt at devfs support.  We'll now aggressively
+	  translate symlinks in device names/paths so that they do not
+	  confuse the test generator.
+	- Hide the warning about USB Mass Storage devices not having
+	  guaranteed data integrity.  That way hotswapping USB devices that
+	  aren't being tested won't flag errors in the log parsers.
+	- The LVM patch will automatically ignore physical devices that
+	  have LVM volumes for the badblocks test.  The devices will be 
+	  tested instead through the LVM logical partitions.  This 
+	  behaviour should be configurable, but is not (yet).
+	- Applied Derrick's LVM support patch, merging in the conflict
+	  with the new devfs support.
+	- Removed as86 from the system requirements.  It isn't really
+	  needed.
+	- Removed a lot of (VA-)CTCS from the documentation.  I haven't
+	  decided to remove it from everywhere yet or what my policy
+	  is on that, since I am still grateful to VA but don't want
+	  to use their marks inappropriately...
+	- Updated the documentation for system requirements and to make
+	  it a little clearer (I hope) when Cerberus will destroy your
+	  machine.
+	- First attempt at devfs support.  Sometimes I wonder what I was
+	  smoking when I wrote the detection routines.
+	- Added a new string to the log parser to catch "stuck on IPI wait"
+	  and similar messages as failures.
+-- Release 1.3.0pre3 (8 Aug 2001) jtc
+	- What?  A release in less than a month?  Holy cow!  ;)
+	- Updated the FAQ.
+	- Created a simple method for autogening the CTCS spec file.
+	  This program has "use autoconf Jason, for the love of God" 
+	  written all over it.  Use "make spec" to create a spec file
+	  from ctcs.spec.in that includes dynamically calculated package
+	  dependencies.
+	- Fixed a silly bug in the memory tester that made -2 always
+	  fail.
+	- Fixed up some more minor syntax errors introduced by
+	  previous changes.
+	- Removed the whole "kconfig" thing and replaced it with
+	  yes.
+	- Exported the shell code for the process tree killer
+	  to a shell function library in lib/sh/ctcslib.sh.
+	  This way we don't have twenty slightly different versions 
+	  of the same thing lying around.
+	- Changed default cpuburn for non-Intel CPUs to burnK7 from
+	  burnK6.
+	- Upgraded RR's cpuburn packages to version 1.4.
+	- Change all #!/bin/sh to #!/bin/bash.  I used bash specific
+	  code in too many places.
+	- Forgot to add the selftest directory.  Currently it doesn't
+	  contain much, maybe it will later.
+	- Rewrote the check-requirements script in perl.  It will also
+	  generate a list of RPMS that the package depends on when
+	  you run it with the --withrpms flag.  This should be useful
+	  for inserting into a spec file.
+	- Fixed the syntax checker so it actually works right now.
+	  The new cross-platform support for the memtst was confusing it.
+	  I am in need of an autoconf-over.
+-- Release 1.3.0pre2 (11 July 2001) jtc  "Slurpee"
+	- It's been far too long.  My poor code has been languishing.
+	  But, at last I have spent the time.  Cleaned up everything
+	  for a release.
+	- Added removal of backup files to dist-clean target.
+	- Added some optimizations to the memory test, changed iterating 
+	  variables in test functions to unsigned int and integrated bitpatts 
+	  function so that the pattern is stored as an array.  Minor bugfixes
+	  also. 
+	- Updated test generator to reflect memtst generator changes.
+	- Rewrote memtst module.  This _WILL_ break test generators,
+	  command line options have changed.  Also, the new memtst
+ 	  correctly implements the byte-alignment restrictions,
+	  actually tests everything you tell it to, and more.  This
+	  is a MAJOR change and will probably screw up the test balancing.
+	  Time for tuning.  See runin/README.tests for new test options.
+	- Doc update for -V option.  Release.
+	- Some comments changed/added in run to make understanding
+	  it a little easier.
+	- Made the "report" tool look a little nicer when there isn't
+	  a report to be made.
+	- New -V option restores the old VM thrashing behavior of the
+	  old burn-in.
+-- Release 1.3.0pre1 (09 Feb 2001) jtc
+	- Changed the name of the KERNEL compile test to
+	  KCOMPILE/FKCOMPILE (depending on fast vs. std).
+	  That way our Q/A people won't confuse our kernel
+	  developers in meetings...
+	- Added a simple report generator that can be used
+	  for e-mail.
+	- Changed the memory test so that it frees the
+	  block on every alignment pass.  Probably not
+	  necessary, but will exercise malloc more.
+	- OK, rewrote the memory reservation computation.
+	  We now base the memory reservation on the system's reserve
+	  percentages for buffer memory and page cache.
+	- Adjusted the new memory reservation computation again.
+	  Massive numbers of disks were resulting in memory
+	  exhaustion.
+	- Updated the FAQ for question 1.10 (which options
+	  does VA use?)
+	- Remove the hack-arounds to check syntax on
+	  the nbench code.
+	- New -I option in VA-CTCS to ignore < 10 backplane
+	  resets in the DAC960 test.  This will be used in our
+	  manufacturing facility to compensate for the 4450's
+	  broken backplane that occasionally spews resets for
+	  no good reason.  Normal behavior will still report
+	  the errors without this option.
+	- Fixed a bug in the new va_detect code.  We weren't
+	  stripping spaces off the number of CPUs present.
+	- Why didn't someone smack me?  I had two copies of the
+	  same libraries, one used, one unused.  The used copy
+	  is now all that is left.
+	- Altered the memory reservation computation so it is
+	  more aggressive on large memory machines.  10% of
+	  16 GB (for example) was just a little too much.
+	- Updated the FAQ with a new question I get asked a lot.
+	- Changed command line parameters on newburn to reflect
+	  the missing packages, and the fact they must be specified.
+	- Changed makefiles and requirements around to accomodate the
+	  missing packages.
+	- Removing a lot of extra packages.  There's information
+	  about it in the FAQ.
+	- Fixed a bug in the DAC960 test that was making the test
+	  constantly output errors even when I thought I had fixed
+	  it.  So, the behavior should really have changed this
+	  time.
+	- Documentation updates for the DAC960 test.
+	- flushb.c now compiles under 2.4. (string.h problem)
+-- Release 1.2.15 (1 Dec 2000) jtc
+	- Forgot to add some SGI ltp files as my tree checker script
+	  was busted.
+	- SGI ltp updated to 101200, some permission problems fixed.
+	- Fixed up some problems with my requirements checker script,
+	  including duplicates.
+	- modem test no longer depends on chat being in /usr/sbin.
+	- new DAC960 test only reports error when error
+	  is present AND state has changed since the last
+	  report.  See runin/README.tests, the dac960 test
+	  has a new parameter.
+	- Started work on automonkey-related projects for our factory,
+	  including autoexit on TEST_COMPLETE + time specification.
+	- Reduced overhead in the main CTCS loop by
+	  only checking state every 20 seconds.
+	- ataprint.c seems to cause gcc segfaults on RH7.0 when
+	  running the syntax checker.  Excluding it for now.
+	- Documentation update for the new automatic exit features.
+	- New -D option and "on error" tcf command allow actions on
+	  error only instead of any event.
+	- Detect most error messages from the 3ware controller in dmesg,
+	  messages test.
+	- New stagger field in the autoexit-timeframe allows us to stagger
+	  exits over a period of time.
+-- Release 1.2.14 (11 Oct 2000) jtc
+	- fastkernel and kernel tests had problems:
+	- Fixed it so make mrproper happens BEFORE we try
+	  to generate a VA .config (oops)
+	- Fixed it so the generated VA .config actually gets
+	  used.  (oops again)
+	- Changed the timestamp test to sleep only 5 minutes,
+	  that way we can get more granularity on HEARTBEAT
+	  test failures.
+	- Fixed the data test so that error reports make sense
+	  (values in KB are in KB instead of bytes)
+-- Release 1.2.13 (05 Oct 2000) jtc
+	- maxalloc takes configurable ceiling, uses an efficient
+	  binary search algorithm, and uses malloc since, I hope,
+	  that will be safe.  Only impact should be that the test
+	  starts up much much faster now on large memory machines.
+-- Release 1.2.12 (25 Sep 2000) jtc
+	- Updated documentation with a pointer to the ECC driver,
+	  and information about the DAC960 test.
+	- Added a question about automatic notification on upgrade
+	  to the FAQ.
+	- Added a DAC960 test to watch for errors tracked
+	  by the driver but not noted in the system log (e.g.
+	  continuous drive resets)
+	- Added "lost interrupt" as an identified error in the
+	  system log watcher.
+	- traverseread now does a ls -la as part of the test
+	  to bang on getattr a little bit.
+	- traverseread can now read a specified amount from each file.
+	- Changed the straverseread sleep delay to a random between
+	  0 and 300 seconds to increase staggering.
+	- data test now is more verbose about failures.  Will note
+	  short/long(?) writes to assist in debugging Ari's problem.
+	- New "traverseread" module will help us in beating up NFS
+	  read-only exports, as well as other stuff.  See
+	  README.TESTS, basically it just reads every file on
+	  a given device and bombs out on an I/O error.
+-- Release 1.2.11 (04 Sep 2000) jtc
+	- as86 was missing from check-requirements.
+	- Added the ability to display a "complete" or other
+	  message at a specific time.  Use -z [timespec] to display
+	  a "test complete" message, see the documentation.
+	- Added the ability to tie a command (such as a CD-tray eject)
+	  to a test event (FAILURE or the message mentioned above).
+	  This way, when you have 300 machines on racks running Cerberus,
+	  the CD trays pop out when they fail.  -d enables this option,
+	  see the docs.
+	- My new best friend, Kelley Spoon from rackspace.com, submitted
+	  a patch that cleaned up my makefiles and added a spec file
+	  so you can build an RPM with VA-CTCS.
+	- %doc now works in the spec file (at least on SuSE 6.4, will
+	  try at work tomorrow)
+	- %files now uses a wildcard instead of the file-list generation
+	  he had (more efficient)
+-- Release 1.2.10 (19 Aug 2000) jtc
+	- messages test ignores RPC, Exception 19 error handler errors.
+	- dmesg test ignores RPC errors
+	- detect ECC single bit error, multi-bit error
+	  If you have the ECC module installed, the dmesg/messages tests
+	  will pick up errors from it.
+	- Chip has come to the rescue of the messages test.  The
+	  messages test is now entirely in Perl.
+-- Release 1.2.9 (10 Aug 2000) jtc
+	- SGI has been assimilated.  Minimal impact to anything else.
+	  (Linux Test Project from SGI, -g on the newburn commandline)
+	- Fixed a bug in the makefiles -- crashme wasn't being compiled.
+-- Release 1.2.8 (09 Aug 2000) jtc
+	- Documentation updates.  This marks a change to a stable
+	  release for the 1.2.x series.
+-- Release 1.2.7 (07 Aug 2000) jtc
+	- Jason's python infested mind forgot to initialize nint
+	  in maxalloc.
+	- Disabled the bigmem memory adding to the main memory.
+	  That's my fault, I didn't understand that MemTotal
+	  really means MemTotal.
+-- Release 1.2.6 (06 Aug 2000) jtc
+	- the run command now hides any error messages from chattr,
+	  so that reiserfs users won't be upset by it.
+	- the va_detect library (and newburn) now can find the total
+	  swapspace.
+	- the va_detect library (and newburn) now counts "bigmem" memory
+	  as part of the total memory.
+	- the color library can now return a string with "colorstr".
+	- data test no longer requires usleep.  usleep also removed
+	  from the requirements list in check-requirements.
+	- Minor Makefile changes to accomodate maxalloc.
+	- Added a God mode (-G) that will bypass what newburn-generator
+	  normally considers to be fatal errors.  Don't use this except
+	  for testing the generator.
+	- Tuned the new algorithm to work in standard and simulated large
+	  memory environments.  Should even work with pathological
+	  mode.
+	- Runaway swap/VM issue worked around.  For some reason,
+	  occasionally the VM would attempt to swap out nearly the entire
+	  memory tester process, causing a crash if you didn't have as
+	  much swap as you had memory.  Even if it didn't crash, it
+	  weakened the strength of the memory tester, because it caused
+	  the system to swap so much instead of beating on the
+	  memory.  newburn-generator now has a complex algorithm to deal
+	  with this phenomenon by reserving physical RAM and attempting to
+	  estimate the maximum swap necessary for a batch of tests.  New
+	  messages are also displayed during newburn-generator that
+	  indicate the results from the algorithm.  This should help in
+	  testing it.
+	- Created "maxalloc" in the runin/src/memtst.src directory.  This
+	  program uses brute-force to attempt to discern what the maximum
+	  possible size for a memory allocation is and prints it.  Used
+	  in newburn-generator.
+	- Fixed a silly syntax error in the messages test.
+-- Release 1.2.5 (02 Aug 2000) jtc
+	- usleep is a requirement for the data test.  Put it in the optional
+	  requirements.
+	- Really fixed the warning messages in -p.  Those messages were cosmetic,
+	  but annoying.
+-- Release 1.2.4 (01 Aug 2000) jtc
+	- Memory test : The error consistency checker, while
+	  good in theory, doesn't work when compiled.  Need to write an
+	  assembly version.  Until then, it is disabled.
+	- Memory test: Now does 15 passes, 5 passes focusing on the
+	  cache RAM, 10 on the main.  Suggests which might have failed.
+	  All of this helps reduce the amount of data printed by the
+ 	  memory test.
+-- Release 1.2.3 (28 Jul 2000) jtc
+	- A bug accidentally ALWAYS enabled S.M.A.R.T checking.  Fixed.
+	- Support for a crash heartbeat started.
+	- Change memtest ceiling to 1024 MB.  Some Linux boxes, depending
+	  on configuration, can't allocate much more than that per process.
+-- Release 1.2.2 (24 Jul 2000) jtc
+	- Updated the FAQ.
+	- Added S.M.A.R.T. checking from the ucsc-smartsuite to predict
+	  drive failures before they happen. -a option in newburn enables
+	  this checking for all hard drives.
+	  S.M.A.R.T. checking will automatically disable itself if you
+	  have no supporting devices (i.e. RAID).  You should also consider
+	  adding the -D__NEW_HD_DRIVE_ID option to compile it -- I haven't had
+	  much luck without this option, but it breaks compiling on current
+	  VA loads.
+	- The memory tester parses /proc/kcore to attempt to locate
+	  bad pages when found.  Due to the way memtst works, 
+          this actually has a fair shot at succeeding.
+	- Fixed the lack of a dist-clean target in nbench.
+	- Fixed lockfile messages in pathological mode.  Remember that
+	  -p now _requires_ a command line option.
+	- Added "make requirements" to run check-requirements for you.
+	- Fixed up memtst so it has less tolerance of insufficient memory
+	  and reports what it is doing more.
+	- Errors in the test software are counted as test failures.
+	- Errors during configuration of a test are counted as test failures.
+	  Both of these are arguably wrong (since the _test_ itself was never
+	  run), but I think this is the most reasonable thing to do in
+	  this case.
+	- Fixed an apparently long standing bug -- nonzero returns on test
+	  configuration were supposed to be counted as test config failures,
+	  not just values of "2".
+	- COPYING file updated with information on the BYTE benchmark
+	  suite.
+	- Beefed up regular expressions in the kernel watcher to find
+	  VM problems.
+	- Hide warnings in crashme -- I don't want to deal with that right
+	  now.
+	- New modification to syntax checker should handle perl better (from
+	  VA internal Cerberus distribution).
+	- check-syntax now does line totals of the C, sh, and perl code,
+	  excluding those parts of VA-CTCS not authored by VA.
+	- Fixed check-syntax for Debian.  We weren't handling perl detection
+	  right for them.
+-- Release 1.2.1 (20 Jun 2000) jtc
+	- File reorganization, put perl libraries in lib/perl.
+	- Memory tester modifications to check for error consistency and
+	  to report context around failures.  This greatly increases the
+	  complexity of the error report.
+	- Slight changes to the requirements checker so it reports problems
+	  a bit more nicely.
+	- CFLAGS for the memory tester force off unroll-loops optimizations.
+-- Release 1.2.0 (09 Jun 2000) jtc
+	- Syntax checker added for newburn.  This will hopefully
+	  help check for corruption of Cerberus code before execution.
+	- -K option now disables the slow kernel test automatically.
+	- New -B option sets path for kernel test.  This will be used
+	  in virgil phase II.
+	- Added code/makefile syntax checker.  "make test" checks
+	  everything for syntax errors.
+	- Fixed a couple of syntax errors with my checker :)
+	- Miscellaneous code rearranging (non-functional).
+	- More documentation updates.
+	- Added an optional section on the system requirements so things
+	  like missing sensors will not cause you to barf.
+	- Added an lm_sensors monitor module.
+	- Added a command line option to newburn-generator (-l) to use
+	  the sensors test.
+	- Added a system check routine "check-requirements" that will
+	  detect if you have installed the software right.
+	- Added --force option to newburn (must be first option) to bypass
+	  the system check.
+	- Added -N option to burn specific devices/NFS shares.
+	- Added mount command locking on the data test so that
+	  it doesn't try to mount the same NFS share in different places.
+	- Clean up core files on make clean/dist-clean.
+	- Added a "allmessages" test that duplicates syslog.
+	- Adjusted the messages and allmessages test to look for
+	  /var/log/syslog so Debian users won't be without the system
+	  log monitor.
+	- Crashme, the BYTE benchmark, and the allmessages test now
+	  configurable from the newburn command line.
+	- Reorganized the newburn help. Should be easier to understand.
+	- Made help work from the newburn
+	  command, not just newburn-generator (hack)
+	- Kernel compile test now is configurable on the command line.
+	- -t option changed so it no longer affects the kernel test.
+	  This means that to get the old -t behaviour, you have to use
+	  -t and -k (1*numberofCPUs)
+	- -p option changed, now limits itself to configuring the disk
+	  R/W test.  -p requires a parameter now.
+	- If there is a VERSION file, use that for the version reporting.
+	- Updated makefiles to generate symlinks automatically.
+	- Added "nbench" as a test module for Cerberus.  This is the "new"
+	  BYTE UNIX benchmark suite.
+	- FAQ and other docs updated again.  This time with more useful
+	  information on interpreting failures, accuracy, etc.
+	- burnreset utility added, paralleling the same utility in
+	  the main Cerberus tree.  Makes it easier to use burn
+	  outside of manufacturing.
+	- Added a help screen and CVS checkout information to
+	  newburn-generator.
+	- Added the "crashme" test to ctcs.
+-- Release 1.1.7 (20 April 2000) jtc
+	- FAQ updated.
+	- va_detect library now detects SONY and HP CD-RWs, and probably
+	  a few other types too.
+-- Release 1.1.6 (31 March 2000) jtc
+	- va_detect library no longer loads ide-scsi.  Otherwise
+	  the same device shows up as two different ones, and
+	  I'm not prepared to deal with that yet.
+	- Revised further to remove it if it is present.
+	- burnCPU test uses primitive detection to run burnP6 on
+	  Intel machines and burnK6 on others.
+	- Several small bugs in the burn* test wrappers fixed.
+-- Release 1.1.5 (28 March 2000) jtc
+	- Number of filehandles in kernel increased to 512000.
+	- The new kernel test that used to be in alt is now called
+	  "fastkernel" and is now in the main directory.
+	- Changed '-p' disk test behavior.  Now we use the "fastkernel"
+	  test when I'm doing real disk tests with -p.
+	- Integrated Robert Redelmeier's cpuburn-1.2.
+	- Added '-m' switch to newburn to disable Larry's memory test.
+	- Added '-r', '-R' switches to enable RR's cache thrasher
+	  (burnBX).
+	- DANGER WILL ROBINSON!! BUFFER FLUSHING via BLKFLSBUF is now on
+	  by default.  Older (<2.2.13) kernels will definitely have
+	  problems.  Comment out the execution of flushb.real in
+	  runin/bin/flushb if you suspect difficulty due to this.
+	- va_detect.pm now loads appropriate drivers to enable detection.
+-- Release 1.1.4 (24 March 2000) jtc
+	- kernel test changes in 1.1.3 reverted.  I put the new test in
+	  "alt".
+	- Documentation updates.
+-- Release 1.1.3 (15 March 2000) jtc
+	- kernel test improved.  Since we're no longer as paranoid as we
+	  used to be, I optimized the kernel test and now we are once
+	  again doing only one copy for multiple test runs.
+	- runtest now has the capability to run cleanup code.
+++ Release 1.1.2+1 (20 April 2000) jtc
+	- CD-RW changes from 1.1.7
+-- Release 1.1.2 (07 March 2000) jtc
+	- Moved kernel compiles to /home/tmplinux (simple change to
+	  generator)
+-- Release 1.1.1 (06 March 2000) jtc
+	- Makefile change to make compilation instructions more
+	  consistent.
+	- CD-RW avoidance support added.
+-- Release 1.1.0 (28 February 2000) jtc
+	- No changes to CTCS in this release, just update version number.
+-- Release 1.1.0p4 (17 February 2000) jtc
+	- Support for testing/avoiding IDE-floppy type devices.
+	- va_detect library enhanced for the IDE floppy support.
+	- va_detect cleanup.
+-- Release 1.1.0p3 (10 February 2000) jtc
+	- Compilation warnings in memtst cleared up.
+	- Reversed the R/W test enable to shut it back off.  We're doing
+	  pretty well with the existing tests.
+-- Release 1.1.0p2 (2 February 2000) jtc
+	- Larry's memtst adjusted so I can put a per-process ceiling
+	  on the memtst program.
+	- Per-process ceiling implemented in the test generator for
+	  correct handling of very large memory machines.
+	- Some more tweaking to the test generator/memtst to make sure
+	  most all memory really does get tested.
+	- Added the fcompare module to compare files on the media with
+	  files somewhere in the filesystem.
+-- Release 1.1.0p1 (27 January 2000) jtc
+	- Compiler warning fix to chartst.
+	- make clean now deletes flushb.real.
+	- kconfig binary moved to runin/bin where it belongs.
+	- test generator creates a more aggressive test for very large
+	  memory machines.
+	- added a thermal test mode to the test generator (-t) that uses
+	  RR's cpu fryer.
+	- Pathological mode made a little less pathological.  And made
+	  the default.
+	- data test nices itself slightly.
+	- Fixed the fix for the race condition.  There was a thinko in the
+	  code that disabled my fix.  :(
+	- Enhancement to dmesg test to make it occupy less CPU time and store
+	  a much smaller volume of log data.
+	- Similar enhancements to kernel test greatly reduce debugging output.
+	- Memory test no longer as verbose to reduce debugging output.
+	- burn no longer uses mktemp to create new directories, now we use
+	  a numbered system.
+-- Release 1.0.3 (11 January 2000) jtc
+	- Fix for race condition between test subprocess
+	  termination and test process SIGINT delivery.  I have tested
+	  enough to know it at least is no worse than current (<=1.0.2)
+	  behaviour.
+-- Release 1.0.2 (10 December 1999) jtc
+	- Small bug in data test fixed -- now data-info doesn't get
+	  confused when the same NFS directory is mounted in more than 
+	  one place.  Remember that Linux df sometimes uses multiple
+	  lines for a single device unless you specify -P.
+	- Fixed race condition possibly causing multiple data tests to
+	  fail when they are all trying to mount the same filesystem.
+	- More workarounds for kernel compilation screwyness.
+	- Niced up the badblocks tests so they don't take as much CPU
+	  time from our CPU/RAM tests.
+-- Release 1.0.1 (6 December 1999) jtc
+	- run now distinguishes between tests interrupted with and without
+	  errors on the final line in the report.
+	- Manufacturing burn-in no longer has a default time limit.  One
+	  can still be specified on the command line.
+-- Release 1.0.0 (29 November 1999) jtc
+	- Error message parser now sees the NMI "dazed and confused" message
+	  as an error.  They could have at least put the word warning in it..
+	- Error message parser will now see DAC960 drive critical error
+	  messages as error messages.
+-- Release 1.0.0p12 (19 November 1999) jtc
+	- Kernel test now uses make -sw to reduce the size of test
+	  logs info, but still provide some debugging output.
+	- Kernel test now recognizes VA makefiles and adjusts accordingly.
+	  Still works with Linus kernels, too.
+	- Increase default sleepdelay for dmesg to 15 seconds from 10.
+	  (reduces log file size)
+-- Release 1.0.0p11 (17 November 1999) jtc
+	- Adjustments to documentation per Bruce Benson's comments.
+	- Tiny kernel test change.  Now uses mkdir -p to create
+	  test directory.
+	- Removed the copy sentinel from the kernel test.
+	- Modified the kernel test to delete the VA makefile.  This
+	  way kernel compiles behave The Right Way instead of the VA
+	  way.
+	- dmesg test stupid bug fixed that fills up the disk and throws
+	  the test out of balance.  If I would only read my own docs...
+	- Tiny bug in newburn fixed (was an unset bash variable, $x).
+	- flushb now compiles right.  No longer using hdparm to
+	  flush buffers in data test (even this doesn't activate
+	  unless you set the environment variable, below)
+	- run will eventually sigkill subprocesses now if they take too
+	  long to exit.
+-- Release 1.0.0p10 (12 November 1999) jtc
+	- Small adjustment to data test.  It is more aggressive
+	  about terminating subprocesses.
+	- Monitor test now has a timeout.  The addition of this
+	  parameter might break scripts, so read README.tests for
+	  the new syntax.
+	- Pathological mode no longer trashes ext2 (short term test).
+	  Buffer cache flush disabled.
+	- Set the environment variable "CERBERUS_FLUSH_BUFFERS" to try
+	  with the flush-buffer system.  This WILL trash your system
+	  currently, only use this if you're trying to debug why. (not
+	  test environment variable type mentioned in README.TCF, but REAL 
+	  environment variable.  Perhaps these should be one and the same 
+	  some day...)
+-- Release 1.0.0p9 (11 November 1999) jtc
+	- Fixed small bugs in blocktst-info and friends that resulted
+	  in incomprehensible messages when accessing dead devices.
+-- Release 1.0.0p8 (11 November 1999) jtc
+	- Forgot to update newburn-generator version on last cycle.
+	  Fixed.
+	- Minor newburn-generator internal architecture rework.  I've
+	  exported some of the raw test generation features to a library
+	  in preparation for a new batch of configurable test generators
+	  (Thermal, Noise, Power, MTBF, Kernel Stability)
+	- Serious rework of the data test.  The data test now will
+	  go ahead and use large files in automatic mode.
+	- The data test now overrides its internal calculations
+	  if you specify a size.
+	- newburn command only compares options now, not files, to
+	  determine if a change has occurred in the control file.
+	  This is necessary because the exact details on a data test will
+	  change frequently/uselessly between passes.
+	- Kernel test now uses kill -9 to kill subprocesses.
+	- Kernel test now uses yes to insure that make oldconfig
+	  asks no questions.
+	- Kernel test can use a different build directory than /tmp/linux.
+	- run-in test balance altered slightly to favor beating on
+	  memory and CPU harder.
+-- Release 1.0.0p7 (2 November 1999) jtc
+	- Fixed stupid memory exhaustion in kernel test.
+	- Added more GPL/copyright notification headers.
+	- Added  Robert Redelmeier's CPU burn modules.  This
+	  doesn't affect the manufacturing burn.
+	- memtst is now configurable on the command line for
+	  reserved memory.  Default changed to 128 MB.
+	- FAQ updated.
+	- Minor bugfix in makefiles.
+	- Copyright banners added to source code.
+-- Release 1.0.0p6 (29 October 1999) jtc
+	- The "messages" kernel messages test is now case-insensitive
+	  to pick up DAC960 error messages.
+	- The kernel test has Yet Another Termination Bug fixed (more
+	  like attacked with nuclear weapons).
+	- Optimization in kernel test to prevent two copies occurring
+	  on the first pass.  
+	- Boosted the priority of the clock a bit more.  We must have
+	  our pretty displays :)
+	- kernel-info deleted as it is now obsolete.
+	- A couple small things cleaned up in "run".
+-- Release 1.0.0p5 (27 October 1999) jtc
+	- Code cleanup and optimization of all the Test Control System
+	  libraries.
+	- va_detect.pm:  Rearranged the library to make the function
+	  APIs less complicated and make more sense.  Altered
+	  newburn-generator to compensate.
+	- color.pm:  Debugging code removed.
+	- timecalc.pm:  General cleanup/code deobfuscation.
+	- Code cleanup and optimization of the runtest program.
+	- runtest now executes only one external program (date), once,
+	  per test (besides the test program, of course).
+	- Extensive code cleanup and rework of the run program.
+	- Behavior was not correct for timeouts occuring outside of the
+	  wait command.  Fixed.
+	- Several race conditions and extreme-case logic errors
+	  eliminated.
+	- Made our signal handlers safer, they now do much less
+	  (especially for SIGINT).
+	- Integrated foregound/background job handling into a single
+	  subroutine.
+	- Fixed multiple file handling so that error messages are reported
+	  correctly.
+	- Cleaned up the execution of runtest to prepare for its eventual
+	  assimilation into the main program.
+	- Eliminated the old reaper.
+	- Fixed a minor display bug in the report generator.
+	- We now attempt to set EXT2 attributes for synchronous writes 
+	  on our logfiles. Failures to do this are not considered
+	  critical, and are not reported.
+	- Small cleanup on module color.pm.
+	- General code cleanup on the newburn program.
+	- Fixed a bug in newburn that would result in certain option
+	  codes mishandled by the "echo" command.
+	- General code cleanup on newburn-generator.
+	- Internal modifications to newburn-generator to seperate the
+	  detection routines into a perl module.
+	- The inevitable miscellaneous documentation updates.
+-- Release 1.0.0p4 (18 October 1999) jtc
+	- Makefile updates.
+	- Use hdparm instead of flushb.c to flush drive buffers.
+	- No more kernel stupidity in this release.  While it is wasteful,
+	  I now copy the whole kernel source tree every time from scratch
+	  before it is compiled.  Hopefully this will correct those
+	  pesky 3rd/4th pass errors.  I hate working around this, but
+	  this does have the benefit of beating up the disks more.
+	- Some pretty major internal reworking of the run command:
+	- REAPER function eliminated and appropriate code reworked,
+	  as Perl isn't reentrant.
+	- There are some other signal handlers that we probably
+	  should look at for the above reasons...
+	- Chip set me on the right track to eliminating my strange
+	  process termination difficulties.  All this should now be
+	  fixed, the process termination handler is now in a single
+	  location instead of being copied in different ways all over
+	  the place, and finally debugging code commented out for release.
+	- Reduced the number of process table entries per test by one.
+	- Manipulating priorities to make the test control program
+	  have higher priority, this should enable faster updates
+          of the onscreen clock on large/IDE systems.
+-- Release 1.0.0p3 (12 October 1999) jtc
+	- Minor revision to kernel test -- apparently some of the
+	  newer kernels require more cleanup of dependencies before
+	  compiling in the loop. (mkdep.c dependency?)
+-- Release 1.0.0p2 (11 October 1999) jtc
+	- Sample tests now moved to the 'sample' directory.
+	- Added command line options to burn in the CDROM, any JAZ drives,
+	  or even (shudder) the floppy drive.  Can be combined with
+	  pathological mode to be really, really, REALLY stupid.  See
+	  docs for details.
+	- Added a command line option to disable hard disk test (maybe
+	  you just want to build kernels all day...)
+	- Staggering randomization of badblocks/data tests has been
+	  increased to a maximum 60 second delay.
+	- JAZ/ZIP drive detection and avoidance code added to burnin
+	  generator.
+	- Makefiles added.
+	- Code and documentation cleanup.
+-- Release 1.0.0p1 (7 October 1999) jtc
+	- Disabled the data test completely for non-pathological
+	  mode.
+	- Disabled VESA power save and screensaver during burn.
+	- Enabled the Linux Magic SysRq key during burn.
+	- Many cosmetic alterations to the burn system.  The burnin
+	  generator reports more of what it is doing during setup.
+	- Reprimand added for CTRL-C-happy operators.
+	- The newburn command includes some state file management
+	  intelligence now.  It can detect when you have changed options
+	  and it asks if you want to eliminate the old test.
+-- Release 0.9.7 (6 October 1999) jtc (internal only)
+	- The newburn command now increases the available filehandles
+	  to 65535, so pathological mode should no longer run
+	  out of file handles.
+	- Systems without CD-ROM no longer display an (unimportant)
+	  error message.
+-- Release 0.9.6 (5 October 1999) jtc
+	- Minor logic bug in test generator fixed -- non-pathological mode
+	  works right now even for big partitions.
+	- Verbose is more verbose on the end report -- shows
+	  iterations/timer for successful tests too.
+-- Release 0.9.5 (30 September 1999) jtc
+	- The end of the filehandle shortage.  No more perl programs
+	  are launched inside of runtest, and a minimal number of external
+	  modules are used generally.  runtest should now have much less
+	  overhead.
+	- The display should be colored correctly even under heavy load. 
+-- Release 0.9.4 (29 September 1999) jtc
+	- The default test generator now only launches one data
+	  test per partition.  This should no longer exploit
+	  the ext2 bug(s).
+	- Pathological mode (-p) added to burnin, which engaged the
+	  old behaviour.
+-- Release 0.9.3 jtc
+	- A small internal bug with the data test has been fixed,
+	  no more errors should show up if it is interrupted.
+	- The CRAP now has a verbosity feature.  Use burn -v to
+	  activate, burn -v [time] is valid.  See docs for details.
+	- Monitor test fixed, but switching VTs back to the original
+	  terminal doesn't work anymore.  That's just for convienence,
+	  so this will do until I figure out why open is blocking signals
+	  for its subprocesses..
+	- Burnin-generator now more aggressively/intelligently attacks
+	  very large partitions.  Enough data tests are now launched
+	  to insure good coverage.
+	- data test now stays <= 6 processes per active test.  One
+	  problem with Cerberus as currently implemented is the
+	  possibility of process table overflow..
+	- data test limits itself to 2 GB per file.  Otherwise on large
+	  disks/arrays this gets pretty silly.
+	- data test now uses a pseudo-random data generator rather than
+	  dding from /proc/kcore.  The data generator does not use dd,
+	  either, which improves the performance vastly.  75 MB/sec
+	  of data can be generated on an unloaded PII/400, so we're
+	  now really bound by hard drive speed, even for fast
+	  RAID arrays.
+-- Release 0.9.2 (16 September 1999) jtc
+	- Kernel test modified now to support a parallelization
+	  parameter.  The burn generator will now limit
+	  parallelization to 2*CPUs, which while not optimal
+	  for performance, will guarantee that everything will
+	  be working hard, which is the goal.
+	- Memtst insures at least 96 MB virtual memory free now 
+          instead of 20 something.  This should
+	  reduce out of memory errors on our Mongolian Horde style test.
+	  However, previous increases have made little difference, so
+	  this may be the wrong thing to be doing.
+	- Fixed a stupid success accounting bug on the data test.  Now
+	  it counts successes correctly in addition to failures.
+-- Release 0.9.1 (9 September 1999) jtc
+	- Added a clock that keeps the total test time on screen.
+	- Cleaned up debugging code in a lot of places so that extra
+	  output only shows up when a problem with the test suite is
+	  suspected..
+	- Changed handling of foreground processes in 'run' so that
+	  it is similar to the background process handling (allows
+	  clock to run during foreground processes)
+	- Added a burn time set parameter for "22h" or "1h" or "340m" or
+	  whatever..
+-- Release 0.9.0 (2 September 1999) jtc
+	- Changed release number to reflect our new beta status.
+	- Minor change to the RAID code in the test generator.
+	- Rework of the test generator for a 24 hour burnin, similar to
+	  that which we use...
+	- Exported some good helper functions out of run.
+	- Added s-tests, which delay random amounts before starting.
+	  This allows me to stagger disk tests in a better way
+	- Added purple failure messages for bad test configuration (i.e.
+	  burn script errors!)
+	- runtest now has TTF support.
+	- Adjusted TTF code so that it is more accurate & consistent in
+	  reporting.
+	- kernel and syslog watchers now implemented....
+-- Release 5 (31 August 1999) jtc
+	- Burn generator added, newburn script added.. a flurry of other
+	  minor changes and bugfixes.
+-- Release 4 (31 August 1999) jtc
+	- Added more colors, clearer messages
+	- Last release as runtest, without any burn capability
+-- Release 3.1 (31 August 1999) jtc
+	- Added color to the error reporting.
+	- Removed some debugging output.
+	- Runtest now outputs human-readable (color) and loggable output
+	- Multiple timer blocks are now legal, things like looping inside
+	  timer blocks should now be possible..
+	- The only output during test runs (after initialization) should
+	  be errors, now!
+-- Release 3 (14 Jun 1999) jtc
+        - Fixed some bugs in the data test that didn't guarantee termination
+	  on interrupt.  Added some code for runtest too to support this.
+	- Fixed the block test info systems so that they parse fdisk
+	  output a bit more smartly.
+-- Release 2 (11 Jun 1999) jtc
+	- Fixed bugs in the looping construct that were causing the whole
+	  file to loop, rather than just the loop area.
+	- Fixed a small bug in the 'set' command.
+	- Beautified the code for 'run' and 'runtest' so that it is more
+	  readable.
+-- Release 1 (09 Jun 1999) jtc
+	- Initial release
+	

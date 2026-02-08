@@ -1,0 +1,35 @@
+= Using Cbench in a SLURM Environment =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+The biggest thing to note here is that the jobluanch_method will change depending on the MPI you are using with SLURM.
+
+ * For '''Cbench + Openmpi''', use this in cluster.def:
+{{{
+#!perl
+$joblaunch_method = "openmpi";
+# ...
+$batch_method = "slurm";
+}}}
+
+ * For '''Cbench + Mvapich''', use this in cluster.def:
+{{{
+#!perl
+$joblaunch_method = "slurm";
+# ...
+$batch_method = "slurm";
+}}}
+
+ * For '''Cbench + Mvapich2''', use this in cluster.def:
+{{{
+#!perl
+$joblaunch_method = "slurm";
+# ...
+$joblaunch_cmd = "srun --mpi=none";
+# ...
+$batch_method = "slurm";
+}}}
+
+ 	  	 

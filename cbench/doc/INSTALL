@@ -1,0 +1,160 @@
+= Compiling and Installing Cbench =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+== Compiling and Installing the core of Cbench ==
+
+Cbench requires the following environment variables be set:
+
+ * CBENCHOME  - Location of the Cbench distribution tree
+   * Cbench always looks for ''cluster.def'' and all loadable modules relative to CBENCHOME
+ * CBENCHTEST - Location of the Cbench testing tree
+ * MPIHOME    - Location of the system MPI tree where we look to find MPI compile scripts (i.e. mpicc, mpif77) and MPI includes
+ * COMPILERCOLLECTION - Pick the compiler collection/chain you want to compile with. Examples include: intel, gcc, pgi.
+
+The key file in Cbench for controlling compilation is the [source:trunk/cbench/make.def] file.  Most of the compilation support in `make.def` is static and does not require any effort.  The key compilation controls can easily be set as shell environmental variables.
+
+=== BLASLIB ===
+To successfully compile the standard set of Cbench binaries, a valid BLAS library linkage is required.  Cbench relies on an environment variable `BLASLIB` to give it the information to successfully link with BLAS.  This can also be hardcoded in `make.def` around line 170.  BLASLIB should have all the information necessary to link, eg:
+{{{
+export BLASLIB="-L/path/to/blas -lthebestblas"
+}}}
+or to embed dynamic link path with Rpath
+{{{
+export BLASLIB="-Wl,-rpath,/path/to/blas -L/path/to/blas -lthebestblas"
+}}}
+BLAS linkage can easily be tested in Cbench versions newer than 1.2.1 (source checkouts newer than r601) with
+{{{
+% make -C opensource/maketests clean
+% make -C opensource/maketests dummy_blas
+% make -C opensource/maketests linkstatus
+}}}
+
+=== Compiler Optimization Flags ===
+To adjust the compiler optimization flags Cbench passes to all the subordinate makefiles in the source trees, the CBENCH_OPTFLAGS environment variable is the easiest route.  For example:
+{{{
+% export CBENCH_OPTFLAGS="-xsse4 -O4 -reallyreallyfast"
+% make
+}}}
+
+=== Expert or Non-Standard Compilation Control ===
+If expert control is required as to what happens during compilation you'll need to take a look at `make.def` and possibly edit it.  Most users will need to edit the section labeled "###### Architecture and Compiler specific Make configs" which starts around [source:trunk/cbench/make.def#L230 line 230 in make.def].
+
+There are example bash, tcsh, ande modules files to setup the environment for Cbench compilation and usage in [source:trunk/cbench/doc/examples].
+
+Once you have your environment setup the cluster config file, [source:trunk/cbench/cluster.def], needs to be edited for the cluster you want to test.  All the parameters in cluster.def should be commented helpfully.
+
+=== Build the standard collection of binaries ===
+Then make and install the standard collection of tests:
+ {{{
+make install
+ }}}
+
+This compiles and installs the standard collection of test binaries in $CBENCHOME/bin.
+
+== Installing Supported Cbench Test Sets ==
+
+Compile Cbench as described above.  Install the Cbench test set tree:
+ {{{
+make installtests
+ }}}
+
+This will install all ''test sets'' that are currently packaged in Cbench into the tree specified by the CBENCHTEST environment variable: 
+ {{{
+export CBENCHTEST=/scratch3/user/cbench-test
+ }}}
+
+== Compiling non-default parts of Cbench ==
+Some code within Cbench is not compiled by default.  HPC Challenge and NAS Parallel Benchmarks are two primary ones.  HPCC eventually will compile by default after the Cbench build system is upgraded to something a little smarter.  This is because HPCC can be built two ways in Cbench:
+ 1. with the normal MPI libraries and compilers as specified by MPIHOME
+ 2. with a build of MPICH self-contained within Cbench which is useful for building MPI tests for use in the ''nodehwtest'' testset.
+
+The NAS Parallel Benchmarks has to build a binary for every single combination of processor count, test (sp, ft,...), and test size (A,B,C,...) so we don't build them by default.  This can be a lot of binaries depending on the size of your cluster as setup in [source:trunk/cbench/cluster.def cluster.def].
+
+=== Building HPCC with the system MPI ===
+The "system MPI" is defined by the MPIHOME environment variable.
+
+From the top-level of the Cbench source tree:
+ {{{
+make -C opensource/hpcc distclean
+make -C opensource/hpcc
+make -C opensource/hpcc install
+make itests   (to update the CBENCTEST tree)
+ }}}
+
+=== Building NPB ===
+From the top-level of the Cbench source tree:
+ {{{
+make -C opensource/NPB
+ }}}
+OR to limit the size of the build even further than what is in cluster.def (i.e. your cluster has 4096 nodes but you only want to be able run NPB jobs up to 512 nodes)
+ {{{
+make MAXPROCS=512 -C opensource/NPB
+ }}}
+
+To make sure your NPB binaries get updated in the CBENCHTEST tree, from the top-level of the Cbench tree run :
+ {{{
+sbin/install_cbenchtest --testset npb
+ }}}
+
+=== Building only what is required for node-level hardware testing ===
+ {{{
+make nodehwtest
+make itests
+ }}}
+NOTE: This builds the Cbench standalone MPI to support running MPI tests on a single node.
+
+One of the tests compiled by the ''nodehwtest'' target requires a valid LAPACK library linkage.  Cbench relies on an environment variable `LAPACKLIB` to give it the information to successfully link with LAPACK.  Note that LAPACK also requires a valid BLAS linkage.  This can also be hardcoded in `make.def` around line 193.  LAPACKLIB should have all the information necessary to link, eg:
+{{{
+export LAPACKLIB="-L/path/to/lapack -llapack"
+}}}
+or to embed dynamic link path with Rpath
+{{{
+export LAPACKLIB="-Wl,-rpath,/path/to/lapack -L/path/to/lapack -llapack"
+}}}
+LAPACK linkage can easily be tested in Cbench versions newer than 1.2.1 (source checkouts newer than r601) with
+{{{
+% make -C opensource/maketests clean
+% make -C opensource/maketests dummy_lapack
+% make -C opensource/maketests linkstatus
+}}}
+
+=== Building and installing just binaries for filesystem IO testing ===
+{{{
+% make iotest
+% make itests
+}}}
+
+=== Building the standalone MPI for Cbench ===
+You should not really need to do this manually since this is taken care when binaries that require it are compiled.
+ {{{
+make -C opensource/mpich
+make -C opensource/mpich install
+ }}}
+
+=== Building HPCC with the standalone Cbench MPI ===
+Requires the Standalone MPI for Cbench has been compiled.
+ {{{
+make -C opensource/hpcc distclean
+make -C opensource/hpcc local
+make -C opensource/hpcc install
+make itests   (to update the CBENCTEST tree)
+ }}}
+
+=== Build almost everything normall useful in Cbench ===
+{{{
+% make doitall
+}}}
+
+=== Build almost everything normall useful in Cbench EXCEPT node-level testing goodies ===
+{{{
+% make domostall
+}}}
+
+== Further Reading ==
+We highly recommend you peruse the [http://apps.sourceforge.net/trac/cbench/wiki/doc/CbenchDocumentation#HOWTOGuides HOWTO wiki documents] as well.  Especially the 
+ * Cbench Quick Start Installation Guide
+ * Cbench Testing Guide 
+ 	  	 

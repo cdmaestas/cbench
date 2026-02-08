@@ -1,0 +1,74 @@
+#!/usr/bin/perl
+
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+# Script to query a configuration parameter in the cluster.def file.
+# This is useful for using cluster.def parameters in Makefiles for
+# instance.
+
+# need to know where everything cbench lives!
+BEGIN {
+	die "Please define CBENCHOME!\n" if !defined($ENV{CBENCHOME});
+}
+use lib $ENV{CBENCHOME};
+require "cbench.pl";
+$CBENCHOME = $BENCH_HOME = $ENV{CBENCHOME};
+
+use Getopt::Long;
+
+GetOptions(
+	'help' => \$help,
+	'param=s' => \$param,
+	'debug:i' => \$DEBUG,
+);
+
+if (defined $help or !defined $param) {
+	usage();
+	exit;
+}
+
+# just print it out ... maybe check for var type (hash, ref, scalar, array) -cdm
+(defined $DEBUG) and print "DEBUG: $param is $$param\n";
+print "$$param\n" if $param; 
+
+#$cmd = "/bin/grep $param $BENCH_HOME\/cluster.def";
+#(defined $DEBUG) and print "DEBUG: $cmd\n";
+#$grep = `$cmd`;
+#chomp $grep;
+#(defined $DEBUG) and print "DEBUG: \$grep=$grep\n";
+#
+#if ($grep !~ /$param/) {
+#	die "Could not find $param in cluster.def!";
+#}
+#
+#if ($grep =~ /^\$/) {
+#	(defined $DEBUG) and print "DEBUG: $param is a scalar\n";
+#	$grep =~ s/$\;//;
+#	@parts = split '=',$grep;
+#	$parts[1] =~ s/^\s+//;
+#	print "$parts[1]\n";
+#}
+
+sub usage {
+	print "USAGE: $0 --param <parameter to query>\n";
+}

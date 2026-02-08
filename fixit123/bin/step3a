@@ -1,0 +1,235 @@
+#!/bin/bash
+#set -ex
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+# check for what profile script gives us
+if [ -z FIXIT123_HOME ]; then
+    echo "FAILURE  FIXIT123_HOME variable not defined!"
+    exit 1
+fi
+
+TIMESTAMP_CMD="date +%m-%d-%y"
+DATESTAMP_CMD="date +%H:%M"
+TSTAMP=`$TIMESTAMP_CMD`
+DSTAMP=`$DATESTAMP_CMD`
+FILESTAMP_NAME="$TSTAMP"_"$DSTAMP"
+
+LOGDIR=$FIXIT123_DB_HOME
+MAINLOG=$LOGDIR/breakfix_step3.log
+BINDIR=$FIXIT123_HOME/bin
+STEP3ADIR=$LOGDIR/step3a
+STEP3ALOG=$LOGDIR/step3a/$FILESTAMP_NAME.log
+STEP3ANODELIST=$LOGDIR/step3a/$FILESTAMP_NAME.nodelist
+STEP3APBS=$LOGDIR/step3a/$FILESTAMP_NAME.pbs
+HWTDIR=$FIXIT123_CBENCHTEST/nodehwtest
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+check_for_step3_pausefile
+
+MINNODES=2
+MAXNODES=64
+
+if [ "$1" == 'maxnodes' ]; then
+	MAXNODES=$2
+fi
+
+TEMP=`mktemp`
+TEMP3=`mktemp`
+TEMP4=`mktemp`
+TEMP5=`mktemp`
+
+steplogentry "STEP3A INITIALIZING, logfile $STEP3ALOG" $MAINLOG
+
+
+if [ ! -d $STEP3ADIR ]; then
+	mkdir -p $STEP3ADIR
+	chown $FIXIT123_USER.$FIXIT123_USER $STEP3ADIR
+fi
+touch $STEP3ALOG
+chown $FIXIT123_USER.$FIXIT123_USER $STEP3ALOG
+chmod ug+w $STEP3ALOG
+
+# find the name of the STEP3 reservation, if we are using reservations
+if [ -z $FIXIT123_STEP3_NODELIST_FILE ]; then
+	SHOWRESOUT=`mktemp`
+	showres > $SHOWRESOUT
+	num=`grep STEP3 $SHOWRESOUT | wc -l`
+	if [ $num -ne 1 ]; then
+		steplogentry "STEP3A aborting, more than one STEP3 reservation" $MAINLOG
+		exit 1
+	fi
+	step3_res=`grep STEP3 $SHOWRESOUT | cut -f1 -d' '`
+	steplogentry "STEP3 reservation name is $step3_res" $STEP3ALOG
+fi
+
+# get the list of nodes that are in step3 right now
+# we will only concern ourselves with these nodes
+get_step3_node_list 
+if [ "$1" == 'onlynodesin' ]; then
+	echo $STEP3_NODE_LIST | tr [:blank:] '\n' | grep "$2" > $STEP3ANODELIST
+else
+	echo $STEP3_NODE_LIST | tr [:blank:] '\n' > $STEP3ANODELIST
+fi
+chown $FIXIT123_USER.$FIXIT123_USER $STEP3ANODELIST
+numnodes=`wc -l $STEP3ANODELIST | cut -f1 -d' '`
+steplogentry "numnodes initially in STEP3 is $numnodes" $STEP3ALOG
+
+steplogentry "MINNODES=$MINNODES  MAXNODES=$MAXNODES" $STEP3ALOG
+
+goodnodes=0
+if [ "$1" != 'dryrun' -a "$1" != 'restart' ]; then
+    #
+    # prep all step3 nodes
+    showres -n > $TEMP5
+    for node in `cat $STEP3ANODELIST`; do
+	    $BINDIR/prep_node_for_step3a $node $TEMP5 | tee $TEMP4
+
+		# make sure node is not a step3b type node
+		grep "READY for REINTEGRATION" $TEMP4 > /dev/null
+		if [ $? -eq 0 ]; then
+		    steplogentry "NODE $node => already passed STEP3B, awaiting reintegration" $STEP3ALOG
+			cp $STEP3ANODELIST $TEMP4
+			grep -v -P "^$node$" $TEMP4 > $STEP3ANODELIST
+			#pbsnodes -o $node
+			continue
+		fi
+
+        grep "READY FOR STEP3A" $TEMP4 >/dev/null
+        if [ $? -eq 1 ]; then
+            STAT=`tail -1 $TEMP4`	
+		    steplogentry "NODE $node => NOT READY for STEP3A, $STAT" $MAINLOG $STEP3ALOG
+			cp $STEP3ANODELIST $TEMP4
+			grep -v -P "^$node$" $TEMP4 > $STEP3ANODELIST
+			#pbsnodes -o $node
+			continue 
+        fi
+
+	#	pdsh -u 10 -w $node "/usr/bin/ibstat | grep State:" > $TEMP3
+    #    head -1 $TEMP3 | grep -P "$node\:.*Active" > /dev/null
+    #    if [ $? -ne 0 ]; then
+            #cat $TEMP3
+    	    #steplogentry "node $node IB port was not PORT_ACTIVE, removing from run" $STEP3ALOG
+    #	    steplogentry "NODE $node => NOT READY for STEP3A, IB port was not PORT_ACTIVE" $MAINLOG $STEP3ALOG
+    #        cp $STEP3ANODELIST $TEMP4
+    #        grep -v -P "^$node$" $TEMP4 > $STEP3ANODELIST
+			#pbsnodes -o $node
+    #        continue
+    #    fi
+        
+		goodnodes=`expr $goodnodes + 1`
+        if [ $goodnodes -eq $MAXNODES ]; then
+        	# we have enough nodes to start a test
+            echo "Found enough good nodes..."
+        	break
+        fi
+    done
+    
+    numnodes=`wc -l $STEP3ANODELIST | cut -f1 -d' '`
+    steplogentry "numnodes in STEP3 after node preparedness check is $numnodes" $STEP3ALOG
+fi
+
+# make sure we have greater than MINNODES nodes to run on no
+# more than MAXNODES
+numnodes=`wc -l $STEP3ANODELIST | cut -f1 -d' '`
+if [ $numnodes -lt $MINNODES ]; then
+	steplogentry "Not enough nodes for STEP3A, min=$MINNODES, available=$numnodes" $STEP3ALOG
+    exit
+fi
+if [ $numnodes -gt $MAXNODES ]; then
+	trimnodes=`expr $numnodes - $MAXNODES`
+	steplogentry "More than enough nodes for STEP3A, max=$MAXNODES, available=$numnodes, trimming $trimnodes" $STEP3ALOG
+    for ((i=1; i<=$trimnodes; i++)); do
+	    nodetodrop=`tail -1 $STEP3ANODELIST`
+        cp $STEP3ANODELIST $TEMP4
+        grep -v -P "^$nodetodrop$" $TEMP4 > $STEP3ANODELIST
+
+        #steplogentry "numnodes is odd, dropping node $nodetodrop" $STEP3ALOG
+        steplogentry "NODE $nodetodrop => STEP3A DEFERRED, MAXNODES exceeded" $MAINLOG $STEP3ALOG
+    done
+fi
+
+numnodes=`wc -l $STEP3ANODELIST | cut -f1 -d' '`
+steplogentry "numnodes in STEP3 after MAXNODES check is $numnodes"  $STEP3ALOG
+
+
+# we want an even number of nodes... it just works nicer
+ODD=`expr $numnodes % 2`
+if [ "$ODD" == "1" ]; then
+	nodetodrop=`tail -1 $STEP3ANODELIST`
+    cp $STEP3ANODELIST $TEMP4
+    grep -v -P "^$nodetodrop$" $TEMP4 > $STEP3ANODELIST
+    
+    #steplogentry "numnodes is odd, dropping node $nodetodrop" $STEP3ALOG
+    steplogentry "NODE $nodetodrop => STEP3A DEFERRED, odd node dropped" $MAINLOG $STEP3ALOG
+    numnodes=`wc -l $STEP3ANODELIST | cut -f1 -d' '`
+    steplogentry "numnodes is now $numnodes" $STEP3ALOG
+fi
+
+
+steplogentry "nodelist is in $STEP3ANODELIST" $STEP3ALOG
+
+# record breakfix log entries for the nodes we'll be testing
+for node in `cat $STEP3ANODELIST`; do
+	steplogentry "NODE $node => STEP3A INITIALIZING, logfile $STEP3ALOG" $MAINLOG
+done
+sync
+
+# check for an interactive node
+grep -P "$FIXIT123_INTERACTIVE_NODES_REGEX" $STEP3ANODELIST > /dev/null
+if [ $? -eq 0 ]; then
+	interactive_node=1
+fi
+
+#
+# with the preliminary checking done, we are ready to do some MPI work.
+# all we do right now is startup a single Torque job specifically on the
+# step3 nodes we deemed as ready and let the Torque job take care of all
+# the testing
+echo "Generating Torque batch script for step3a run"
+$BINDIR/build_step3a_batch_script --nodefile $STEP3ANODELIST --ident "step3a_$FILESTAMP_NAME" --logfile $STEP3ALOG > $STEP3APBS
+steplogentry "generated step3a batch script $STEP3APBS" $STEP3ALOG
+
+if [ "$1" != 'norun' -a "$1" != 'dryrun' ]; then
+    cd $STEP3ADIR
+    echo -n "JOBID=" >> $STEP3ALOG
+    su $FIXIT123_USER -c "$FIXIT123_STEP3_BATCHSUBMIT_CMD $STEP3APBS" | tee -a $STEP3ALOG
+    cd -
+fi
+
+if [ "$interactive_node" == '1' ]; then
+	steplogentry "Forcing step3 execution because of interactive nodes" $STEP3ALOG
+	sleep 5
+	JOBID=`grep JOBID $STEP3ALOG | cut -f2 -d'=' | cut -f1 -d'.'`
+	# FIXME: this is Moab scheduler specific which is ok for snl
+	mjobctl -u ALL $JOBID
+	runjob -x $JOBID
+fi
+
+/bin/rm -f $TEMP $TEMP3 $TEMP4 $TEMP5
+
+chown $FIXIT123_USER.$FIXIT123_USER $STEP3ANODELIST
+chown $FIXIT123_USER.$FIXIT123_USER $STEP3APBS
+chown $FIXIT123_USER.$FIXIT123_USER $STEP3ALOG

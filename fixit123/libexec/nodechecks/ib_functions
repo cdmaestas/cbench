@@ -1,0 +1,198 @@
+# -*-Shell-script-*-
+#
+# ib_functions    This file contains core ib functions 
+#
+# vim: syntax=sh
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+FLASHPROG=UNDEFINED
+STATPROG=UNDEFINED
+
+# CISCO TOPSPIN
+is_cisco() {
+	/sbin/lsmod | grep ts_ib > /dev/null 2>&1
+	[ $? -eq 0 -a -d /usr/local/topspin/lib64 ] || return 1
+}
+
+# VOLTAIRE 
+is_voltaire() {
+#	rpm -qa | grep ibhost-hpc > /dev/null 2>&1
+	/sbin/lsmod | grep mlxsys > /dev/null 2>&1
+	[ $? -eq 0 -a -d /usr/voltaire ] && return 0
+	return 1
+}
+
+# OFED 
+is_ofed() {
+	/sbin/lsmod | grep ib_mthca > /dev/null 2>&1
+	[ $? -eq 0 -a -d /usr/ofed ] && return 0
+	return 1
+}
+
+is_valid_ib_flash_image() {
+	[ -f $FW_IMAGE ] || return 1
+}
+
+is_valid_ib_flash_prog() {
+	[ -x $FLASHPROG ] || return 1
+}
+
+is_valid_ib_stat_prog() {
+	[ -x $STATPROG ] || return 1
+}
+
+check_for_mellanox_hca() {
+	echo
+	echo -n "Checking for an IB HCA: "
+	/sbin/lspci | grep Mellanox > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+}
+
+check_ib_port_status() {
+	echo
+	echo -n "Checking IB HCA Port Status: "
+	is_valid_ib_stat_prog
+	if [ $? -eq 0 ]; then
+		if [ `$STATPROG | grep ACTIVE | wc -l` -ne 1 ]; then
+			echo_failure
+		else 
+			echo_success
+		fi
+	else
+		echo
+		echo "$STATPROG is not a valid program to use!"
+	fi
+}
+
+check_ib_port_speed() {
+	local speed=$1
+	echo
+	is_ofed || (echo "Warning: Can only check HCA port speed with OFED" && return 1)
+	echo -n "Checking IB HCA Port Speed ($1): "
+	local numports=`/usr/ofed/bin/ibstatus | grep rate | wc -l`
+	local actualspeed=`/usr/ofed/bin/ibstatus | grep rate | grep $1| wc -l`
+	if [ $actualspeed -eq $numports ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+}
+
+check_ib_firmware_versions() {
+	local fwvers=$1
+	local fwbuild=$2
+	echo
+	echo -n "Checking IB HCA firmware ($fwvers build $fwbuild): "
+	[ `id -u` -eq 0 ] && is_valid_ib_flash_prog;
+	if [ $? -eq 0 ]; then
+		local nfwvers=`$FLASHPROG -i | grep Primary | awk '{print $4}' | cut -f1 -d','`
+		local nfwbuild=`$FLASHPROG -i | grep Primary | awk '{print $6}' | cut -f1 -d','`
+		if [ $nfwvers = $fwvers ]; then
+			if [ $nfwbuild = $fwbuild ]; then
+				echo_success
+			else
+				echo
+				echo -n "Invalid firmware build: $nfwbuild is not $fwbuild":
+				echo_failure
+		fi
+		else 
+			echo
+			echo -n "Invalid fimware version: $nfwvers is not $fwvers":
+			echo_failure
+		fi
+	else
+		echo
+		echo -n "User is not root or Invalid flash Program $FLASHPROG:"
+		echo_failure
+	fi
+}
+
+# arg1 the full path to the fw image
+update_ib_firmware() {
+	local fwimage=$1
+	echo
+	echo -n "Upgrading IB HCA Firmware with $fwimage:"
+	is_valid_ib_flash_image; 
+	if [ $? -eq 0 ]; then
+		$FLASHPROG $fwimage
+		WANT_REBOOT=1
+		echo ATTENTION: IB HCA firmware updated, you must now reboot this system ...
+	else
+		echo "Invalid Firmware image $fwimage detected"
+		exit 1
+	fi
+}
+
+check_ib_stack() {
+	# Check for an HCA to run tests against
+	check_for_mellanox_hca
+	if [ $? -eq 0 ]; then
+		is_cisco
+		if [ $? -eq 0 ]; then
+			. $FIXIT123_HOME/libexec/nodechecks/cisco_ib_functions
+			TSHOME=/usr/local/topspin
+			FLASHPROG=$TSHOME/sbin/tvflash
+			STATPROG=$TSHOME/bin/vstat
+			check_for_cisco_mad_patch
+			check_for_non_la_mpi_compliance
+		else
+			is_voltaire
+			if [ $? -eq 0 ]; then
+				# FIXME: NEED MORE VOLTAIRE FUNCTIONS
+				echo
+				echo NEED MORE VOLTAIRE FUNCTIONS
+				exit
+			else
+				is_ofed
+				if [ $? -eq 0 ]; then
+					OFEDHOME=/usr/ofed
+					FLASHPROG=$OFEDHOME/sbin/tvflash
+					STATPROG=$OFEDHOME/bin/ibstatus
+				else
+					echo
+					echo -n "IB Environment is non-existent: "
+					echo_failure
+				fi
+			fi
+		fi
+
+		# Check IB HCA Port Status
+		check_ib_port_status
+		if [ $? -ne 0 ]; then
+			echo
+			echo ib port is down
+		fi
+		echo
+
+	else
+		echo 
+		echo "No Mellanox HCA found!"
+	fi
+}

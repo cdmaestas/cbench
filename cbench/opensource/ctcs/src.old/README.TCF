@@ -1,0 +1,109 @@
+
+This is some basic documentation on the test control file language.  Use
+this mini-language to write your own tests or test generators.  It is
+primitive but I will be extending it later.  Try to keep your
+test-generator pretty generic in its output because a future version of
+ctcs might not use the same language (I might switch to perl for the
+control language)
+
+
+Command:  #
+	Lines starting with # are comments, and are ignored.
+
+Command:  timer <timespec>
+	Set the countdown timer to <timespec> and start it.  If the timer
+	reaches 0 before a 'wait' command, all running tests will be
+	terminated and the program will skip to the next wait command.
+	The timing is not precise, time will be taken to terminate
+	the running tests cleanly.  For a large number of tests, this
+	can take a while.
+	The format for <timespec> is:
+	        n	 where n is the number of seconds
+	     or
+	        WdXhYmZs for W days, X hours, Y minutes, and Z seconds.  Any
+			 portion of this may be omitted, for example, 20d or
+			 4h5s.
+			 
+Command: bg <x> <TESTLABEL> <test> [param1] .. [paramx]
+	Run test <test> <x> times in the background.  Collect the results
+	under the <TESTLABEL> label.  Note that only one command for each
+	<TESTLABEL> can be run at a time.  If <x> is zero, run the test
+	continuously until a timeout occurs.
+
+Command: fg <x> <TESTLABEL> <test> [param1] .. [paramx]
+	Run test <test> <x> times in the foreground (wait for termination).
+	Collect the results under the <TESTLABEL> label.  Note that only one
+	command for each <TESTLABEL> can be run at a time.  If <x> is zero,
+	run the test continuously until a timeout occurs.
+
+Command: on error [...]
+	On a test error, execute the command with parameters [...].  This
+	is used for supporting the ejecting of the CD-ROM in VA's factory
+        automation system, but can be used to exec almost anything.
+
+Command: on event [...]
+	On an "event", execute the command with parameters [...].  This is
+	used for supporting the ejecting of the CD-ROM in VA's factory automation
+	system, but can be used to exec almost anything.  An "event" is a test
+	failure or the printing of a notify message (see below).  If
+	both on event and on error are defined, on error takes precedence
+	for error actions.
+
+Command: notify <timespec> <message>
+	After the length of time specified by <timespec>, CTCS will print
+	<message>.
+	
+Command: set <VARIABLE> <VALUE>
+	Set script environment variable <VARIABLE> to <VALUE>.
+	Note that the script environment variable does not translate
+	to any real process environment variables.  The script environment
+	variable is currently unique to the test control software.
+	Some important variables:
+		autoexit
+			If a notify event occurs, autoexit if the current
+			time is in the autoexit_timerange.  Checks
+			every half hour.
+		autoexit_timeframe
+			Format:
+			days    strt stop stagger
+			SMTWUFA-0000-2359-30
+			Each letter is a day, start and stop times are
+			military time.  Sample time spec is for 24/7 with
+			random exit delay of 30 minutes if exiting
+			at the start point.
+		LINE	
+			what line of the current script the parser is on.
+			Changing this _is_ now equivalent to a GOTO, but
+			is not generally advisable unless you know what
+			you're doing.
+	        LOOPSTACK
+			stack of begin locations that is popped off for loops.
+		WAIT
+			whether the control program is waiting for a timeout
+			or process exhaustion
+		runin_directory
+			Where the "runin" directory containing runtest and
+			its assorted files is.  Defaults to ./runin.
+		save_directory
+			location of the log files for this control file.
+			Automatically initialized.
+		verbose
+			Set to 1 to enable verbose reporting from the
+			test process.  This enables success reporting
+			to the screen as well as error reporting.
+
+		
+Command: wait
+	Wait until there are no more tests running or a timeout condition
+	occurs, then proceed with execution.
+
+Command: begin
+	    ...
+	 loop
+	 
+	 Defines an infinite loop.  The only way to exit a loop like this
+	 is with a timer/wait combination.
+
+Command: exit
+	Command forces an exit from the test.  This is the same effect as
+	reaching the end of the control file.

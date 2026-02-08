@@ -1,0 +1,30 @@
+# shakedown_iostress job template
+# IOR MPI filesystem test using posix, modeled after SWL posix IOR test
+# N to N file access pattern
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/IOR.posix
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/IOR.posix
+
+# FIXME: we should calculate the blocksize, -b, parameter such that
+# the aggregate filesize is either some multiple of memory per node
+# or a filesize set in cluster.def
+ALLARGS="-b 1024m -C -i 4 -t 128m -v -v -r -R -w -W -e -d 30 -g "
+TESTDIR="TESTDIR_HERE/$JOBID"
+mkdir -p $TESTDIR
+PSFILE=`/bin/mktemp $TESTDIR/posix.nto1.XXXXXX`
+PPFILE=`/bin/mktemp $TESTDIR/posix.nton.XXXXXX`
+
+cbench_echo "Nto1 file: $PSFILE"
+cbench_echo "NtoN files: $PPFILE"
+cbench_echo "TESTDIR: $TESTDIR"
+cbench_echo
+
+# n-to-n file pattern
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/IOR.posix -a POSIX $ALLARGS -F -o $PPFILE"
+cbench_run_cmd $CMD
+
+# quiet things down before the next job
+sync
+sleep 60

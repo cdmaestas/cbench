@@ -1,0 +1,44 @@
+#!/bin/bash
+#
+# takes a device/partition and mounts it, read and writes to it, etc
+# data-info  : give partition, return partition, mount-point,
+# space available for testing
+
+if [ -z "$1" ] ; then {
+	echo give me a device or NFS point
+	exit 2
+} ; fi
+
+device="$1"
+
+# ok if it is mounted already it should be in /proc/mounts
+mpoint=`mount | grep "$device " | head -n 1 | cut -f 3 -d ' '`
+
+if [ ! -e "$mpoint" ] ; then {
+	unset mpoint
+	while [ -z "$mpoint" ] ; do {
+		mpoint="/tmp/datamount.$RANDOM$RANDOM"
+		mkdir $mpoint
+		if [ $? != 0 ] ; then {
+			unset mpoint
+		} ; fi
+	} done
+	# try several methods
+	mountok=0
+	mount $device $mpoint >> /dev/null 2>&1
+	if [ $? != 0 ] ; then {
+		for i in `cat /proc/filesystems | grep -v nodev` ; do {
+			mount -t $i $device $mpoint >> /dev/null 2>&1
+			if [ $? = 0 ] ; then mountok=1 ; break ; fi
+		} ; done
+	} ; fi
+} ; fi
+
+# ok if it is mounted already it should be in /proc/mounts
+mpoint=`mount | grep "$device " | head -n 1 | cut -f 3 -d ' '`
+if [ ! -e "$mpoint" ] ; then {
+	echo error -- unable to mount $device >&2
+	exit 2
+} ; fi
+
+echo $1 $mpoint $2 $3

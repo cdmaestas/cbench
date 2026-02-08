@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+############ Cbench moab_header.in ######################
+# Directives for Moab
+# NOTE: Moab may require that these directives be first...
+#
+#MSUB -l nodes=TORQUE_NODESPEC_HERE
+#MSUB -l walltime=WALLTIME_HERE
+#
+# other attributes you might use but are hidded from Moab processing
+#HIDE -q somequeue
+#HIDE -A 70400/01.01.02
+
+# include the common Cbench functions used in job scripts
+. BENCH_TEST_HERE/cbench_functions
+
+# this tells us what type of cbench job this is
+CBENCH_RUN_TYPE=RUN_TYPE_HERE
+
+# grab the MSUB_NODEFILE nodelist
+NODELIST=`cat $MSUB_NODEFILE | uniq | xargs`
+
+# this tells us details of the Cbench job in the job output
+cbench_echo "Cbench numprocs: NUM_PROCS_HERE"
+cbench_echo "Cbench numnodes: NUM_NODES_HERE"
+cbench_echo "Cbench ppn: NUM_PPN_HERE"
+cbench_echo "Cbench benchmark: BENCHMARK_NAME_HERE"
+cbench_echo "Cbench jobname: JOBNAME_HERE"
+cbench_echo "Cbench testset: TESTSET_NAME_HERE"
+cbench_echo "Cbench joblaunchmethod: JOBLAUNCHMETHOD_HERE"
+cbench_echo "Cbench moab nodelist: $NODELIST"
+cbench_echo ""
+
+# grap the Moab jobid
+JOBID=`echo $MSUB_JOBID | cut -f1 -d'.'`
+

@@ -1,0 +1,31 @@
+#!/bin/bash
+#set -ex
+
+. /projects/contrib/fixit/fixit-env.sh
+
+echo -n "Today's date is: "
+date +%D
+
+if [ -z $NODECHECKS_HOME ]; then
+	echo Please define NODECHECKS_HOME env variable
+	exit 1
+fi
+
+. $NODECHECKS_HOME/ib_functions
+. $NODECHECKS_HOME/cisco_ib_functions
+
+check_for_mellanox_hca
+if [ $? -eq 0 ]; then
+	turn_off_ts_junk
+	check_cisco_ib_firmware_versions v4.7.0 3.2.0.39
+	if [ $? -ne 0 ]; then
+		echo
+		update_cisco_ib_firmware /projects/global/FIRMWARE/cisco/ib/firmware/fw-lioncub-a0-4.7.0.bin
+	fi
+	check_cisco_ib_status
+	if [ $? -ne 0 ]; then
+		echo
+		echo ib port is down
+	fi
+fi
+echo

@@ -1,0 +1,76 @@
+= Software in Cbench =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+This is a list of the opensource tools we use in Cbench and locations where you can get source code.
+
+== Core Cbench Opensource Software ==
+
+
+
+ * Intel MPI Benchmarks (IMB)
+   * http://www.intel.com/software/products/cluster/mpi/mpi_benchmarks_lic.htm
+   * http://www3.intel.com/cd/software/products/asmo-na/eng/219848.htm
+ * Intel Nodeperf Benchmark (part of Intel® Math Kernel Library – LINPACK Download) - DGEMM benchmark
+   * http://www.intel.com/cd/software/products/asmo-na/eng/363191.htm
+ * LLNL Scalable IO Project Tests (https://computing.llnl.gov/?set=code&page=sio_downloads)
+   * IOR - benchmark parallel file systems using POSIX, MPIIO, or HDF5 interfaces
+   * simul - testing file system operations simultaneously from many processes to test the correctness and coherence of parallel file systems
+   * mdtest — used for testing the metadata performance of a file system
+   * fdtree — used for testing the metadata performance of a file system
+   * miranda_io — a Fortran I/O kernel from the Miranda hydrodynamics application code
+ * Iozone - http://www.iozone.org/
+ * b_eff - http://www.hlrs.de/organization/par/services/models/mpi/b_eff/
+ * mpi_examples and perftest - Taken from standard MPICH distros (http://www-unix.mcs.anl.gov/mpi/mpich/)
+ * MPICH - http://www-unix.mcs.anl.gov/mpi/mpich/
+ * netperf - http://www.netperf.org/netperf/NetperfPage.html
+ * NAS Parallel Benchmarks - http://www.nas.nasa.gov/Software/NPB/
+ * Pallas MPI Benchmarks - http://www.pallas.de/ (Cbench 1.x and earlier)
+ * Presta Benchmarks from ASCI Purple Benchmarks - http://www.llnl.gov/asci/platforms/purple/rfp/benchmarks/limited/code_list.html
+ * Pholem MPI Benchmarks from ASCI Sequoia Benchmarks (https://asc.llnl.gov/sequoia/benchmarks/#phloem)
+   * linktest: MPI aggregate link bandwidth benchmark
+   * mpiBench: MPI collective latency benchmark
+   * mpiGraph: MPI task pair bandwidth benchmark
+   * Presta com: MPI latency and aggregate bandwidth benchmark
+   * SQMR: MPI messaging rate benchmark
+   * torustest: MPI link bandwidth range benchmark
+ * STREAMS - standard streaming memory benchmark
+   * http://www.cs.virginia.edu/stream/
+ * STREAM2 - extenstion of the STREAMS benchmark to measure sustained bandwidth at all levels of the cache hierarchy
+   * http://www.cs.virginia.edu/stream/stream2/
+ * OSU MPI Benchmarks - http://nowlab.cis.ohio-state.edu/projects/mpi-iba/benchmarks.html
+ * LLCbench - Low Level Architectural Characterization Benchmark - http://icl.cs.utk.edu/projects/llcbench/
+ * PSNAP - PAL System Noise Activity Program - http://www.c3.lanl.gov/pal/software/psnap/
+ * CTCS - Cerberus Test Control System - http://sourceforge.net/projects/va-ctcs/
+ * HPCC - HPC Challenge Benchmark - http://icl.cs.utk.edu/hpcc/
+ * HP Linpack 1.X- http://www.netlib.org/benchmark/hpl/
+ * HP Linpack 2.x - http://www.netlib.org/benchmark/hpl/
+ * Memtester - userspace memory tester - http://pyropus.ca/software/memtester/
+ * Stress - a simple tool that imposes certain types of compute stress on UNIX-like operating systems - http://weather.ou.edu/~apw/projects/stress/stress.html
+ * MATMULT - LLNL Matrix Multiplication benchmark
+ * STRIDE - LLNL memory stress test
+ * Software that is intrinsically part of Cbench
+   * 300MB - 300 megabyte MPI executable for stressing MPI launches
+   * fpck - floating point correctness diagnostic
+   * mpi_routecheck - serialized N**2 MPI communication sanity checker
+   * rotate, rotate_latency - Rotate is a cross-sectional bandwidth/latency benchmark developed at Sandia National Labs. It is useful for measuring how well an interconnect makes advantage of the available hardware bandwidth at the MPI level. Specifically, this benchmark is useful to see the effects of static routing in fully connected CLOS network. 
+   * mpi_malloc
+   * mpi_tokensmash
+   * mpi_hello, mpi_hello_ordered
+   * mpi_latency
+   * mpi_overhead - simple MPI memory overhead measurer
+   * mpi_slowcpu
+
+== Cbench Opensource Software in the '''openapps''' tree ==
+
+ * LAMMPS - http://lammps.sandia.gov
+ * HPCCG - http://www.sandia.gov/benchmarks/
+ * Trilinos Epetratest - http://www.sandia.gov/benchmarks/
+ * MPQC - http://www.mpqc.org
+ * AMG - https://asc.llnl.gov/sequoia/benchmarks/#amg ([https://asc.llnl.gov/sequoia/benchmarks/AMG_summary_v1.0.pdf summary])
+ * IRS - https://asc.llnl.gov/sequoia/benchmarks/#irs 
+ * Sweep3d - http://www.ccs3.lanl.gov/pal/software.shtml or http://www.ccs3.lanl.gov/pal/software/roadrunner.html
+ * phdMesh - https://software.sandia.gov/mantevo
+ 	  	 

@@ -1,0 +1,12 @@
+# this is a test
+timer 10m
+
+bg 0 COUNTING test1 1 2 3
+bg 0 SLEEPING test1 3 4
+bg 0 MONITOR test2 4 5
+bg 0 DUFUS test1 8 9
+bg 0 MOXIT test2 9 0
+bg 0 DUMMY test2 93 4 1
+
+wait
+exit

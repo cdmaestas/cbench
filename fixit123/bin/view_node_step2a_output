@@ -1,0 +1,27 @@
+#!/usr/bin/perl
+
+if (scalar @ARGV != 1) {
+	die "USAGE: view_node_step2a_output.pl NODENAME";
+}
+
+$hn = $ARGV[0];
+$output_path = "$ENV{FIXIT123_CBENCHTEST}/nodehwtest/$ENV{FIXIT123_STEP2_TESTIDENT}";
+chomp $hn;
+
+        @oldrunfiles = `cd $output_path; ls -1 $hn\.node_hw_test\.run???? 2>&1`;
+        $maxrunnum = 0;
+        for (@oldrunfiles) {
+                (/no such file/) and last;
+                chomp $_;
+                ($num) = $_ =~ /^\S+\.node_hw_test\.run(\d+)$/;
+                if ($num > $maxrunnum) {
+                        $maxrunnum = $num;
+                }
+        }
+
+        $runidnum = $maxrunnum;
+
+$output_file = sprintf "%s/%s\.node_hw_test\.run%04d",$output_path,$hn,$runidnum;
+print "Viewing $output_file ...\n";
+
+exec "less -R $output_file";
