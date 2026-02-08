@@ -1,0 +1,156 @@
+# -*-Shell-script-*-
+#
+# cisco_functions     This file contains cisco ib functions to be used by most or all
+#                     shell scripts in the nodechecks
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+FW_VERSION=v4.7.0
+FW_BUILD=3.2.0.39
+TSHOME=/usr/local/topspin
+TVFLASHPROG=$TSHOME/sbin/tvflash
+FW_IMAGE=/home/dell/cisco/hca_fw/latest/4.7.0/fw-lioncub-a0-4.7.0.bin
+MAD_MD5SUM=f1d333c4f6e10d8f67d6706723cdbbc9
+
+is_valid_cisco_ib_flash_image() {
+	[ -f $FW_IMAGE ] || return 1
+}
+
+is_valid_cisco_ib_flash_prog() {
+	[ -x $TVFLASHPROG ] || return 1
+}
+
+check_cisco_ib_firmware_versions() {
+	local fwvers=$1
+	local fwbuild=$2
+	echo
+	echo -n "Checking Topspin ib firmware ($fwvers build $fwbuild): "
+	is_valid_cisco_ib_flash_prog;
+	if [ $? -eq 0 ]; then
+		local nfwvers=`$TVFLASHPROG -i | grep Primary | awk '{print $4}' | cut -f1 -d','`
+		local nfwbuild=`$TVFLASHPROG -i | grep Primary | awk '{print $6}' | cut -f1 -d','`
+		if [ $nfwvers = $fwvers ]; then
+			if [ $nfwbuild = $fwbuild ]; then
+				echo_success
+			else
+				echo
+				echo -n "Invalid fimware build: $nfwbuild is not $fwbuild":
+				echo_failure
+		fi
+		else 
+			echo
+			echo -n "Invalid fimware version: $nfwvers is not $fwvers":
+			echo_failure
+		fi
+	else
+		echo
+		echo -n "Invalid flash Program $TVFLASHPROG:"
+		echo_failure
+	fi
+}
+
+# arg1 the full path to the fw image
+update_cisco_ib_firmware() {
+	local fwimage=$1
+	echo
+	echo -n "Upgrading Cisco IB Firmware with $fwimage:"
+	is_valid_cisco_ib_flash_image; 
+	if [ $? -eq 0 ]; then
+		$TVFLASHPROG $fwimage
+		echo ATTENTION: You must now reboot this system ...
+	else
+		echo "Invalid Fimrware image $fwimage detected"
+		exit 1
+	fi
+}
+
+check_cisco_ib_port_status() {
+	echo
+	echo -n "Checking Cisco/Topspin IB HCA Port Status: "
+	if [ -d $TSHOME ]; then
+		if [ `$TSHOME/bin/vstat | grep port_state=PORT_ACTIVE | wc -l` -ne 1 ]; then
+			echo_failure
+		else
+			echo_success
+		fi
+	else 
+			echo_failure
+	fi
+}
+
+check_for_non_la_mpi_compliance() {
+	echo
+	echo -n "Checking for non LA-MPI patches: "
+	if [ -f $TSHOME/lib64/libvapi.so ]; then
+		if [ `strings $TSHOME/lib64/libvapi.so | grep PREMAIN | wc -l` -ne 0 ]; then
+			echo_failure
+        else
+			echo_success
+        fi
+	else
+		echo_failure
+	fi
+}
+
+check_for_cisco_mad_patch() {
+	echo
+	echo -n "Checking for IB Kernel MAD patch: "
+	local kernelvers=`uname -r`
+	if [ -f /lib/modules/${kernelvers}/kernel/drivers/ib/ts_ib_mad.ko ]; then
+		MAD5SUM=`md5sum /lib/modules/${kernelvers}/kernel/drivers/ib/ts_ib_mad.ko | awk '{print $1}'`
+		if [ $MAD5SUM = $MAD_MD5SUM ]; then
+			echo_success
+		else
+			echo_failure
+		fi
+	else
+		echo_failure
+	fi
+}
+
+update_cisco_ib_rpms() {
+	rpm -e `rpm -qa | grep topspin`
+	KVERS=`uname -r`
+	/usr/sbin/up2date -u topspin-ib-mod-rhel4-${KVERS} topspin-ib-mpi-rhel4 topspin-ib-rhel4
+	turn_off_cisco_ts_junk;
+}
+
+turn_off_cisco_ts_junk() {
+	/sbin/chkconfig ts_srp off
+	/sbin/chkconfig ts_customize off
+}
+
+check_for_local_cisco_subnet_manager() {
+	export SM_DATA=/home/dell/cisco/data/sm_lid
+	local sm_lid=`$TSHOME/bin/vstat -v |grep sm_lid |head -n 1 |sed "s/.*=//"`
+	grep $sm_lid $SM_DATA > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+
+}

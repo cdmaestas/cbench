@@ -1,0 +1,110 @@
+#!/bin/sh
+# write/readback data test of filesystems
+tstatus=255
+
+renice 5 $$ >> /dev/null 2>&1
+
+function interrupt () {
+    x=1
+    y=0
+    while [ $x != 0 ] ; do {
+    y=$[$y + 1]
+    x=0
+    for i in `pstree -p $$ | sed 's/[a-z\+\\(\)\|\.\/\-]/ /g'` ; do {
+            if [ $i != $$ ] ; then {
+#               echo destroying $i
+		if [ $y -lt 3 ] ; then
+	                kill $i >> /dev/null 2>&1
+			if [ $? = 0 ] ; then x=$[$x + 1] ; fi
+		else
+			kill -9 $i >> /dev/null 2>&1
+			if [ $? = 0 ] ; then x=$[$x + 1] ; fi
+		fi
+#           } ; else {
+#               echo refusing to commit suicide.
+            } ; fi
+        } ; done 
+    sleep 1
+    } ; done
+
+    if [ -e $tmp ] ; then {
+#        echo removing tmp
+        rm -f $tmp
+	sync
+    } ; fi
+
+    trap SIGINT
+    trap SIGTERM
+    trap SIGUSR1
+    trap EXIT
+
+    exit $tstatus
+}
+
+
+if [ -z "$3" ] ; then {
+	echo need partition mountpoint spaceavailable
+	exit 2
+} ; fi
+
+tmp=`mktemp $2/data.out.XXXXXX`
+trap interrupt SIGINT
+trap interrupt SIGTERM
+trap interrupt SIGUSR1
+trap interrupt EXIT
+
+btotest=$3
+#echo $btotest of $3
+
+#./bin/flushb $1 >> /dev/null 2>&1
+
+# changed to use prandom data generator
+#csum=`dd if=/proc/kcore bs=1024 count=$btotest | tee $tmp | md5sum`
+if [ ! -x ./bin/prandom ] ; then {
+	echo 'random generator not found.  Is va-ctcs compiled?'
+} ; fi
+csum=`exec ./bin/prandom $btotest | tee $tmp | md5sum`
+if [ $? != 0 ] ; then
+	echo warning: write failed.  	
+fi
+sync
+./bin/flushb $1
+dataout1=`ls -la $tmp`
+datasize1=`ls -l $tmp | awk '{ print $5; }'`
+if [ -z "$datasize1" ] ; then {
+	datasize1=0
+} ; fi
+csum2=`exec cat $tmp | md5sum`
+#./bin/flushb $1 >> /dev/null 2>&1
+rm -f $tmp
+sync
+#./bin/flushb $1 >> /dev/null 2>&1
+trap SIGINT
+trap SIGTERM
+
+if [ $datasize1 != $[$btotest * 1024] ] ; then {
+	tstatus=1
+	echo Test failed..
+	echo -n "Write of $btotest KB "
+	if [ "$datasize1" -lt $[$btotest * 1024] ] ; then {
+		echo -n "was short "
+	} ; else {
+		echo -n "was long "
+	} ; fi
+	echo '('$[$datasize1 / 1024]' KB, '$datasize1 'bytes)'
+	exit 1
+} ; fi
+
+if [ "$csum" != "$csum2" ] ; then {
+	tstatus=1
+	echo Test failed..
+	echo "Write of $btotest KB wrote $[$datasize1 / 1024] KB -- $datasize1 bytes"
+	echo with md5sum $csum
+	echo does not match read-back data
+	echo with md5sum $csum2
+	exit 1
+} ; else {
+	tstatus=0
+#	echo Test succeeded
+	exit 0
+} ; fi

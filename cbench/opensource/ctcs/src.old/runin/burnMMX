@@ -1,0 +1,15 @@
+#!/bin/bash
+nice ./bin/burnMMX
+x="$?"
+if [ $x != 0 ] ; then {
+	echo burnMMX exited code $x
+	if [ $x = 254 ] ; then {
+		echo integer error
+	} ; elif [ $x = 255 ] ; then {
+		echo floating point error
+	} ; else {
+		echo unknown error
+	} ; fi
+	exit 1
+} ; fi
+exit 0

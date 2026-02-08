@@ -1,0 +1,24 @@
+#!/usr/bin/perl -w
+sleep 600;
+$cli = `which tw_cli`;
+chomp $cli;
+if ( $cli =~ "tw_cli" ){
+	print "cli is $cli \n";
+}else {
+	print "3ware command line tool not found!!!!";
+	exit 2;
+}
+$cards=`ls -d /proc/scsi/3w-xxxx/* |wc -w`;
+while ( $cards >0 ){
+	$cards--;
+	$out =`$cli info c${cards}`;
+	if ( $out =~ "DEGRADED" ) {
+		print $out;
+		print "\n 3ware Controller $cards in Degraded state!!!! \n";	
+		exit 1;
+	}else {
+		print "3ware controller c0 in good state \n";
+		print "$out";
+	}
+}	
+exit 0;

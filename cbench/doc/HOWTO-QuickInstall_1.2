@@ -1,0 +1,93 @@
+= Cbench 1.2.X Quick Installation Guide =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+''Page last updated 22 May 2009''
+
+'''This How-To walks through a basic configuration of Cbench 1.2.X on a Linux cluster.''' 
+[[br]]
+[[br]] 
+Remember that '''Cbench is a way of building, running, and parsing programs, not a testing program itself'''.
+
+A link to the old Quick Install HOWTO can be found [wiki:doc/HOWTO-QuickInstall_1.1 here].
+
+== Prerequisites ==
+
+Cbench requires a few things to be installed before proceeding:  
+ * A copy of the Cbench source - [wiki:doc/HOWTO_Check_out_cbench check out with subversion]
+ * Linux-based computer or compute cluster (though it might work on any *NIX OS; we haven't tested it)
+ * MPI Libraries (OpenMPI or MVAPICH)
+ * A decently-recent version of Perl
+ * C, C++, and Fortran compilers (Intel, GCC, Pathscale, or PGI)
+ * [http://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms BLAS] Library, if interested in tests which link them (e.g. Linpack)
+
+== The requisite environment ==
+
+NOTE:  The `INSTALL` file in `cbench/doc/` also has some information regarding this section.
+
+Cbench uses environment variables for much of its configuration during installation.  The following variables must be set for Cbench to install:
+
+ '''CBENCHOME''' - the location of the Cbench source tree (e.g. `/home/joeuser/cbench`)
+
+ '''CBENCHTEST''' - the location that will contain all of your tests and their results. This is completely separate from CBENCHOME (e.g. `/scratch/joeuser/cbench_test`)
+
+ '''MPIHOME''' - the location of your MPI files.  This will be used as a base directory for finding the `bin/`, `include/`, and `lib/` directories containing your MPI files (e.g. `/apps/x86_64/mpi/openmpi/gcc-4.1.2/openmpi-1.3`).  This may already be set by your system administrator (it is set by your module files on Capviz systems)
+
+ '''COMPILERCOLLECTION''' - must be one of the following compiler collections: `gcc, pgi, intel, pathscale, tau-*`
+
+It is sometimes handy to create a file containing these variables (as well as other commands and variables) so that you can set up your Cbench environment easily:
+
+{{{
+~ $ vi dotfile_pgi
+}}}
+{{{
+export CBENCHOME=/projects/joeuser/cbench_dev/cbench_tlcc
+export CBENCHTEST=/projects/joeuser/cbench_dev/cbench_tlcc_test
+export COMPILERCOLLECTION=pgi
+# note - MPIHOME is already set by my system's module files
+
+# an extra command to load a [http://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms BLAS] library (optional)
+load libraries/goto-1.25
+}}}
+{{{
+~ $ . dotfile_pgi
+}}}
+
+== Compile tests within Cbench ==
+
+Since Cbench is a collection of scripts and tools, what we're really building are the tests contained in and used by Cbench.  Cbench has a Makefile-based build system that executes makes for each of the tests that you want to build.  There are a few target options for building Cbench:
+
+'''`open`''' - the default target; contains: b_eff mpi_latency mpi_hello mpi_hello_ordered mpi_overhead mpi_routecheck ior_bench iozone bonnie++ rotate HPLlinpack IMB osutests lanl stab perftest mpi_examples mpi_slowcpu mpi_malloc mpi_tokensmash phloem HPLinpack2
+
+'''extras''' - contains: NPB hpcc
+
+'''iotest''' - contains: iozone ior_bench
+
+'''hwtest''' - contains: fpck ctcs memtester streams nodeperf llcbench stress matmult stride
+
+'''nodehwtest''' - hwtest + standalone MPI
+
+so a `make` in your `$CBENCHOME` directory will build all of the open tests
+
+If you are interested in building HPCC or NAS Parallel Benchmarks, see [wiki:doc/NonDefaultTests the non-default test page].
+
+It is generally easiest to issue a `make install`, which will build the desired tests and install their binaries in $CBENCHOME/bin
+{{{
+~/cbench $ make install
+}}}
+
+== Install your Cbench testing tree ==
+
+Once the tests have been built and installed in `$CBENCHOME/bin`, create a testing tree:
+
+{{{
+~/cbench $ make installtests
+}}}
+
+This creates a testing tree (if one doesn't already exist) and copies the binaries from `$CBENCHOME/bin` to `$CBENCHTEST/bin`.  This allows you to use the testing tree independently of the source tree in the future.
+
+You now have a fully-functional Cbench testing tree.  Time to '''[wiki:doc/HOWTO-RunTestHowTo_1.2 run tests]'''
+
+ 	  	 

@@ -1,0 +1,18 @@
+# latency_com job template
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/com
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/com
+
+# com does not like odd numbers of processes, so don't
+# run if we an odd number
+ODD=`expr NUM_PROCS_HERE % 2`
+if [ "$ODD" == "1" ]; then
+	cbench_echo "CBENCH NOTICE: com does not run on an odd number of processors"
+	exit
+fi
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/com -o 100 -l -w Latency -b 8"
+
+cbench_run_cmd $CMD

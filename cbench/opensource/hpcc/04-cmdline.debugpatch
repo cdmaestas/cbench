@@ -1,0 +1,299 @@
+diff -ur hpcc-1.4.0.orig/hpl/include/hpl.h hpcc-1.4.0/hpl/include/hpl.h
+--- hpcc-1.4.0.orig/hpl/include/hpl.h	2009-09-23 14:40:15.000000000 -0600
++++ hpcc-1.4.0/hpl/include/hpl.h	2011-03-18 16:01:39.643734102 -0600
+@@ -91,6 +91,9 @@
+ #include "hpl_pmatgen.h"
+ #include "hpl_ptest.h"
+ 
++/* Include HPCC env */
++#include <hpcc.h>
++
+ #endif
+ /*
+  * End of hpl.h
+diff -ur hpcc-1.4.0.orig/hpl/testing/ptest/HPL_pdinfo.c hpcc-1.4.0/hpl/testing/ptest/HPL_pdinfo.c
+--- hpcc-1.4.0.orig/hpl/testing/ptest/HPL_pdinfo.c	2010-03-27 14:47:25.000000000 -0600
++++ hpcc-1.4.0/hpl/testing/ptest/HPL_pdinfo.c	2011-03-18 16:01:39.643734102 -0600
+@@ -288,6 +288,11 @@
+    char                       * lineptr;
+    int                        error=0, fid, i, j, lwork, maxp, nprocs,
+                               rank, size;
++/*
++ * .. Global Variables ..
++ */
++   extern HPCC_Params params;
++
+ /* ..
+  * .. Executable Statements ..
+  */
+@@ -307,11 +312,11 @@
+ /*
+  * Open file and skip data file header
+  */
+-#define INFILE "hpccinf.txt"
+-      if( ( infp = fopen( INFILE, "r" ) ) == NULL )
++      if( ( infp = fopen( params.inFname, "r" ) ) == NULL )
++
+       { 
+          HPL_pwarn( stderr, __LINE__ + (1 << 30), "HPL_pdinfo",
+-                    "cannot open file " INFILE );
++                    "cannot open file ", params.inFname );
+          error = 1; /* goto label_error; */
+       }
+ 
+@@ -329,7 +334,7 @@
+       }
+ 
+       fid = 8; /* always write to a file */
+-      strcpy( file, "hpccoutf.txt" );
++      strcpy( file, params.outFname );
+       if     ( fid == 6 ) TEST->outfp = stdout;
+       else if( fid == 7 ) TEST->outfp = stderr;
+       else if( ( TEST->outfp = fopen( file, "a" ) ) == NULL )
+diff -ur hpcc-1.4.0.orig/include/hpcc.h hpcc-1.4.0/include/hpcc.h
+--- hpcc-1.4.0.orig/include/hpcc.h	2010-03-27 14:47:25.000000000 -0600
++++ hpcc-1.4.0/include/hpcc.h	2011-03-18 16:01:39.653734116 -0600
+@@ -60,7 +60,7 @@
+    int ns, nbs, npqs, npfs, nbms, ndvs, nrfs, ntps, ndhs, tswap, L1notran, Unotran, equil, align;
+ 
+   /* HPCC section */
+-  char inFname[256 + 1], outFname[256 + 1];
++  char inFname[256 + 1], outFname[256 + 1], memFname[256 + 1];
+   int PTRANSns, PTRANSnval[2 * HPL_MAX_PARAM];
+   int PTRANSnbs, PTRANSnbval[2 * HPL_MAX_PARAM];
+   int PTRANSnpqs, PTRANSpval[2 * HPL_MAX_PARAM], PTRANSqval[2 * HPL_MAX_PARAM];
+diff -ur hpcc-1.4.0.orig/src/hpcc.c hpcc-1.4.0/src/hpcc.c
+--- hpcc-1.4.0.orig/src/hpcc.c	2010-03-27 14:47:25.000000000 -0600
++++ hpcc-1.4.0/src/hpcc.c	2011-03-18 16:10:21.014749730 -0600
+@@ -5,15 +5,170 @@
+ 
+ #include <hpcc.h>
+ #include <ctype.h>
++#include <unistd.h>
++#include <string.h>
++#define _GNU_SOURCE
++#include <getopt.h>
++
++HPCC_Params params;
+ 
+ int
+ main(int argc, char *argv[]) {
+   int myRank, commSize;
+   char *outFname;
+   FILE *outputFile;
+-  HPCC_Params params;
+   time_t currentTime;
+   void *extdata;
++  int c;
++  int digit_optind = 0;
++  extern char *optarg;
++  extern int optind, optopt, opterr;
++
++  /* set the defaults */
++  strcpy(params.inFname,  "hpccinf.txt");
++  strcpy(params.outFname, "hpccoutf.txt");
++  strcpy(params.memFname, "hpccmemf.txt");
++  params.RunHPL = 0;
++  params.RunStarDGEMM = 0;
++  params.RunSingleDGEMM = 0;
++  params.RunPTRANS = 0;
++  params.RunStarStream = 0;
++  params.RunSingleStream = 0;
++  params.RunMPIRandomAccess = 0;
++  params.RunMPIRandomAccess_LCG = 0;
++  params.RunStarRandomAccess = 0;
++  params.RunStarRandomAccess_LCG = 0;
++  params.RunSingleRandomAccess = 0;
++  params.RunSingleRandomAccess_LCG = 0;
++  params.RunLatencyBandwidth = 0;
++  params.RunMPIFFT = 0;
++
++  for (;;) {
++      int option_index = 0;
++      static struct option long_options[] = {
++          {"HPL",                0, &params.RunHPL, 1},
++          {"hpl",                0, &params.RunHPL, 1},
++          {"linpack",            0, &params.RunHPL, 1},
++          {"StarDGEMM",          0, &params.RunStarDGEMM, 1},
++          {"stardgemm",          0, &params.RunStarDGEMM, 1},
++          {"SingleDGEMM",        0, &params.RunSingleDGEMM, 1},
++          {"singledgemm",        0, &params.RunSingleDGEMM, 1},
++          {"PTRANS",             0, &params.RunPTRANS, 1},
++          {"ptrans",             0, &params.RunPTRANS, 1},
++          {"StarStream",         0, &params.RunStarStream, 1},
++          {"starstream",         0, &params.RunStarStream, 1},
++          {"SingleStream",       0, &params.RunSingleStream, 1},
++          {"singlestream",       0, &params.RunSingleStream, 1},
++          {"MPIRandomAccess",    0, &params.RunMPIRandomAccess, 1},
++          {"mpirandomaccess",    0, &params.RunMPIRandomAccess, 1},
++          {"MPIRandomAccess_LCG", 0, &params.RunMPIRandomAccess_LCG, 1},
++          {"mpirandomaccess_lcg", 0, &params.RunMPIRandomAccess_LCG, 1},
++          {"StarRandomAccess",   0, &params.RunStarRandomAccess, 1},
++          {"starrandomaccess",   0, &params.RunStarRandomAccess, 1},
++          {"StarRandomAccess_LCG", 0, &params.RunStarRandomAccess_LCG, 1},
++          {"starrandomaccess_lcg", 0, &params.RunStarRandomAccess_LCG, 1},
++          {"SingleRandomAccess", 0, &params.RunSingleRandomAccess, 1},
++          {"singlerandomaccess", 0, &params.RunSingleRandomAccess, 1},
++          {"SingleRandomAccess_LCG", 0, &params.RunSingleRandomAccess_LCG, 1},
++          {"singlerandomaccess_lcg", 0, &params.RunSingleRandomAccess_LCG, 1},
++          {"LatencyBandwidth",   0, &params.RunLatencyBandwidth, 1},
++          {"latencybandwidth",   0, &params.RunLatencyBandwidth, 1},
++          {"latbw",              0, &params.RunLatencyBandwidth, 1},
++          {"StarFFT",            0, &params.RunStarFFT, 1},
++          {"starfft",            0, &params.RunStarFFT, 1},
++          {"SingleFFT",          0, &params.RunSingleFFT, 1},
++          {"singlefft",          0, &params.RunSingleFFT, 1},
++          {"MPIFFT",             0, &params.RunMPIFFT, 1},
++          {"mpifft",             0, &params.RunMPIFFT, 1},
++          {"i",                  1, 0, 'i'},
++          {"o",                  1, 0, 'o'},
++          {"m",                  1, 0, 'm'},
++          {"help",               0, 0, 'h'},
++          {"dgemm",              0, 0, 10},
++          {"stream",             0, 0, 11},
++          {"random",             0, 0, 12},
++          {"fft",                0, 0, 13},
++          {0, 0, 0, 0}
++      };
++
++      c = getopt_long_only(argc, argv, "", long_options, &option_index);
++
++      if (c == -1)
++          break;
++
++      switch (c) {
++          case 0:
++#if 0
++          /* for getopt debugging... */
++              fprintf(stderr, "option %s", long_options[option_index].name);
++              if (optarg)
++                  fprintf(stderr, " with arg %s", optarg);
++              fprintf(stderr, "\n");
++#endif
++             break;
++          case 10:
++              /* --dgemm */
++              params.RunStarDGEMM = params.RunSingleDGEMM = 1;
++              break;
++          case 11:
++              /* --stream */
++              params.RunStarStream = params.RunSingleStream = 1;
++              break;
++          case 12:
++              /* --random */
++              params.RunMPIRandomAccess = params.RunStarRandomAccess = params.RunSingleRandomAccess = 1;
++              params.RunMPIRandomAccess_LCG = params.RunStarRandomAccess_LCG = params.RunSingleRandomAccess_LCG = 1;
++              break;
++          case 13:
++              /* --fft */
++              params.RunStarFFT = params.RunSingleFFT = params.RunMPIFFT = 1;
++              break;
++          case 'i':
++              strncpy(params.inFname, optarg, 256);
++              break;
++          case 'o':
++              strncpy(params.outFname, optarg, 256);
++              break;
++          case 'm':
++              strncpy(params.memFname, optarg, 256);
++              break;
++          case 'h':
++              fprintf(stderr, "Usage: %s <opts>\n", argv[0]);
++              fprintf(stderr, "       -i <file>: Specify the input file (hpccinf.txt is the default)\n");
++              fprintf(stderr, "       -o <file>: Specify the output file (hpccoutf.txt is the default)\n");
++              fprintf(stderr, "       -m <file>: Specify the memory file (hpccmemf.txt is the default)\n");
++              fprintf(stderr, "       --<test>:  Turn on a specific benchmark. (can be used multiple times)\n");
++              fprintf(stderr, "                  \"<test>\" is one of the following:\n");
++              fprintf(stderr, "                     HPL StarDGEMM SingleDGEMM PTRANS\n");
++              fprintf(stderr, "                     StarStream SingleStream MPIRandomAccess\n");
++              fprintf(stderr, "                     MPIRandomAccess_LCG StarRandomAccess_LCG SingleRandomAccess_LCG\n");
++              fprintf(stderr, "                     StarRandomAccess SingleRandomAccess LatencyBandwidth\n");
++              fprintf(stderr, "                     StarFFT SingleFFT MPIFFT\n");
++              fprintf(stderr, "       --linpack: same as --HPL\n");
++              fprintf(stderr, "       --dgemm:   same as --StarDGEMM --SingleDGEMM\n");
++              fprintf(stderr, "       --ptrans:  same as --PTRANS\n");
++              fprintf(stderr, "       --stream:  same as --StarStream --SingleStream\n");
++              fprintf(stderr, "       --random:  same as --MPIRandomAccess --StarRandomAccess --SingleRandomAccess\n");
++              fprintf(stderr, "                  --MPIRandomAccess_LCG --StarRandomAccess_LCG --SingleRandomAccess_LCG\n");
++              fprintf(stderr, "       --latbw:   same as --LatencyBandwidth\n");
++              fprintf(stderr, "       --fft:     same as --StarFFT --SingleFFT --MPIFFT\n");
++              exit(1);
++          case '?':
++              fprintf(stderr, "Error: Invalid option or option requires an argument\n");
++              exit(1);
++          default:
++              fprintf(stderr, "Error: getopt returned character code 0%o ??\n", c);
++              exit(1);
++      }
++  }
++
++  if (optind < argc) {
++      fprintf(stderr, "non-option ARGV-elements: ");
++      while (optind < argc)
++          fprintf(stderr, "%s ", argv[optind++]);
++      fprintf(stderr, "\n");
++      exit(1);
++  }
+ 
+   MPI_Init( &argc, &argv );
+ 
+diff -ur hpcc-1.4.0.orig/src/io.c hpcc-1.4.0/src/io.c
+--- hpcc-1.4.0.orig/src/io.c	2010-03-27 14:47:25.000000000 -0600
++++ hpcc-1.4.0/src/io.c	2011-03-18 16:01:39.653734116 -0600
+@@ -211,7 +211,6 @@
+   int myRank, commSize;
+   int i, nMax, nbMax, procCur, procMax, procMin, errCode;
+   double totalMem;
+-  char inFname[12] = "hpccinf.txt", outFname[13] = "hpccoutf.txt";
+   FILE *outputFile;
+   MPI_Comm comm = MPI_COMM_WORLD;
+   time_t currentTime;
+@@ -224,9 +223,6 @@
+   MPI_Comm_size( comm, &commSize );
+   MPI_Comm_rank( comm, &myRank );
+ 
+-  strcpy( params->inFname, inFname );
+-  strcpy( params->outFname, outFname );
+-
+   if (0 == myRank)
+     outputFile = fopen( params->outFname, "a" );
+ 
+@@ -262,6 +258,7 @@
+   HPCC_InitHPL( params ); /* HPL calls exit() if there is a problem */
+   HPCC_InputFileInit( params );
+ 
++#if 0
+   params->RunHPL = 0;
+   params->RunStarDGEMM = 0;
+   params->RunSingleDGEMM = 0;
+@@ -282,6 +279,7 @@
+   params->RunMPIRandomAccess = params->RunStarRandomAccess = params->RunSingleRandomAccess =
+   params->RunMPIFFT = params->RunStarFFT = params->RunSingleFFT =
+   params->RunLatencyBandwidth = 1;
++#endif
+ 
+   params->MPIRandomAccess_LCG_GUPs =
+   params->MPIRandomAccess_GUPs = params->StarGUPs = params->SingleGUPs =
+@@ -654,12 +652,12 @@
+ HPCC_Memory(MPI_Comm comm) {
+   int myRank, commSize;
+   int num_threads;
+-  char memFile[13] = "hpccmemf.txt";
+   char buf[HPL_LINE_MAX]; int nbuf = HPL_LINE_MAX;
+   char *sVal;
+   FILE *f;
+   double mult, mval, procMem;
+   size_t rv;
++  extern HPCC_Params params;
+ 
+   mult = 1.0;
+   num_threads = 1;
+@@ -680,7 +678,7 @@
+   if (myRank == 0) {
+     procMem = 64;
+ 
+-    f = fopen( memFile, "r" );
++    f = fopen( params.memFname, "r" );
+     if (f) {
+ 
+       if (fgets( buf, nbuf, f )) {

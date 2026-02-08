@@ -1,0 +1,7 @@
+#!/bin/bash
+
+#Attempts restart an existing test.
+unalias cp
+cp -f newburn.tcf newburn.tcf.quickfix.bak
+./burnreset
+cp newburn.tcf.quickfix.bak newburn.tcf -f

@@ -1,0 +1,39 @@
+#!/bin/bash
+#set -ex
+
+# update fstab entrues, no auto for nfs mount
+# update panfs driver
+# update fstab for panfs to use panauto
+
+. /projects/contrib/fixit/fixit-env.sh
+
+if [ -z $NODECHECKS_HOME ]; then
+        echo Please define NODECHECKS_HOME env variable
+        exit 1
+fi
+
+. $NODECHECKS_HOME/panfs_functions
+. $NODECHECKS_HOME/os_functions
+
+/etc/rc.d/rc.updateclient
+
+check_panfs_software 2.3.5 panfs-2.6.9-15.EL.root-mp-2.3.5-186238.3
+if [ $? -ne 0 ]; then
+	umount /scratchn3 > /dev/null 2>&1
+	umount /scratchp3 > /dev/null 2>&1
+	update_panfs_rpm /projects/global/SOURCES/panasas/2.3.5/x86_64/panfs-2.6.9-15.EL.root-mp.rpm
+fi
+check_fstab_for_panfs
+if [ $? -ne 0 ]; then
+	update_fstab_for_panfs
+fi
+echo
+check_panfs_dflow_mount
+if [ $? -ne 0 ]; then
+	mount /scratchp3
+fi
+check_panfs_mount_option
+if [ $? -ne 0 ]; then
+	update_fstab_for_panfs
+fi
+echo

@@ -1,0 +1,114 @@
+#!/bin/bash
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+# set -x
+
+# check for what profile script gives us
+if [ -z $FIXIT123_HOME ]; then
+    echo "FAILURE  FIXIT123_HOME variable not defined!"
+    exit 1
+fi
+
+if [ -z $1 ]; then
+	echo "USAGE:  $0 <nodename>"
+	echo "e.g.    $0 an450"
+	exit 1
+fi
+
+LOGDIR=$FIXIT123_DB_HOME
+MAINLOG=$LOGDIR/breakfix.log
+BINDIR=$FIXIT123_HOME/bin
+TMPFILE="/tmp/step2a.tmp.$$"
+HWTDIR=$FIXIT123_CBENCHTEST/nodehwtest
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+check_for_step2_pausefile
+
+# need to be on a login node with /scratch3 mounted
+#/bin/hostname | grep login > /dev/null
+#if [ $? -eq 1 ]; then
+#	echo "ERROR: Need to run $0 from a login node with appropriate mounts"
+#	exit 1
+#fi
+cat /proc/mounts | egrep "$FIXIT123_CHECKMOUNT_REGEX" > /dev/null
+if [ $? -eq 1 ]; then
+	echo "ERROR: Need to run $0 from a login node with appropriate mounts"
+	exit 1
+fi
+
+# check for an interactive node
+# FIXME: interactive node regex needs to a config option somewhere
+echo "$1" > $TMPFILE
+#grep -P "^an[1-9]$|^an[1-5][0-9]$|^an6[1-4]$" $TMPFILE >/dev/null
+grep -P "$FIXIT123_INTERACTIVE_NODES_REGEX" $TMPFILE >/dev/null
+if [ $? -eq 0 ]; then
+	interactive_node=1
+fi
+
+disable_interconnect_port $1
+
+# try to make sure the node is ready and able to run a
+# step2a job via the scheduler
+$BINDIR/prep_node_for_step2a $1 | tee $TMPFILE
+grep "READY FOR STEP2" $TMPFILE
+if [ $? -eq 1 ]; then
+	STAT=`tail -1 $TMPFILE`
+	echo "$1 does not appear ready to run step2a jobs"
+    steplogentry "NODE $1 => STEP2A INIT FAILED, $STAT" $MAINLOG
+    exit 1
+fi
+
+# switch to cbench username and fire off a Cbench node-level test on the node
+/bin/rm -f $TMPFILE
+#if [ -z $2 ]; then
+#	su - $FIXIT123_USER -c "FIXIT123_CONF=$FIXIT123_CONF $BINDIR/run_nodehwtest_for_step2a $1" | tee $TMPFILE
+#else
+	su - $FIXIT123_USER -c "FIXIT123_CONF=$FIXIT123_CONF $BINDIR/run_nodehwtest_for_step2a $1 $2" | tee $TMPFILE
+#fi
+
+#try to grab the job id number
+egrep '^[0-9]+\.' $TMPFILE >/dev/null 2>&1
+if [ $? -eq 1 ]; then
+	echo "Could not parse batch job id. Did job initiate correctly?"
+	JOBID=0
+	steplogentry "NODE $1 => STEP2A INITIATION FAILED, no job id found" $MAINLOG
+	exit 1
+else
+	JOBID=`egrep '^[0-9]+\.' $TMPFILE | cut -f1 -d'.'`
+	steplogentry "NODE $1 => STEP2A INITIATED" $MAINLOG
+fi
+
+if [ "$interactive_node" == '1' ]; then
+	echo "Forcing step2 execution on interactive node"
+	sleep 5
+	#JOBID=`grep tbird $TMPFILE | cut -f1 -d'.'`
+	# FIXME: this is Moab scheduler specific which is ok for snl
+	mjobctl -u ALL $JOBID
+	runjob -x $JOBID
+fi
+
+echo "You can check step2a status with: $BINDIR/query_breakfix_data --node $1"
+

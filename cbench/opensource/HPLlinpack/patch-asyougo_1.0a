@@ -1,0 +1,1318 @@
+diff -Naurp hpl-noayg/dclock.c hpl-ayg/dclock.c
+--- hpl-noayg/dclock.c	1969-12-31 17:00:00.000000000 -0700
++++ hpl-ayg/dclock.c	2005-05-26 17:02:23.262834051 -0600
+@@ -0,0 +1,322 @@
++/*
++ * Timing routines
++ *
++ * includes CPU clocks, CPU frequency and CPU time in seconds measurement
++ *
++ * Architectures: IA32 ('rdtsc' instruction supporting), IA64
++ * Operational systems: Windows, Linux
++ *
++ */
++
++/*
++ * Details:
++ * You should define macronames to get an appropriate code
++ * "_IA64_" for IA64, "_LINUX" for Linux, Win32 output code is default
++ *
++ */
++
++/*-------------------------------------------------
++ *  header files
++ *------------------------------------------------*/
++
++#ifdef _LINUX
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#else /* Windows */
++
++#include <windows.h>
++
++#endif
++
++#include <time.h>
++
++/*-------------------------------------------------
++ * interface names
++ *------------------------------------------------*/
++
++#ifdef _LINUX
++
++#ifndef TCLOCK
++#define TCLOCK          tclock_
++#endif
++#ifndef SECOND
++#define SECOND          second_
++#endif
++#ifndef DSECND
++#define DSECND          dsecnd_
++#endif
++#ifndef GETCPUFREQUENCY
++#define GETCPUFREQUENCY getcpufrequency_
++#endif
++
++#endif
++
++/*-------------------------------------------------
++ * Here are these routines implemented
++ *------------------------------------------------*/
++
++double TCLOCK();
++float  SECOND();
++double DSECND();
++double GETCPUFREQUENCY();
++
++#ifdef _LINUX
++
++double GETCPUFREQUENCY_CPUINFO();
++double GETCPUFREQUENCY_CLOCK ();
++
++#else /* Windows */
++
++double GETCPUFREQUENCY_WINAPI();
++double GETCPUFREQUENCY_CLOCK ();
++
++#endif
++
++
++#ifdef _LINUX
++#ifndef _IA64_
++static unsigned usec, sec;
++static unsigned start=0, startu;
++static long long foo;
++
++static inline void atlas_microtime(unsigned *lo, unsigned *hi)
++{
++  __asm __volatile (
++        ".byte 0x0f; .byte 0x31   # RDTSC instruction
++        movl    %%edx,%0          # High order 32 bits
++        movl    %%eax,%1          # Low order 32 bits"
++                : "=g" (*hi), "=g" (*lo) :: "eax", "edx");
++}
++#endif
++#endif
++
++/*-------------------------------------------------
++ * double TCLOCK( void )
++ *
++ * gets CPU clocks.
++ * Invokes assembler instructions
++ *------------------------------------------------*/
++
++double TCLOCK( void ) {
++
++#ifdef _LINUX
++
++#ifdef _IA64_
++/*  asm statements are not supported in Electron IA64 Linux */
++#ifndef _GCC_
++   __int64 RDTSC();
++
++   return (double) RDTSC();
++
++/* RDTSC is equivalent to
++        mov r8=ar.itc
++        br.ret.sptk.few  b0
++*/
++#else
++/* asm statements are supported in GCC IA64 Linux */
++    unsigned long result;
++
++    __asm__ __volatile__( "mov %0=ar.itc" : "=r"(result) :: "memory");
++    return ( (double) result);
++#endif
++
++#else /* IA32 Linux */
++
++/*
++   asm (
++      "rdtsc ;
++      movl %eax, -8(%esp) ;
++      movl %edx, -4(%esp) ;
++      fildq -8(%esp)"
++   );
++*/
++  atlas_microtime(&usec, &sec);
++
++  foo = sec;
++  foo = (foo << 32) + usec;
++  return((double)foo);
++
++#endif
++
++#else /* Windows */
++
++#ifdef _IA64_
++
++   unsigned __int64 __getReg(int whichReg);
++   #pragma intrinsic(__getReg);
++   #define INL_REGID_APITC 3116
++
++   return (double) __getReg(INL_REGID_APITC);
++
++#else /* IA32 */
++
++   _asm {
++      rdtsc
++      mov DWORD PTR [esp-8], eax
++      mov DWORD PTR [esp-4], edx
++      fild QWORD PTR [esp-8]
++   }
++
++#endif
++
++#endif
++
++}
++
++/*-------------------------------------------------
++ * double DSECND()
++ *
++ * gets CPU time in seconds
++ *------------------------------------------------*/
++
++double DSECND() {
++   static int first = 1;
++   static double freq;
++
++   if( first ) {
++      freq = GETCPUFREQUENCY();
++      first = 0;
++   }
++   return TCLOCK() / freq;
++}
++
++/*-------------------------------------------------
++ * float SECOND()
++ *
++ * gets CPU time in seconds
++ *------------------------------------------------*/
++
++float SECOND() {return (float) DSECND();}
++
++
++/*-------------------------------------------------
++ * double GETCPUFREQUENCY()
++ *
++ * gets CPU freqeuency in Hz
++ * First try to get a more reliable number
++ *------------------------------------------------*/
++
++#define BAD_FREQUENCY -1.0
++
++double GETCPUFREQUENCY()
++{
++   double freqclk = GETCPUFREQUENCY_CLOCK();
++   double freq =
++#ifdef _LINUX
++         GETCPUFREQUENCY_CPUINFO();
++#else /* Windows */
++         GETCPUFREQUENCY_WINAPI();
++#endif
++
++   if ( freq == BAD_FREQUENCY ) freq = freqclk;
++#ifndef _LINUX
++   else if ( (freq>=freqclk) && ((freq-freqclk)/freq) > 0.1 ) freq = freqclk;
++   else if ( (freq <freqclk) && ((freqclk-freq)/freq) > 0.1 ) freq = freqclk;
++#endif
++
++   return freq;
++}
++
++#ifdef _LINUX
++
++/*-------------------------------------------------
++ * double GETCPUFREQUENCY_CPUINFO()
++ *
++ * gets CPU freqeuency in Hz (Linux only)
++ * from /proc/cpuinfo
++ *------------------------------------------------*/
++
++double GETCPUFREQUENCY_CPUINFO() {
++   #define BUFLEN 110
++
++   FILE* sysinfo;
++   char* ptr;
++   char buf[BUFLEN];
++   char key[] = "cpu MHz";
++   int keylen = sizeof( key ) - 1;
++   double freq = BAD_FREQUENCY;
++
++   sysinfo = fopen( "/proc/cpuinfo", "r" );
++   if( sysinfo != NULL ) {
++      while( fgets( buf, BUFLEN, sysinfo ) != NULL ) {
++         if( !strncmp( buf, key, keylen ) ) {
++            ptr = strstr( buf, ":" );
++            freq = atof( ptr+1 ) * 1000000.0;
++            break;
++         }
++      }
++      fclose( sysinfo );
++   }
++
++   return freq;
++}
++
++#else /* Windows */
++
++/*-------------------------------------------------
++ * double GETCPUFREQUENCY_WINAPI()
++ *
++ * gets CPU freqeuency in Hz (Windows only)
++ * from High Resolution Performance Counter
++ *------------------------------------------------*/
++
++double GETCPUFREQUENCY_WINAPI()
++{
++   #define SLEEP_TIME 200  /* in mSec */
++
++   double time, clock1, clock2, tick1, tick2;
++   LARGE_INTEGER pc1, pc2, pf;
++
++   if( QueryPerformanceFrequency( &pf ) && QueryPerformanceCounter( &pc1 ) ) {
++      QueryPerformanceCounter( &pc1 );
++      clock1 = TCLOCK();                // current CPU clocks
++
++      Sleep( SLEEP_TIME );     // wait some time
++
++      QueryPerformanceCounter( &pc2 );
++      clock2 = TCLOCK();                // current CPU clocks
++
++      tick1 = (double)pc1.u.HighPart * 65536.0 * 65536.0 + (double)pc1.u.LowPart;
++      tick2 = (double)pc2.u.HighPart * 65536.0 * 65536.0 + (double)pc2.u.LowPart;
++      time = (tick2 - tick1) / ((double)pf.u.HighPart * 65536.0 * 65536.0 + (double)pf.u.LowPart);
++      return (clock2 - clock1) / time; // it's CPU frequency
++   } else {
++      return BAD_FREQUENCY;
++   }
++}
++
++#endif
++
++/*-------------------------------------------------
++ * double GETCPUFREQUENCY_CLOCK()
++ *
++ * gets CPU freqeuency in Hz
++ * with standard clock() routine
++ *------------------------------------------------*/
++/*
++#ifdef _LINUX
++   #define CLOCKS_PER_SEC 1000000
++#endif
++*/
++double GETCPUFREQUENCY_CLOCK() {
++   #define TIME_LIMIT 1.0  /* in Sec */
++
++   double time, clock1, clock2, tick1, tick2;
++
++   tick1 = (double) clock();  // current time in msec
++   clock1 = TCLOCK();         // current CPU clocks
++
++   while( ((double) clock() - tick1) < (CLOCKS_PER_SEC * TIME_LIMIT) );   // wait some time
++//   Sleep( TIME_LIMIT );       // wait some time
++
++   tick2 = (double) clock();  // current time in msec
++   clock2 = TCLOCK();                // current CPU clocks
++   time = (tick2 - tick1) / CLOCKS_PER_SEC;
++
++   return (clock2 - clock1) / time; // it's CPU frequency
++}
++
++
+diff -Naurp hpl-noayg/Make.top hpl-ayg/Make.top
+--- hpl-noayg/Make.top	2005-05-26 17:02:06.889708891 -0600
++++ hpl-ayg/Make.top	2005-05-26 17:02:23.268832998 -0600
+@@ -50,7 +50,7 @@ include Make.$(arch)
+ #
+ ## build ###############################################################
+ #
+-build_src        :
++build_src        : dclock
+ 	( $(CD) src/auxil/$(arch);         $(MAKE) )
+ 	( $(CD) src/blas/$(arch);          $(MAKE) )
+ 	( $(CD) src/comm/$(arch);          $(MAKE) )
+@@ -117,7 +117,7 @@ refresh_tst      :
+ #
+ ## clean ###############################################################
+ #
+-clean_src        :
++clean_src        : clean_dclock
+ 	- ( $(CD) src/auxil/$(arch);        $(MAKE) clean )
+ 	- ( $(CD) src/blas/$(arch);         $(MAKE) clean )
+ 	- ( $(CD) src/comm/$(arch);         $(MAKE) clean )
+@@ -157,7 +157,7 @@ clean_arch_tst   :
+ #
+ ## clean_arch_all ######################################################
+ #
+-clean_arch_all   :
++clean_arch_all   : clean_dclock
+ 	- $(MAKE) -f Make.top clean_arch_src arch=$(arch)
+ 	- $(MAKE) -f Make.top clean_arch_tst arch=$(arch)
+ 	- $(RM) -r bin/$(arch) include/$(arch) lib/$(arch)
+@@ -192,4 +192,10 @@ leaf             :
+ 	- ( $(CD) $(le)/$(arch) ; \
+             $(LN_S) $(TOPdir)/make.def make.def )
+ #
++dclock             :
++#	gcc -g -D_LINUX -D_GCC_ -DGETCPUFREQUENCY=get_frequency -DDSECND=dsecnd_ -c dclock.c
++	$(CC) $(OPTFLAGS) -D_LINUX -D_GCC_ -DGETCPUFREQUENCY=get_frequency -DDSECND=dsecnd_ -c dclock.c
++#
++clean_dclock             :
++	rm -f dclock.o
+ ########################################################################
+diff -Naurp hpl-noayg/readme.gmh hpl-ayg/readme.gmh
+--- hpl-noayg/readme.gmh	1969-12-31 17:00:00.000000000 -0700
++++ hpl-ayg/readme.gmh	2005-05-26 17:02:23.266833349 -0600
+@@ -0,0 +1,224 @@
++    MP (Massively Parallel) Linpack is the 3rd part of a benchmark which
++solves a dense (real*8) system of linear equations (Ax=b), measures the amount
++of time it takes to factor and solve the system, converts that time into a
++performance rate and tests the results for accuracy.  In the massively parallel
++portion of the benchmark, one can solve any number of equations.  You must use
++partial pivoting to assure the accuracy of the results.  This benchmark should 
++not be used to report LINPACK 100 performance as that is a compiled-code only
++benchmark.  The benchmark should not be confused with LINPACK 1000, which 
++solves only a 1000 equations and uses a shared memory model if there are 
++multiple CPUS.  This benchmark should not be confused with LINPACK, the 
++library, which has been expanded upon by LAPACK the library.  
++
++    Around 2000, a package appeared on the web for users to use.  It is 
++optional, not mandatory.  It is called HPL.  Some people think that the goal of
++the MP Linpack benchmark is to measure HPL performance.  That is not the case.
++HPL is a relatively recent thing, the MP Linpack benchmark has existed for 
++years.  HPL can be used to measure MP Linpack performance, but its can also be
++difficult to use and time consuming (days/weeks).  HPL can be found at 
++http://www.netlib.org/hpl.
++
++    HPL has had two releases: 1.0 and 1.0a.  As near as we can tell, there 
++are only cosmetic differences.  Since these distributions differ, however,
++one must decide which one to patch.  
++
++    The current patch level is 4.  We call this HPL Patch 4.
++
++    Some users worry that using a patched version of HPL will hinder their
++performance.  To address this, everything in the patch is compile-optional.  
++That is, all the changes and enhancements and experiments we have made are in
++#defines.  If you don't use any of the new #defines, then you should end up 
++with HPL vanilla 1.0 (or 1.0a) as it would be off netlib.  That is the idea, 
++of course. 
++
++    Some users wonder why bother to use a patched version?  For starters, it
++helps find solutions and fast problems.  That saves time and energy.  If 
++that's all you want/need, you should be happy and grab the patch.  Time is 
++money.  If you want performance as well as time-saving approaches, then you
++should try HPLPACK 4.  
++
++    HPL requires a compiler.  We have observed that Intel's compiler gives 
++the best performance.  But we've also observed that gcc will also get 
++adequate performance.  It also needs a BLAS math library.
++  
++    There are four BLAS libraries that we have currently evaluated: MKL,
++Goto, ATLAS, and MLIB. Many people have their favorite.  Despite the fact that
++this package is worked on by an MKL member does not mean that I'm here to push
++MKL on people.  I'm not a salesman.  My goal is to help people get the biggest
++number possible on Intel hardware.  If you like MLIB, and it does better than 
++MKL 7.0.1, then fine.  The goal is to get the best number.  I would encourage 
++people to try MKL 7.0.1.  For starters, we merged the best of MKL and Goto's 
++code in an earlier release.  We obtained a source license from Goto and the 
++University of Texas Austin to use his Xeon and Itanium 2 source.  Given the 
++combination of two already good libraries, I believe MKL is a good bet.  But
++the user should beware that the ideal data set for one library won't be ideal
++for another library.
++
++    These notes and patches are not public domain, please do not distribute 
++them for the possible of optimizations on other platforms.  We do not have 
++comments about ATLAS nor MLIB.  We can say that MLIB achieves quite impressive 
++performances for small block sizes.
++
++    HPL requires a long time searching many different parameters.  You see, in 
++the MP Linpack, the goal is to get the best number possible- and the
++input is not fixed, and so there is a large parameter space you must search
++over.  In fact, an exhaustive search of all possible inputs is improbably large 
++even for a powerful cluster.
++
++    To build the HPL Patch 4:
++
++    Use the appropriate patch for the appropriate distribution.  Do not patch 
++HPL 1.0 with HPL Patch4a (meant for HPL 1.0a).
++
++    To start, first test that you can run and use HPL before any patch.  
++There's no sense in patching anything that isn't broken if it cannot be used
++in its original state.  Once you've verified that everything is working, you
++can safely apply the patch.  It won't overwrite any arch files or change 
++anything (in fact, because all changes are #define's, it really won't change
++anything unless you want it to.) 
++
++    Apply the patch (untar it) to the ROOT directory of HPL (called $(TOPdir) 
++in the Make.<arch>.
++
++    You should see this readme and dclock.c in the main directory.  Compile 
++dclock.c as follows:
++
++gcc -g -D_LINUX -D_GCC_ -DGETCPUFREQUENCY=get_frequency -DDSECND=dsecnd_ -c dclock.c
++
++    The above is the sample line to use for IA-32.  The sample line to use for IPF is to also include -D_IA64_.  
++
++    You'll need to find a way to link this in and set
++
++LINKER = <old line> $(TOPdir)/dclock.o in my Make.<arch>.
++
++    MKL usually likes the NN case of MP LINPACK best.  To use MKL for this
++case, look at your HPL.dat file and change L and U to "1" not 0:
++1            L1 in (0=transposed,1=no-transposed) form
++1            U  in (0=transposed,1=no-transposed) form
++
++    If you want to experiment with even more libraries, contact Greg Henry.  
++Please allow him some time to respond.  
++
++    If you've no experiences with HPL, you're in for a bit of a nightmare.  
++There are thousands of parameters to tweak, most of which matter not (or 
++let's just say almost always should be a certain way in IA.)  
++ 
++    To help with this mess, I've changed HPL so that it prints performance 
++information as it proceeds, or even terminates early depending on your desires.
++HPL requires a long time searching many different parameters.  
++
++    As you know, running huge problems to completion on large numbers of nodes 
++can take many hours. The search space for MP Linpack is also huge- not only 
++can you run any size problem, but over a number of block sizes, grid layouts, 
++lookahead steps, using different factorization methods, etc., etc.. It can be 
++frustrating and a large waste of time to run a huge problem to completion only 
++to discover it ran 0.01% slower than your previous best problem.
++
++    This code should not be redistributed without permission (did I mention
++this?)  For starters, it needs to be refined.  If you specify ENDEARLY (see
++below), it shouldn't even bother to do a residual check.
++
++    This HPL Patch, although slightly incomplete in the above noted sense, 
++addresses the issue of reducing the search space. This saves your time, which 
++is your most valuable commodity.
++
++    There are 3 options you might want to experiment with to reduce the search
++time:
++	1.) -DASYOUGO
++	2.) -DENDEARLY
++	3.) -DASYOUGO2 (use cautiously- this does have a marginal performance 
++impact)
++	(to see DGEMM internal performance, compile with -DASYOUGO2 and
++-DASYOUGO2_DISPLAY: this will give lots of useful performance information at
++the cost of around 0.2% performance hit.)
++
++    If you want the old HPL back, simply don't define these options and 
++recompile from scratch!
++
++   -DASYOUGO: gives performance data as the run proceeds- it always starts off 
++higher, and then drops because that is actually what happens in LU.  This 
++performance estimate is usually an overestimate (because LU slows down as it
++goes), but it gets more accurate as the problem proceeds.  The greater the 
++lookahead step, the less accurate the first number may be.
++
++   -DENDEARLY: terminates the problem after a few steps, so that you can set 
++up 10 or 20 HPL runs without monitoring them, see how they all do, and then 
++only run the fastest ones to completion. -DENDEARLY assumes -DASYOUGO. 
++You don't need to define both, although it doesn't hurt.
++
++   -DASYOUGO2: gives detailed single node performance information.  It captures
++all DGEMM calls (if you use Fortran BLAS) and records their data.  As it does
++this, this routine has a marginal intrusive overhead.  Unlike -DASYOUGO that
++is quite nonintrusive, this is interrupting every DGEMM call to monitor its
++performance.  For big problems, this is easily less than 1/10th of a percent
++overhead.  But let the user beware.
++
++    Here is a sample ASYOUGO2 output (the first 3 nonintrusive numbers can be
++found in ASYOUGO and ENDEARLY), so it suffice to describe these numbers:
++
++ Col=001280 Fract=0.050 Mflops=42454.99 (DT=      9.5 DF=     34.1 DMF=38322.78)     
++
++    The problem size was N=16000 with a blocksize of 128.  After 10 blocks, 
++1280 columns, an output was sent to the screen.  Here, the fraction of columns 
++completed is 1280/16000=0.08.  All of these only print 20 or so outputs, at 
++various places through the matrix decomposition: fractions 0.005,0.010,0.015,
++0.02,0.025,0.03,0.035,0.04,0.045,0.05,0.055,0.06,0.065,0.07,0.075,0.080,0.085,
++0.09,0.095,.10,...,.195,.295,.395,...,.895.
++But this problem size is so small, and the block size so big by comparison,
++that as soon as it printed the value for 0.045, it was already through 0.08
++fraction of the columns.  On a really big problem, the fractional number will
++be more accurate.  It never prints more than the 46 numbers above.  So, 
++smaller problems will have fewer than 46 updates, and the biggest problems 
++will have precisely 46 updates.
++
++   The Mflops is an estimate based on 1280 columns of LU being completed.
++However, with lookahead steps, sometimes that work isn't actually completed
++when the output is made.  Nevertheless, this is a good estimate for comparing
++identical runs.
++
++   The 3 numbers in parenthesis are intrusive ASYOUGO2 addins.  The DT is the
++total time processor 0 has spent in DGEMM.  The DF is number of billion 
++operations that have been performed in DGEMM by one processor.  Hence, the 
++performance of processor 0 (in Gflops) in DGEMM is always DF/DT.  Using the
++number of DGEMM flops as a basis instead of the number of LU flops, we get
++a lower bound on performance of our run by looking at DMF, which can be
++compared to Mflops above (it using use the global LU time, but the DGEMM
++flops under the assumption that the problem is evenly distributed).
++
++   Using these tools will greatly assist the amount of data you test.
++
++   You need to know several things about -DENDEARLY:
++
++   1.) -DENDEARLY stops the problem after a few iterations of DGEMM on the 
++blocksize (the bigger the blocksize, the further it gets.) It will print only 
++5 or 6 "updates". -DASYOUGO prints about 20 or so before the problem completes.
++
++   2.) Performance for -DASYOUGO and -DENDEARLY always starts off at one speed, 
++slowly increases, and then slows down toward the end (because that is what LU 
++does!). -DENDEARLY probably will terminate before it starts to slow down.
++
++   3.) -DENDEARLY terminates the problem early with an HPL Error exit.  This 
++means that you need to ignore the missing residual results. Of course it gets 
++the wrong answer- the problem never completed. The point is to get an idea what 
++the initial was, and if it looks good, then run the problem to completion 
++without -DENDEARLY.
++
++   4.) Because -DENDEARLY terminates early, ignore the bogusly high Gflop 
++rating HPL will think the problem ran at. This is really how I need to "fix" 
++this patch. It's a simple change to the HPL driver, but I haven't done it yet. 
++HPL will think the performance is excellent only because HPL will think the 
++problem ran to completion.
++
++   5.) The bigger the problem, the more accurately the last update that 
++-DENDEARLY returns will be close to what happens when the problem runs to 
++completion (for obvious reasons).  -DENDEARLY is a poor approximation for 
++small problems.
++
++   I'm told that the best compile options for Itanium 2 are with the Intel
++compiler and: -O2 -ipo -ipo_obj -ftz -IPF_fltacc -IPF_fma -unroll -w -tpp2 
++I'm also told a 1:4 ratio of P and Q is ideal with a BCAST of 0.  I'm not 
++certain I understand why either of these should be so, but that's what I've
++most recently been told.
++
++- Greg Henry
++- 503-712-8457
+diff -Naurp hpl-noayg/setup/Make.HPUX_FBLAS hpl-ayg/setup/Make.HPUX_FBLAS
+--- hpl-noayg/setup/Make.HPUX_FBLAS	2005-05-26 17:02:06.890708715 -0600
++++ hpl-ayg/setup/Make.HPUX_FBLAS	2005-05-26 17:02:23.016877237 -0600
+@@ -139,7 +139,7 @@ F2CDEFS      = -DNoChange -DF77_INTEGER=
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(MPIinc)
+-HPL_LIBS     = $(HPLlib) $(BLASlib)
++HPL_LIBS     = $(HPLlib) $(BLASlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.I860_FBLAS hpl-ayg/setup/Make.I860_FBLAS
+--- hpl-noayg/setup/Make.I860_FBLAS	2005-05-26 17:02:06.890708715 -0600
++++ hpl-ayg/setup/Make.I860_FBLAS	2005-05-26 17:02:23.016877237 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DF77_INTEGER=int 
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.IRIX_FBLAS hpl-ayg/setup/Make.IRIX_FBLAS
+--- hpl-noayg/setup/Make.IRIX_FBLAS	2005-05-26 17:02:06.890708715 -0600
++++ hpl-ayg/setup/Make.IRIX_FBLAS	2005-05-26 17:02:23.013877764 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DStringSunStyle -
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_ATHLON_CBLAS hpl-ayg/setup/Make.Linux_ATHLON_CBLAS
+--- hpl-noayg/setup/Make.Linux_ATHLON_CBLAS	2005-05-26 17:02:06.891708540 -0600
++++ hpl-ayg/setup/Make.Linux_ATHLON_CBLAS	2005-05-26 17:02:23.011878115 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_ATHLON_FBLAS hpl-ayg/setup/Make.Linux_ATHLON_FBLAS
+--- hpl-noayg/setup/Make.Linux_ATHLON_FBLAS	2005-05-26 17:02:06.891708540 -0600
++++ hpl-ayg/setup/Make.Linux_ATHLON_FBLAS	2005-05-26 17:02:23.011878115 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd__ -DF77_INTEGER=int
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_ATHLON_VSIPL hpl-ayg/setup/Make.Linux_ATHLON_VSIPL
+--- hpl-noayg/setup/Make.Linux_ATHLON_VSIPL	2005-05-26 17:02:06.891708540 -0600
++++ hpl-ayg/setup/Make.Linux_ATHLON_VSIPL	2005-05-26 17:02:23.012877939 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_PII_CBLAS hpl-ayg/setup/Make.Linux_PII_CBLAS
+--- hpl-noayg/setup/Make.Linux_PII_CBLAS	2005-05-26 17:02:06.892708364 -0600
++++ hpl-ayg/setup/Make.Linux_PII_CBLAS	2005-05-26 17:02:23.010878290 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_PII_CBLAS_gm hpl-ayg/setup/Make.Linux_PII_CBLAS_gm
+--- hpl-noayg/setup/Make.Linux_PII_CBLAS_gm	2005-05-26 17:02:06.892708364 -0600
++++ hpl-ayg/setup/Make.Linux_PII_CBLAS_gm	2005-05-26 17:02:23.013877764 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_PII_FBLAS hpl-ayg/setup/Make.Linux_PII_FBLAS
+--- hpl-noayg/setup/Make.Linux_PII_FBLAS	2005-05-26 17:02:06.892708364 -0600
++++ hpl-ayg/setup/Make.Linux_PII_FBLAS	2005-05-26 17:02:23.010878290 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd__ -DF77_INTEGER=int
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_PII_FBLAS_gm hpl-ayg/setup/Make.Linux_PII_FBLAS_gm
+--- hpl-noayg/setup/Make.Linux_PII_FBLAS_gm	2005-05-26 17:02:06.892708364 -0600
++++ hpl-ayg/setup/Make.Linux_PII_FBLAS_gm	2005-05-26 17:02:23.015877412 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DF77_INTEGER=int 
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_PII_VSIPL hpl-ayg/setup/Make.Linux_PII_VSIPL
+--- hpl-noayg/setup/Make.Linux_PII_VSIPL	2005-05-26 17:02:06.893708188 -0600
++++ hpl-ayg/setup/Make.Linux_PII_VSIPL	2005-05-26 17:02:23.012877939 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Linux_PII_VSIPL_gm hpl-ayg/setup/Make.Linux_PII_VSIPL_gm
+--- hpl-noayg/setup/Make.Linux_PII_VSIPL_gm	2005-05-26 17:02:06.893708188 -0600
++++ hpl-ayg/setup/Make.Linux_PII_VSIPL_gm	2005-05-26 17:02:23.017877061 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.PWR2_FBLAS hpl-ayg/setup/Make.PWR2_FBLAS
+--- hpl-noayg/setup/Make.PWR2_FBLAS	2005-05-26 17:02:06.893708188 -0600
++++ hpl-ayg/setup/Make.PWR2_FBLAS	2005-05-26 17:02:23.018876886 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DNoChange -DF77_INTEGER=
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.PWR3_FBLAS hpl-ayg/setup/Make.PWR3_FBLAS
+--- hpl-noayg/setup/Make.PWR3_FBLAS	2005-05-26 17:02:06.894708013 -0600
++++ hpl-ayg/setup/Make.PWR3_FBLAS	2005-05-26 17:02:23.018876886 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DNoChange -DF77_INTEGER=
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.PWRPC_FBLAS hpl-ayg/setup/Make.PWRPC_FBLAS
+--- hpl-noayg/setup/Make.PWRPC_FBLAS	2005-05-26 17:02:06.894708013 -0600
++++ hpl-ayg/setup/Make.PWRPC_FBLAS	2005-05-26 17:02:23.019876710 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DNoChange -DF77_INTEGER=
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.SUN4SOL2_FBLAS hpl-ayg/setup/Make.SUN4SOL2_FBLAS
+--- hpl-noayg/setup/Make.SUN4SOL2_FBLAS	2005-05-26 17:02:06.894708013 -0600
++++ hpl-ayg/setup/Make.SUN4SOL2_FBLAS	2005-05-26 17:02:23.017877061 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DF77_INTEGER=int 
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.SUN4SOL2-g_FBLAS hpl-ayg/setup/Make.SUN4SOL2-g_FBLAS
+--- hpl-noayg/setup/Make.SUN4SOL2-g_FBLAS	2005-05-26 17:02:06.894708013 -0600
++++ hpl-ayg/setup/Make.SUN4SOL2-g_FBLAS	2005-05-26 17:02:23.013877764 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DF77_INTEGER=int 
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.SUN4SOL2-g_VSIPL hpl-ayg/setup/Make.SUN4SOL2-g_VSIPL
+--- hpl-noayg/setup/Make.SUN4SOL2-g_VSIPL	2005-05-26 17:02:06.895707837 -0600
++++ hpl-ayg/setup/Make.SUN4SOL2-g_VSIPL	2005-05-26 17:02:23.014877588 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      =
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Tru64_FBLAS hpl-ayg/setup/Make.Tru64_FBLAS
+--- hpl-noayg/setup/Make.Tru64_FBLAS	2005-05-26 17:02:06.895707837 -0600
++++ hpl-ayg/setup/Make.Tru64_FBLAS	2005-05-26 17:02:23.015877412 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DF77_INTEGER=int 
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/setup/Make.Tru64_FBLAS_elan hpl-ayg/setup/Make.Tru64_FBLAS_elan
+--- hpl-noayg/setup/Make.Tru64_FBLAS_elan	2005-05-26 17:02:06.895707837 -0600
++++ hpl-ayg/setup/Make.Tru64_FBLAS_elan	2005-05-26 17:02:23.014877588 -0600
+@@ -142,7 +142,7 @@ F2CDEFS      = -DAdd_ -DF77_INTEGER=int 
+ # ----------------------------------------------------------------------
+ #
+ HPL_INCLUDES = -I$(INCdir) -I$(INCdir)/$(ARCH) $(LAinc) $(MPinc)
+-HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib)
++HPL_LIBS     = $(HPLlib) $(LAlib) $(MPlib) $(TOPdir)/dclock.o
+ #
+ # - Compile time options -----------------------------------------------
+ #
+diff -Naurp hpl-noayg/src/blas/HPL_dgemm.c hpl-ayg/src/blas/HPL_dgemm.c
+--- hpl-noayg/src/blas/HPL_dgemm.c	2005-05-26 17:02:06.896707662 -0600
++++ hpl-ayg/src/blas/HPL_dgemm.c	2005-05-26 17:02:22.845907256 -0600
+@@ -79,6 +79,10 @@ static void HPL_dgemmNN( M, N, K, ALPHA,
+    register double            t0;
+    int                        i, iail, iblj, icij, j, jal, jbj, jcj, l;
+ 
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
++
+    for( j = 0, jbj = 0, jcj  = 0; j < N; j++, jbj += LDB, jcj += LDC )
+    {
+       HPL_dscal( M, BETA, C+jcj, 1 );
+@@ -89,6 +93,9 @@ static void HPL_dgemmNN( M, N, K, ALPHA,
+          { C[icij] += A[iail] * t0; }
+       }
+    }
++#ifdef ASYOUGO2
++   capture_dgemm( -1, -1, -1 );
++#endif
+ }
+ 
+ #ifdef STDC_HEADERS
+@@ -117,6 +124,9 @@ static void HPL_dgemmNT( M, N, K, ALPHA,
+    register double            t0;
+    int                        i, iail, ibj, ibjl, icij, j, jal, jcj, l;
+ 
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
+    for( j = 0, ibj  = 0, jcj  = 0; j < N; j++, ibj += 1, jcj += LDC )
+    {
+       HPL_dscal( M, BETA, C+jcj, 1 );
+@@ -127,6 +137,9 @@ static void HPL_dgemmNT( M, N, K, ALPHA,
+          { C[icij] += A[iail] * t0; }
+       }
+    }
++#ifdef ASYOUGO2
++   capture_dgemm( -1, -1, -1 );
++#endif
+ }
+ 
+ #ifdef STDC_HEADERS
+@@ -155,6 +168,9 @@ static void HPL_dgemmTN( M, N, K, ALPHA,
+    register double            t0;
+    int                        i, iai, iail, iblj, icij, j, jbj, jcj, l;
+ 
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
+    for( j = 0, jbj = 0, jcj = 0; j < N; j++, jbj += LDB, jcj += LDC )
+    {
+       for( i = 0, icij = jcj, iai = 0; i < M; i++, icij += 1, iai += LDA )
+@@ -167,6 +183,9 @@ static void HPL_dgemmTN( M, N, K, ALPHA,
+          C[icij] += ALPHA * t0;
+       }
+    }
++#ifdef ASYOUGO2
++   capture_dgemm( -1, -1, -1 );
++#endif
+ }
+ 
+ #ifdef STDC_HEADERS
+@@ -195,6 +214,9 @@ static void HPL_dgemmTT( M, N, K, ALPHA,
+    register double            t0;
+    int                        i, iali, ibj, ibjl, icij, j, jai, jcj, l;
+ 
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
+    for( j = 0, ibj = 0, jcj  = 0; j < N; j++, ibj += 1, jcj += LDC )
+    {
+       for( i = 0, icij = jcj, jai = 0; i < M; i++, icij += 1, jai += LDA )
+@@ -207,6 +229,9 @@ static void HPL_dgemmTT( M, N, K, ALPHA,
+          C[icij] += ALPHA * t0;
+       }
+    }
++#ifdef ASYOUGO2
++   capture_dgemm( -1, -1, -1 );
++#endif
+ }
+ 
+ #ifdef STDC_HEADERS
+@@ -238,6 +263,9 @@ static void HPL_dgemm0( TRANSA, TRANSB, 
+ {
+    int                        i, j;
+ 
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
+    if( ( M == 0 ) || ( N == 0 ) ||
+        ( ( ( ALPHA == HPL_rzero ) || ( K == 0 ) ) &&
+          ( BETA == HPL_rone ) ) ) return;
+@@ -263,6 +291,9 @@ static void HPL_dgemm0( TRANSA, TRANSB, 
+       else
+       { HPL_dgemmTT( M, N, K, ALPHA, A, LDA, B, LDB, BETA, C, LDC ); }
+    }
++#ifdef ASYOUGO2
++   capture_dgemm( -1, -1, -1 );
++#endif
+ }
+ 
+ #endif
+@@ -407,10 +438,16 @@ void HPL_dgemm
+  * ---------------------------------------------------------------------
+  */ 
+ #ifdef HPL_CALL_CBLAS
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
+    cblas_dgemm( ORDER, TRANSA, TRANSB, M, N, K, ALPHA, A, LDA, B, LDB,
+                 BETA, C, LDC );
+ #endif
+ #ifdef HPL_CALL_VSIPL
++#ifdef ASYOUGO2
++   capture_dgemm( M, N, K );
++#endif
+    if( ORDER == HplColumnMajor )
+    {
+       HPL_dgemm0( TRANSA, TRANSB, M, N, K, ALPHA, A, LDA, B, LDB, BETA,
+@@ -456,6 +493,9 @@ void HPL_dgemm
+ #endif
+    char                      ctransa, ctransb;
+ 
++#ifdef ASYOUGO2
++   capture_dgemm( F77M, F77N, F77K );
++#endif
+    if(      TRANSA == HplNoTrans ) ctransa = 'N';
+    else if( TRANSA == HplTrans   ) ctransa = 'T';
+    else                            ctransa = 'C';
+@@ -513,9 +553,82 @@ void HPL_dgemm
+ #endif
+    }
+ #endif
++#ifdef ASYOUGO2
++   capture_dgemm( -1, -1, -1 );
++#endif
+ /*
+  * End of HPL_dgemm
+  */
+ }
+ 
+ #endif
++#ifdef ASYOUGO2
++   #define dclock dsecnd_
++   extern double ASYOUGO_dgemm_flops;
++   extern double ASYOUGO_dgemm_time ;
++   extern int ASYOUGO_ntimes ;
++
++   capture_dgemm( int M, int N, int K )
++   {
++      extern double dclock();
++      double tmp;
++      int i;
++      static int record_a_time = 0;
++      static double first =0.0;
++      static int recording = 0;
++      static int times = 0;
++#ifdef ASYOUGO2_DISPLAY
++      #define MAXDISPLAY 10000
++      static int MVALS[MAXDISPLAY], NVALS[MAXDISPLAY], KVALS[MAXDISPLAY];
++      static double TIMES[MAXDISPLAY]; 
++#endif
++       
++      ++times;
++      if ( (M > 0) && (N>0) && (K>0) )
++      {   
++#ifdef ASYOUGO2_DISPLAY
++         if ( (M >= 256) && (N >= 128) && (K >= 32) )
++         {
++            if ( ASYOUGO_ntimes >= MAXDISPLAY ) 
++               { printf("MAXDISPLAY OVERFLOW!\n"); ASYOUGO_ntimes= 0; } 
++            MVALS[ASYOUGO_ntimes] = M;
++            NVALS[ASYOUGO_ntimes] = N;
++            KVALS[ASYOUGO_ntimes] = K;
++            record_a_time = 1;  
++            ++ASYOUGO_ntimes;
++         }
++#endif
++         ASYOUGO_dgemm_flops += 2.0*((double)M)*((double)N)*((double)K);
++         recording = 1;
++         first = dclock();
++      } else if ( (M==-1) && (N==-1) && (K==-1) ) {
++         if ( recording == 1 ) 
++         {
++            tmp = dclock() - first; 
++            ASYOUGO_dgemm_time += tmp;
++#ifdef ASYOUGO2_DISPLAY
++            if ( record_a_time == 1 ) 
++            {
++               TIMES[ASYOUGO_ntimes-1] = tmp;
++               record_a_time = 0;
++            }
++#endif
++         }
++         recording = 2;
++#ifdef ASYOUGO2_DISPLAY
++      } else if ( (M==-2) && (N==-2) && (K==-2) ) {
++         printf("Complete set of DGEMMs (%d): \n",ASYOUGO_ntimes); 
++         for ( i = 0; i < ASYOUGO_ntimes ; i++ )
++         {
++            tmp = 2.0*((double)MVALS[i])*((double)NVALS[i])*((double)KVALS[i]);
++            tmp /= 1000000000.0;
++            printf("%6d %6d %6d %6.2g %8.3g %5.4g\n",
++                   MVALS[i],NVALS[i],KVALS[i],tmp,tmp/TIMES[i],TIMES[i]);
++         } 
++         ASYOUGO_ntimes = 0;
++#endif
++      } else {
++         recording = 3;
++      }
++   } 
++#endif
+diff -Naurp hpl-noayg/src/grid/HPL_grid_init.c hpl-ayg/src/grid/HPL_grid_init.c
+--- hpl-noayg/src/grid/HPL_grid_init.c	2005-05-26 17:02:06.897707486 -0600
++++ hpl-ayg/src/grid/HPL_grid_init.c	2005-05-26 17:02:22.942890228 -0600
+@@ -111,7 +111,7 @@ int HPL_grid_init
+  * .. Local Variables ..
+  */
+    int                        hdim, hplerr=MPI_SUCCESS, ierr, ip2, k,
+-                              mask, mycol, myrow, nprocs, rank, size;
++                              mask, mycol, myrow, nprocs, rank, size, myrank;
+ /* ..
+  * .. Executable Statements ..
+  */
+@@ -133,7 +133,30 @@ int HPL_grid_init
+    else
+    {
+       GRID->order = HPL_COLUMN_MAJOR;
+-      mycol = rank / NPROW; myrow = rank - mycol * NPROW;
++      myrank = rank;
++#ifdef CYCLIC
++      myrank = ( int )(rank / 4) + (rank%4)*(nprocs/4);
++#endif
++      mycol = myrank / NPROW; myrow = myrank - mycol * NPROW;
++/*
++      printf("Arbitrary stuff\n");
++      if ( rank == 0  ) { myrow = 0; mycol = 0; }
++      if ( rank == 1  ) { myrow = 1; mycol = 7; }
++      if ( rank == 2  ) { myrow = 0; mycol = 5; }
++      if ( rank == 3  ) { myrow = 1; mycol = 5; }
++      if ( rank == 4  ) { myrow = 1; mycol = 3; }
++      if ( rank == 5  ) { myrow = 0; mycol = 7; }
++      if ( rank == 6  ) { myrow = 1; mycol = 1; }
++      if ( rank == 7  ) { myrow = 1; mycol = 6; }
++      if ( rank == 8  ) { myrow = 0; mycol = 4; }
++      if ( rank == 9  ) { myrow = 1; mycol = 4; }
++      if ( rank == 10 ) { myrow = 1; mycol = 2; }
++      if ( rank == 11 ) { myrow = 0; mycol = 6; }
++      if ( rank == 12 ) { myrow = 1; mycol = 0; }
++      if ( rank == 13 ) { myrow = 0; mycol = 1; }
++      if ( rank == 14 ) { myrow = 0; mycol = 2; }
++      if ( rank == 15 ) { myrow = 0; mycol = 3; }
++*/
+    }
+    GRID->iam   = rank;  GRID->myrow = myrow; GRID->mycol  = mycol;
+    GRID->nprow = NPROW; GRID->npcol = NPCOL; GRID->nprocs = nprocs;
+diff -Naurp hpl-noayg/src/pgesv/HPL_pdgesv0.c hpl-ayg/src/pgesv/HPL_pdgesv0.c
+--- hpl-noayg/src/pgesv/HPL_pdgesv0.c	2005-05-26 17:02:06.897707486 -0600
++++ hpl-ayg/src/pgesv/HPL_pdgesv0.c	2005-05-26 17:02:22.920894090 -0600
+@@ -49,6 +49,12 @@
+  */
+ #include "hpl.h"
+ 
++#ifdef ASYOUGO2
++   extern double ASYOUGO_dgemm_flops;
++   extern double ASYOUGO_dgemm_time;
++   extern int ASYOUGO_ntimes;
++#endif
++
+ #ifdef STDC_HEADERS
+ void HPL_pdgesv0
+ (
+@@ -98,9 +104,28 @@ void HPL_pdgesv0
+    HPL_T_UPD_FUN              HPL_pdupdate;
+    int                        N, j, jb, n, nb, tag=MSGID_BEGIN_FACT,
+                               test=HPL_KEEP_TESTING;
++#ifdef ENDEARLY
++  #ifndef ASYOUGO
++  #define ASYOUGO
++  #endif
++#endif
++#ifdef ASYOUGO
++	#define dclock dsecnd_
++   extern double dclock();
++   double start_time= dclock(), dprint=.005;
++   double asyoutimer, mflops, dtmp, dtmp1;
++   int myrow=GRID->myrow, mycol=GRID->mycol;
++#endif
++
+ /* ..
+  * .. Executable Statements ..
+  */
++#ifdef ASYOUGO2
++   ASYOUGO_dgemm_flops= 0.0;
++   ASYOUGO_dgemm_time = 0.0;
++   ASYOUGO_ntimes = 0;
++#endif
++
+    if( ( N = A->n ) <= 0 ) return;
+ 
+    HPL_pdupdate = ALGO->upfun; nb = A->nb;
+@@ -118,6 +143,38 @@ void HPL_pdgesv0
+  */
+    for( j = 0; j < N; j += nb )
+    {
++#ifdef ASYOUGO
++      if ( j > dprint*N )
++      {
++         asyoutimer = dclock() - start_time;
++         dtmp = (double) N;
++         dtmp1 = (double)(N-j);
++         mflops = 2.0*(dtmp*dtmp*dtmp-dtmp1*dtmp1*dtmp1)/3.0;
++         mflops = mflops / (1000000.0*asyoutimer);
++/*
++#ifdef ASYOUGO2
++printf("(%d,%d) Col=%06d start_time=%9.1f ourtime=%g\n",
++       myrow,mycol,j,start_time,asyoutimer);
++#endif
++*/
++         if ( myrow==0 && mycol==0 )
++#ifdef ASYOUGO2
++            printf("Col=%06d Fract=%4.3f Mflops=%8.2f (DT=%9.1f DF=%9.1f DMF=%8.2f)\n",j,dprint,mflops,ASYOUGO_dgemm_time,ASYOUGO_dgemm_flops/1000000000.0,GRID->nprow*GRID->npcol*ASYOUGO_dgemm_flops/(1000000.0*asyoutimer));
++#else     
++            printf("Column=%06d Fraction=%4.3f Mflops=%8.2f\n",j,dprint,mflops);
++#endif 
++         fflush(NULL);
++         if ( dprint < .195 ) dprint += 0.005;
++         else dprint += 0.1;
++      }
++#endif
++#ifdef ENDEARLY
++      if ( dprint >= .04 )
++      {
++         A->info = j;
++         return ;
++      }
++#endif
+       n = N - j; jb = Mmin( n, nb );
+ /*
+  * Release panel resources - re-initialize panel data structure
+diff -Naurp hpl-noayg/src/pgesv/HPL_pdgesvK2.c hpl-ayg/src/pgesv/HPL_pdgesvK2.c
+--- hpl-noayg/src/pgesv/HPL_pdgesvK2.c	2005-05-26 17:02:06.898707311 -0600
++++ hpl-ayg/src/pgesv/HPL_pdgesvK2.c	2005-05-26 17:02:22.923893563 -0600
+@@ -49,6 +49,12 @@
+  */
+ #include "hpl.h"
+ 
++#ifdef ASYOUGO2
++   double ASYOUGO_dgemm_flops;
++   double ASYOUGO_dgemm_time;
++   int ASYOUGO_ntimes;
++#endif
++
+ #ifdef STDC_HEADERS
+ void HPL_pdgesvK2
+ (
+@@ -99,9 +105,26 @@ void HPL_pdgesvK2
+    int                        N, depth, icurcol=0, j, jb, jj=0, jstart,
+                               k, mycol, n, nb, nn, npcol, nq,
+                               tag=MSGID_BEGIN_FACT, test=HPL_KEEP_TESTING;
++#ifdef ENDEARLY
++  #ifndef ASYOUGO
++  #define ASYOUGO
++  #endif
++#endif
++#ifdef ASYOUGO
++	#define dclock dsecnd_
++   extern double dclock();
++   double start_time= dclock(), dprint=.005;
++   double asyoutimer, mflops, dtmp, dtmp1;
++   int myrow=GRID->myrow;
++#endif
+ /* ..
+  * .. Executable Statements ..
+  */
++#ifdef ASYOUGO2
++   ASYOUGO_dgemm_flops= 0.0;
++   ASYOUGO_dgemm_time = 0.0;
++   ASYOUGO_ntimes = 0;
++#endif
+    mycol = GRID->mycol; npcol        = GRID->npcol;
+    depth = ALGO->depth; HPL_pdupdate = ALGO->upfun;
+    N     = A->n;        nb           = A->nb;
+@@ -163,6 +186,39 @@ void HPL_pdgesvK2
+  */
+    for( j = jstart; j < N; j += nb )
+    {
++#ifdef ASYOUGO
++      if ( j > dprint*N )
++      {
++         asyoutimer = dclock() - start_time;
++         dtmp = (double) N;
++         dtmp1 = (double)(N-j);
++         mflops = 2.0*(dtmp*dtmp*dtmp-dtmp1*dtmp1*dtmp1)/3.0;
++         mflops = mflops / (1000000.0*asyoutimer);
++/*
++#ifdef ASYOUGO2
++printf("(%d,%d) Col=%06d start_time=%9.1f ourtime=%g\n", 
++       myrow,mycol,j,start_time,asyoutimer);
++#endif
++*/
++         if ( myrow==0 && mycol==0 )
++#ifdef ASYOUGO2
++            printf("Col=%06d Fract=%4.3f Mflops=%8.2f (DT=%9.1f DF=%9.1f DMF=%8.2f)\n",j,dprint,mflops,ASYOUGO_dgemm_time,ASYOUGO_dgemm_flops/1000000000.0,GRID->nprow*GRID->npcol*ASYOUGO_dgemm_flops/(1000000.0*asyoutimer));
++#else
++            printf("Column=%06d Fraction=%4.3f Mflops=%8.2f\n",j,dprint,mflops);
++#endif
++         fflush(NULL);
++         if ( dprint < .195 ) dprint += 0.005;
++         else dprint += 0.1;
++      }
++#endif
++#ifdef ENDEARLY
++      if ( dprint >= .04 ) 
++      {
++         A->info = j;
++         return ;
++      }
++#endif
++ 
+       n = N - j; jb = Mmin( n, nb );
+ /*
+  * Initialize current panel - Finish latest update, Factor and broadcast
+diff -Naurp hpl-noayg/testing/ptest/HPL_pddriver.c hpl-ayg/testing/ptest/HPL_pddriver.c
+--- hpl-noayg/testing/ptest/HPL_pddriver.c	2005-05-26 17:02:06.898707311 -0600
++++ hpl-ayg/testing/ptest/HPL_pddriver.c	2005-05-26 17:02:23.227840195 -0600
+@@ -151,6 +151,26 @@ int main( ARGC, ARGV )
+                &npfs, pfaval, &nbms, nbmval, &ndvs, ndvval, &nrfs, rfaval,
+                &ntps, topval, &ndhs, ndhval, &fswap, &tswap, &L1notran,
+                &Unotran, &equil, &align );
++
++#ifdef HPL_DETAILED_TIMING
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with HPL_DETAILED_TIMING\n");
++#endif
++#ifdef CYCLIC
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with CYCLIC\n");
++#endif
++#ifdef ASYOUGO2
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with ASYOUGO2\n");
++#endif
++#ifdef ASYOUGO2_DISPLAY
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with ASYOUGO2_DISPLAY\n");
++#endif
++#ifdef ASYOUGO
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with ASYOUGO\n");
++#endif
++#ifdef ENDEARLY
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with ENDEARLY\n");
++#endif
++
+ /*
+  * Loop over different process grids - Define process grid. Go to bottom
+  * of process grid loop if this case does not use my process.
+diff -Naurp hpl-noayg/testing/ptest/HPL_pdtest.c hpl-ayg/testing/ptest/HPL_pdtest.c
+--- hpl-noayg/testing/ptest/HPL_pdtest.c	2005-05-26 17:02:06.899707135 -0600
++++ hpl-ayg/testing/ptest/HPL_pdtest.c	2005-05-26 17:02:23.228840020 -0600
+@@ -306,6 +306,24 @@ void HPL_pdtest
+  */
+    if( TEST->thrsh <= HPL_rzero )
+    { (TEST->kpass)++; if( vptr ) free( vptr ); return; }
++#ifdef ENDEARLY
++/*
++ * ENDEARLY result, so skip tests 
++ */
++   if ((myrow==0)&&(mycol==0)) printf("Because of ENDEARLY- Skipping residual check!\n");
++/*
++   HPL_fprintf( TEST->outfp, "%s%s\n",
++                      "=== SKIPPING ENDEARLY RESIDUAL CHECK =",
++                      "=== SKIPPING ENDEARLY RESIDUAL CHECK =" );
++   (TEST->kskip)++;
++   if( vptr ) free( vptr ); return;
++*/
++#endif
++#ifdef ASYOUGO2
++   #ifdef ASYOUGO2_DISPLAY
++   if ((myrow==0)&&(mycol==0)) capture_dgemm ( -2, -2, -2 );
++   #endif
++#endif
+ /*
+  * Check info returned by solve
+  */

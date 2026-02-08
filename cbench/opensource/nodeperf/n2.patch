@@ -1,0 +1,686 @@
+--- nodeperf2.c.orig	2011-03-21 10:22:22.434451991 -0600
++++ nodeperf2.c	2009-04-28 10:52:00.000000000 -0600
+@@ -20,10 +20,14 @@
+ #include <stdio.h>
+ #include <math.h>
+ #include <stdlib.h>
++#include <stddef.h>
+ #include <time.h>
+ #ifndef NOMPI
+-#include <mpi.h>
++#include <mpi.h> 
+ #endif
++#include <unistd.h>
++
++
+ #define MAX(x,y) ((x)<(y)?(y):(x))
+ #define MIN(x,y) ((x)>(y)?(y):(x))
+ #define A(x,y)     A[((y)-1)*(lda) + ((x)-1)]
+@@ -46,8 +50,8 @@
+ #endif
+ 
+ /* Don't do accuracy tests unless the user wants it.  NOACCUR by default: */
+-/* Note that accuracy are tests are done by comparing DGEMMCALL1 to
+-   DGEMMCALL2 anyway (presumably from different libraries.  If these are
++/* Note that accuracy are tests are done by comparing DGEMMCALL1 to 
++   DGEMMCALL2 anyway (presumably from different libraries.  If these are 
+    the same, which is the way the code is provided, this is a silly test. */
+ #ifndef ACCUR
+   #ifndef NOACCUR
+@@ -64,14 +68,10 @@
+         } \
+ 
+ #ifdef GEMV
+-#ifndef ITER
+ #define ITER 100
+-#endif
+ #else
+-#ifndef ITER
+ #define ITER 4
+ #endif
+-#endif
+ 
+ #ifdef SINGLE
+ #define PREC float
+@@ -87,85 +87,46 @@
+ #endif
+ #else
+ #ifndef DCLOCK
+-#define DCLOCK DSECND
++#define DCLOCK DCLOCK
+ #endif
+ #endif
+ 
++/* getopt related variables */
++int ch;
++extern char *optarg;
++extern int optind;
++
++size_t bytes = 0;
++int verbose = 0;
++
+ int precbytes = sizeof(PREC);
+ 
+-/* There are two DGEMMCALLS, you can potentially test accuracy if you have
+-   two different entry points as well.  To compare different DGEMMs with each
+-   other, compile -DDGEMMCALL1=<first DGEMM> -DDGEMMCALL2=<second DGEMM>.
+-   The default is just to use the obvious choice in any case. */
+-
+-#if (precbytes==4) // single precision
+-
+-  #ifdef LINUX
+-    #ifndef DGEMMCALL1
+-       #ifdef GEMV
+-          #define DGEMMCALL1 sgemv_
+-       #else
+-          #define DGEMMCALL1 sgemm_
+-       #endif
+-    #endif
+-    #ifndef DGEMMCALL2
+-       #ifdef GEMV
+-          #define DGEMMCALL2 sgemv_
+-       #else
+-          #define DGEMMCALL2 sgemm_
+-       #endif
+-    #endif
+-  #else
+-    #ifndef DGEMMCALL1
+-       #ifdef GEMV
+-          #define DGEMMCALL1 SGEMV
+-       #else
+-          #define DGEMMCALL1 SGEMM
+-       #endif
+-    #endif
+-    #ifndef DGEMMCALL2
+-       #ifdef GEMV
+-          #define DGEMMCALL2 SGEMV
+-       #else
+-          #define DGEMMCALL2 SGEMM
+-       #endif
+-    #endif
+-  #endif
++#ifndef DGEMMCALL
+ 
+-#else // double precision
++  /* There are two DGEMMCALLS, you can potentially test accuracy if you have
++     two different entry points as well. */
+ 
+-  #ifdef LINUX
+-    #ifndef DGEMMCALL1
+-       #ifdef GEMV
+-          #define DGEMMCALL1 dgemv_
+-       #else
+-          #define DGEMMCALL1 dgemm_
+-       #endif
+-    #endif
+-    #ifndef DGEMMCALL2
+-       #ifdef GEMV
+-          #define DGEMMCALL2 dgemv_
+-       #else
+-          #define DGEMMCALL2 dgemm_
+-       #endif
+-    #endif
+-  #else
+-    #ifndef DGEMMCALL1
+-       #ifdef GEMV
+-          #define DGEMMCALL1 DGEMV
+-       #else
+-          #define DGEMMCALL1 DGEMM
+-       #endif
++  #if (precbytes==4)
++
++    #ifdef LINUX
++    #define DGEMMCALL1 sgemm_
++    #define DGEMMCALL2 sgemm_
++    #else
++    #define DGEMMCALL1 SGEMM
++    #define DGEMMCALL2 SGEMM
+     #endif
+-    #ifndef DGEMMCALL2
+-       #ifdef GEMV
+-          #define DGEMMCALL2 DGEMV
+-       #else
+-          #define DGEMMCALL2 DGEMM
+-       #endif
++
++  #else 
++
++    #ifdef LINUX
++    #define DGEMMCALL1 dgemm_
++    #define DGEMMCALL2 dgemm_
++    #else
++    #define DGEMMCALL1 DGEMM
++    #define DGEMMCALL2 DGEMM
+     #endif
+-  #endif
+ 
++  #endif
+ #endif
+ 
+ /* In some cases, one might want to change this code to do lots of different
+@@ -180,52 +141,33 @@
+    int irecordvals = 0;
+    PREC *A, *B, *C, *D;
+    char *At, *Bt, *Ct, *Dt;
+-#ifndef _WIN_
+-   char *getip();
+-#endif
+    int istrana = 0;
+    int istranb = 0;
+    int m, n, k, lda, ldb, ldc, i, j, nerrs=0, irow, icol, iii;
+-   signed long ia, ja, ib, jb, ic, jc, malloced;
+-#ifndef GEMV
++   int ia, ja, ib, jb, ic, jc;
+    extern void DGEMMCALL1(char *, char *, int *, int *, int *, PREC *, \
+-	PREC *, int *, PREC *, int *, PREC *, PREC *, int *);
+-#ifndef NOACCUR
+-   extern void DGEMMCALL2(char *, char *, int *, int *, int *, PREC *, \
+-	PREC *, int *, PREC *, int *, PREC *, PREC *, int *);
+-#endif
+-#else
+-   extern void DGEMMCALL1(char *, int *, int *, PREC *, \
+-	PREC *, int *, PREC *, int *, PREC *, PREC *, int *);
+-#ifndef NOACCUR
+-   extern void DGEMMCALL2(char *, int *, int *, PREC *, \
+-	PREC *, int *, PREC *, int *, PREC *, PREC *, int *);
+-#endif
+-#endif
++	PREC *, int *, PREC *, int *, PREC *, PREC *, int *); 
+    extern double DCLOCK();
+-   int iaoff, iboff, icoff, me, size, itmp;
+-   double t1, t2, t3, sum=0.0, low, high, tmpi, derr, ctmp;
+-   char *imalloc(signed long, signed long *);
+-   char transa, transb, *unused_char;
++   int iaoff, iboff, icoff, me, size;
++   double t1, t2, t3, sum=0.0, low, high, tmpi;
++   double ctmp, ctmp2;
++   char *imalloc(size_t, unsigned long *);
++   char transa, transb;
+    PREC alpha = -1.0;
+    PREC beta = 1.0;
+-#ifndef NOMPI
+-   MPI_Status status;
+-#endif
+    const char ctrans='C', ntrans='N', ttrans='T';
+    const PREC dzero=0.0;
+    const PREC done=1.0;
+    const PREC dnone=-1.0;
+-   int izero = 0, ione = 1, provided;
++   const int izero = 0, ione = 1;
++   int ch;
++   int iter = ITER;
++   unsigned long targetbytes = 0;
+ 
+ #ifndef NOMPI
+-   MPI_Init_thread ( &argc, &argv, MPI_THREAD_MULTIPLE, &provided );
++   MPI_Init( &argc, &argv );
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    MPI_Comm_size(MPI_COMM_WORLD, &size );
+-   if ( (provided == MPI_THREAD_MULTIPLE) && (me == 0) )
+-      printf("Multi-threaded MPI detected\n");
+-   if ( (provided != MPI_THREAD_MULTIPLE) && (me == 0) )
+-      printf("No multi-threaded MPI detected (Hybrid may or may not work)\n");
+ #else
+    me = 0;
+    size = 1;
+@@ -235,11 +177,10 @@
+    {
+       PrintTimeString("The time/date of the run...");
+    }
+-
++    
+    if ( me == 0 )
+    {
+    printf("This driver was compiled with:\n\t");
+-   printf("-DITER=%d ",ITER);
+ #ifdef LINUX
+    printf("-DLINUX ");
+ #endif
+@@ -249,13 +190,10 @@
+ #ifdef ACCUR
+    printf("-DACCUR ");
+ #endif
+-#ifdef INTERACT
+-   printf("-DINTERACT ");
+-#endif
+ #ifdef SINGLE
+    printf("-DSINGLE ");
+ #endif
+-#ifdef TABLE   // In case one wants to add some loops over a range of values
++#ifdef TABLE
+    printf("-DTABLE ");
+ #endif
+ #ifdef NOMPI
+@@ -264,67 +202,72 @@
+ 
+    if ( precbytes == 4 ) printf("-DPREC=float ");
+    else if ( precbytes == 8 ) printf("-DPREC=double ");
+-   else printf("-DPREC=unknown(%d bytes) ",precbytes);
++   else printf("-DPREC=unknown(%d bytes) ",precbytes); 
+ 
+ #ifdef GEMV
+    printf("-DGEMV ");
+ #endif
+-
++   
+    printf("\n");
+    }
+ 
+-#ifdef INTERACT
+-   if ( me == 0 )
+-   {
+-      printf("Enter m, n, k: ");
+-      scanf("%d%d%d",&m,&n,&k);
+-      printf("Enter A offset, B offset, C offset (choose 0 if in doubt): ");
+-      scanf("%d%d%d",&iaoff,&iboff,&icoff);
+-#ifndef NOMPI
+-      if ( size > 1 )
+-      {
+-         MPI_Bcast ( &m, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-         MPI_Bcast ( &n, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-         MPI_Bcast ( &k, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-         MPI_Bcast ( &iaoff, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-         MPI_Bcast ( &iboff, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-         MPI_Bcast ( &icoff, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-      }
+-#endif
+-   } else {
+-#ifndef NOMPI
+-      MPI_Bcast ( &m, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-      MPI_Bcast ( &n, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-      MPI_Bcast ( &k, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-      MPI_Bcast ( &iaoff, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-      MPI_Bcast ( &iboff, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-      MPI_Bcast ( &icoff, 1, MPI_INT, 0, MPI_COMM_WORLD );
+-#endif
+-   }
+-#else
+-   /* We could modify this section to loop over various values as well */
+-   /* Memory use is slightly more than sizeof(precision)*m*n*1 for NOACCUR
+-      (2 for ACCUR).   So, for double precision DGEMM testing without
+-      accuracy, it will use around 1GB per mpi process when m=n=10000.  */
+-   m = 10000;
+-   n = 10000;
+-   k = 168;
+-   iaoff = 0;
+-   iboff = 0;
+-   icoff = 0;
+-#endif
++	m = 10000;
++	n = 10000;
++	k = 120;
++	iaoff = 0;
++	iboff = 0;
++	icoff = 0;
++
++	while ((ch= getopt(argc, argv, "i:n:s:v")) != EOF)   {
++		switch (ch) {
++			case 'n':
++				m = n = atoi(optarg);
++				break;
++			case 'i':
++				iter = atoi(optarg);
++				break;
++			case 's':
++				targetbytes = atoi(optarg);
++				targetbytes = targetbytes * 1024 * 1024;
++				break;
++			case 'v':
++				verbose++;
++				break;
++		}
++	}
++
++	/* If the command line requested a target memory allocation, convert
++	 * that to our parameters.
++	*/
++	if (targetbytes > 0 )
++	{
++		m = sqrt(targetbytes / sizeof(PREC));
++		/* make sure m is even */
++		if ((m % 2) == 1)
++			m++;
++		n = m;
++	}
++
++	if ( me == 0 )
++	{
++		printf("The driver runtime options are:\n\t");
++		printf("iterations=%d ",iter);
++		printf("m=n=%d ",m);
++		if (targetbytes > 0) printf(" mem-usage-target=%lu MB ",targetbytes/(1024*1024));
++		printf("\n");
++	}
+ 
+    /* This code tests up to 4 offsets */
+    iaoff = MIN(MAX(iaoff,0),4);
+    iboff = MIN(MAX(iboff,0),4);
+    icoff = MIN(MAX(icoff,0),4);
+-
++   
+    /* Make certain the inputs are sensible: */
+    m = MAX(m,1);
+    n = MAX(n,1);
+    k = MAX(k,1);
+ 
+-   if ( istrana == 0 )
++   if ( istrana == 0 ) 
+    {
+       transa = ntrans;
+       lda = m;
+@@ -335,11 +278,11 @@
+       ja = m;
+    }
+    ia = lda;
+-   if ( istranb == 0 )
++   if ( istranb == 0 ) 
+    {
+       transb = ntrans;
+       ldb = k;
+-      jb = n;
++      jb = n; 
+    } else {
+       transb = ttrans;
+       ldb = n;
+@@ -350,14 +293,12 @@
+    ic = ldc;
+    jc = n;
+ 
+-   At = (char *) imalloc(ia*ja*sizeof(PREC)+70000+4*sizeof(PREC),&malloced);
+-   Bt = (char *) imalloc(ib*jb*sizeof(PREC)+70000+4*sizeof(PREC),&malloced);
+-   Ct = (char *) imalloc(ic*jc*sizeof(PREC)+70000+4*sizeof(PREC),&malloced);
++   At = (char *) imalloc(ia*ja*sizeof(PREC)+70000+4*sizeof(PREC),0);
++   Bt = (char *) imalloc(ib*jb*sizeof(PREC)+70000+4*sizeof(PREC),0);
++   Ct = (char *) imalloc((size_t)ic*(size_t)jc*sizeof(PREC)+70000+4*sizeof(PREC),0);
+ #ifndef NOACCUR
+-   Dt = (char *) imalloc(ic*jc*sizeof(PREC)+70000+4*sizeof(PREC),&malloced);
++   Dt = (char *) imalloc(ic*jc*sizeof(PREC)+70000+4*sizeof(PREC),0);
+ #endif
+-   unused_char = imalloc ( (signed long) -1, &malloced );
+-   if ( me == 0) printf("Malloc done.  Used %ld bytes\n",malloced);
+ 
+    i = 0; while (((((long)(&At[i]))%65536)!=0) && (i<70000) ) ++i;
+    A = (PREC *) &At[i];
+@@ -373,22 +314,13 @@
+    D = (PREC *) &Dt[i];
+ #endif
+ 
+-#ifndef _WIN_
+    srand48( (long) 0 );
+-   for ( i = 0 ; i < ia*ja + iaoff ; i++ )
++   for ( i = 0 ; i < ia*ja + iaoff ; i++ ) 
+ 	A[i] = 1.0 - 2.0*drand48();
+-   for ( i = 0 ; i < ib*jb + iboff ; i++ )
++   for ( i = 0 ; i < ib*jb + iboff ; i++ ) 
+ 	B[i] = 1.0 - 2.0*drand48();
+-   for ( i = 0 ; i < ic*jc + icoff ; i++ )
++   for ( i = 0 ; i < ic*jc + icoff ; i++ ) 
+ 	C[i] = 1.0 - 2.0*drand48();
+-#else
+-   for ( i = 0 ; i < ia*ja + iaoff ; i++ )
+-	A[i] = 1.0 - 2.0*rand();
+-   for ( i = 0 ; i < ib*jb + iboff ; i++ )
+-	B[i] = 1.0 - 2.0*rand();
+-   for ( i = 0 ; i < ic*jc + icoff ; i++ )
+-	C[i] = 1.0 - 2.0*rand();
+-#endif
+ #ifndef NOACCUR
+    for ( i = 0 ; i < ic*jc + icoff ; i++ ) D[i] = C[i];
+ #endif
+@@ -400,14 +332,16 @@
+    D = (PREC *) &D[icoff];
+ #endif
+ 
+-   /* This is the operation count.  Change it if using a different algorithm */
+-#ifndef GEMV
++   /* Operation count for DGEMM: Change this if measuring DGEMV or another
++      routine. */
++
+    high = 2.0*(double)m*(double)n*(double)k;
+-#else
+-   high = 2.0*(double)m*(double)k;
+-#endif
+ 
+-   for ( i = 0 ; i < ITER ; i++ )
++   /* prime dlock */
++   tmpi = DCLOCK ();
++   sleep(1);
++   tmpi = DCLOCK ();
++   for ( i = 0 ; i < iter ; i++ )
+    {
+       tmpi = DCLOCK ();
+ #ifndef GEMV
+@@ -416,12 +350,42 @@
+       DGEMMCALL1(&transa,&m,&k,&alpha,A,&lda,B,&ione,&beta,C,&ione);
+ #endif
+       tmpi = DCLOCK ()-tmpi;
+-      if ( i==0 || tmpi < t1 ) t1 = tmpi;
++      if (tmpi < 0.0)
++      {
++	printf("WARNING: time went backwards...ignoring iteration %d\n",i);
++      }
++      else if ( i==0 || tmpi < t1 )
++      {
++        t1 = tmpi;
++	if (verbose) printf("iteration %d time ok and better %lf\n",i,t1);
++      }
+    }
+-
+-   /* Do an accuracy check if desired: convenient if comparing two different libraries, otherwise skip this. */
++#ifndef NOMPI
++   iii = MPI_Barrier ( MPI_COMM_WORLD );
++#endif
++   for ( i = 0 ; i < size ; i++ )
++   {
++        /* Stall for a quarter second: */
++        tmpi = DCLOCK(); while ( DCLOCK() - tmpi < 0.25 );  
++        if ( me == i )
++        {
++            fflush(NULL);
++            printf("(%d of %d): ",me,size);
++            /* The last number below is the Mflops */
++            printf("%c%c lda=%4d ldb=%4d ldc=%4d %1d %1d %1d %08.3f mem=%lu MB  ",
++               transa,transb,lda,ldb,ldc,iaoff,iboff,icoff,high/(1000000.0*t1),
++			   bytes/(1024*1024));
++            fflush(NULL);
++            system("hostname"); 
++            fflush(NULL);
++        }  
++#ifndef NOMPI
++        iii = MPI_Barrier ( MPI_COMM_WORLD );
++#endif
++    }
++  
+ #ifndef NOACCUR
+-   for ( i = 0 ; i < ITER ; i++ )
++   for ( i = 0 ; i < iter ; i++ )
+    {
+       tmpi = DCLOCK ();
+ #ifndef GEMV
+@@ -432,17 +396,21 @@
+       tmpi = DCLOCK ()-tmpi;
+       if ( i==0 || tmpi < t2 ) t2 = tmpi;
+    }
+-   for ( j = 1, nerrs=0, derr=0.0 ; j <= n ; j++ )
++   /* The last number is the Mflops */
++   printf("LIB: %c%c lda=%4d ldb=%4d ldc=%4d %1d %1d %1d %08.3f mem=%lu MB\n",
++          transa,transb,lda,ldb,ldc,iaoff,iboff,icoff,high/(1000000.0*t2),
++		  bytes/(1024*1024));
++   for ( j = 1, nerrs=0, tmpi=0.0 ; j <= n ; j++ )
+    {
+       for ( i = 1 ; i <= m ; i++ )
+       {
+-         if ( C(i,j) >= D(i,j) )
++         if ( C(i,j) >= D(i,j) ) 
+          {
+             ctmp = C(i,j) - D(i,j);
+          } else {
+             ctmp = D(i,j) - C(i,j);
+          }
+-         derr += ctmp;
++         tmpi += ctmp;
+ #ifdef SINGLE
+          if ( fabs(ctmp) > 0.00005 )
+ #else
+@@ -450,71 +418,27 @@
+ #endif
+          {
+             if ( (++nerrs<10) && (j<=10) ) {
+-               printf("Node %d: Error at C(%d,%d): Act=%g Comp=%g Err=%g Tot=%g\n",
+-                        me,i,j,D(i,j),C(i,j),ctmp,derr);
++               printf("%d: Error at C(%d,%d): Act=%g Comp=%g Err=%g Tot=%g\n",
++                        me,i,j,D(i,j),C(i,j),ctmp,tmpi);
+             }
+          }
+       }
+    }
++   printf("Number of errors found=%d Total Error detected=%g\n",nerrs,tmpi);
+ #endif
+ 
+-   /* Output Performance Results */
+-   for ( i = 0 ; i < size ; i++ )
+-   {
+-      /* Stall for a quarter second: */
+-      tmpi = DCLOCK(); while ( DCLOCK() - tmpi < 0.25 );
+-#ifndef NOMPI
+-      if ( (me == 0) && (size > 1) && (i != 0) )
+-      {
+-         MPI_Send ( &itmp, 0, MPI_BYTE, i, i, MPI_COMM_WORLD );
+-      }
+-      if ( (me == i) && (size > 1) && (i != 0) )
+-      {
+-         MPI_Recv ( &itmp, 0, MPI_BYTE, 0, i, MPI_COMM_WORLD, &status );
+-      }
+-#endif
+-      /* Print out the outputs */
+-      if ( me == i )
+-      {
+-         fflush(NULL);
+-         printf("(%d of %d): ",me,size);
+-         /* The last number below is the Mflops */
+-#ifndef TABLE
+-         printf("%c%c lda=%4d ldb=%4d ldc=%4d %1d %1d %1d %08.3f ",
+-             transa,transb,lda,ldb,ldc,iaoff,iboff,icoff,high/(1000000.0*t1));
+-#else
+-         /* If one wants to create a Table of outputs, one can change the
+-            format of the output here.  Otherwise, use the other printf */
+-         printf("%c%c %05.2f %05.2f %4d %4d %4d %08.3f ",
+-		   transa,transb,alpha,beta,m,n,k,high/(1000000.0*t1));
+-#endif
+-         fflush(NULL);
+-#ifndef NOACCUR
+-         printf("LIB2: %08.3f Number of errors=%d Total Error detected=%g ",
+-                high/(1000000.0*t2),nerrs,derr);
+-         fflush(NULL);
+-#endif
+-         /* Insert anything here that will help you to identify the machines */
+-         // system("hostname");
+-#ifndef _WIN_
+-         printf("%s\n", getip() );
+-#endif
+-         fflush(NULL);
+-      }
+-
+-   } /* i loop over nodes outputing results */
+-
+    fflush(NULL); fflush(stdout); fflush(stderr);
+-   recordvals[irecordvals++] = high/(1000000.0*t1);
++   recordvals[irecordvals++] = high/(1000000.0*t1);  
+    if ( irecordvals >= RECORDSPACE )
+-   {
++   {   
+       fprintf(stderr,"Ran out of buffer space.  Exiting\n");
+       exit(-1);
+-   }
+-
+-#ifndef NOACCUR
+-   free(Dt);
++   }  
++#ifdef TABLE
++   printf("%c%c %05.2f %05.2f %4d %4d %4d %08.3f",
++		   transa,transb,alpha,beta,m,n,k,high/(1000000.0*t1));
+ #endif
++
+    free(Ct);
+    free(Bt);
+    free(At);
+@@ -527,69 +451,29 @@
+ #endif
+ }
+ 
+-/* This is just a wrapper around malloc.  The user may substitute anything
+-   that makes sense here.  This version adds up the total memory used. */
+-
+-char *imalloc(signed long size, signed long *total)
+-{
++char *imalloc(size_t size, unsigned long *total)
++{ 
+         char *tmp;
+-        static signed long times = 0, bytes= 0;
++        static unsigned long times = 0;
+ 
+         ++times;
++
+         if ( size <= 0 ) {
+            *total = bytes;
+            bytes = 0;
+            return(NULL);
+         } else {
+            bytes += size;
++
++			if (verbose)
++				printf("imalloc(): times=%lu, size=%zi MB, total alloced=%zi MB\n",
++					times,size/(1024*1024),bytes/(1024*1024));
++
+            tmp= (char *) malloc(size);
+            if (tmp==NULL) {
+-              printf("Failed in the malloc for time %ld\n",times);
+-              fprintf(stderr,"Could not malloc %ld bytes\n",size);
+-#ifndef NOMPI
+-              MPI_Finalize();
+-#endif
++              printf("Failed in the malloc for time %lu with %zi bytes\n",times,size);
+               exit(-1);
+            }
+            return(tmp);
+         }
+ }
+-
+-#ifndef _WIN_
+-/* User should insert something/anything which helps to identify the various nodes here */
+-#include <net/if.h>
+-#include <sys/ioctl.h>
+-#include <arpa/inet.h>
+-
+-char* getip() {
+-    FILE *f = fopen("/proc/net/dev", "r");
+-    char buf[4096];
+-    char *p;
+-    struct ifreq ifr;
+-    int fd;
+-    if (!f) {
+-      perror("/proc/net/dev");
+-      exit(1);
+-    }
+-    fd = socket(AF_INET, SOCK_DGRAM, 0);
+-    if (fd == -1) {
+-      perror("socket");
+-      exit(1);
+-    }
+-   while (fgets(buf, 4096, f)) {
+-      if ((p = strstr(buf, "eth0"))) {
+-         p = p + 4;
+-         *p = 0;
+-         for (p = buf; *p == ' '; ++p);
+-            strcpy(ifr.ifr_name, p);
+-         if (ioctl(fd, SIOCGIFADDR, &ifr)) {
+-            perror(p);
+-         }
+-         else {
+-            return(inet_ntoa(*(struct in_addr *) (ifr.ifr_ifru.ifru_addr.sa_data + 2)));
+-         }
+-      }
+-   }
+-   return ( NULL );
+-}
+-#endif

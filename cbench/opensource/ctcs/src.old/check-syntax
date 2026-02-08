@@ -1,0 +1,112 @@
+#!/bin/bash
+#
+# Check ctcs's integrity (no syntax errors)
+# This is probably a pretty useful gizmo generally, eh?
+#
+
+# miscellaneous work to get the syntax checker up and running.
+cd runin/src/memtst.src
+make sizeofint.h
+cd ../../..
+
+bashlines=0
+perllines=0
+clines=0
+
+excludecount="nbench-byte/ crashme/ /cpuburn"
+
+function delsizeofint () {
+	rm -f runin/src/memtst.src/sizeofint.h
+	rm -f runin/src/memtst.src/sizeofint
+}
+trap delsizeofint EXIT
+
+#function delpointer () {
+#	rm -f runin/src/nbench-byte/pointer.h
+#}
+#function delpointer2 () {
+#	rm -f ctcs/runin/src/nbench-byte/pointer.h
+#}
+
+if [ -z "$CC" ] ; then CC=gcc ; fi
+
+# nbench has some screwy ways of compiling, including
+# generating pointer.h on the fly.  To get by the
+# syntax check, I will create it myself.
+#if [ ! -e runin/src/nbench-byte/pointer.h ] ; then
+#	touch runin/src/nbench-byte/pointer.h >> /dev/null 2>&1
+#	trap delpointer EXIT
+#fi
+#if [ ! -e ctcs/runin/src/nbench-byte/pointer.h ] ; then
+#	touch ctcs/runin/src/nbench-byte/pointer.h >>/dev/null 2>&1
+#	trap delpointer2 EXIT
+#fi
+
+stuff=`find -name "*" -print | grep -v 'CVS/' | grep -v runin/src/ltp | egrep -v '(ataprint.c|smartd.c)'`
+stuff2=`find -name ".??*" -print | grep -v 'CVS/'`
+for i in $stuff $stuff2 ; do {
+	exclude=0
+	for foo in $excludecount ; do
+		echo $i | grep -q $foo
+		if [ $? = 0 ] ; then
+			exclude=1
+		fi
+	done		
+	type=`file $i 2>&1`
+	echo $type | grep -q "shell script text"
+	if [ $? = 0 ] ; then
+		if [ $exclude = 0 ] ; then
+			bashlines=$[`cat $i | wc -l` + $bashlines]
+		fi
+		echo -n "$i as bash: "
+		bash -n $i
+		if [ $? != 0 ] ; then exit 1 ; fi
+		echo $i syntax OK
+		continue
+	fi
+	echo $type | grep -q "perl commands text"
+	rt=$?
+	echo $type | grep -q "perl script text"
+	if [ $? = 0 -o $rt = 0 ] ; then
+		if [ $exclude = 0 ] ; then
+			perllines=$[`cat $i | wc -l` + $perllines]
+		fi
+		echo -n "$i as perl: "
+		x=`pwd`
+		cd `dirname $i`
+		perl -wc `basename $i` 2>&1
+		if [ $? != 0 ] ; then exit 1 ; fi
+		cd $x
+		continue
+	fi
+	echo $type | grep -q "C program text"
+	if [ $? = 0 ] ; then
+		if [ $exclude = 0 ] ; then
+			clines=$[`cat $i | wc -l` + $clines]
+		fi
+		# don't compile headers
+		echo $i | grep -q ".h$"
+		if [ $? = 0 ] ; then continue ; fi
+		echo -n "$i as C: "
+		sh -c "cd `dirname $i` && $CC -fsyntax-only `basename $i`"
+		if [ $? != 0 ] ; then exit 1 ; fi
+		echo $i syntax OK
+		continue
+	fi
+	echo $i | grep -iq "Makefile$"
+	if [ $? = 0 ] ; then
+		echo -n "$i as Makefile: "
+		sh -c "cd `dirname $i` && make -n -f `basename $i` all >> /dev/null"
+		if [ $? != 0 ] ; then exit 1 ; fi
+		echo $i syntax OK
+		continue
+	fi
+} ; done
+
+echo
+echo Code: $[$clines + $bashlines + $perllines] lines
+echo $clines lines of C code
+echo $bashlines lines of bash code
+echo $perllines lines of perl code
+echo
+echo All syntax OK.

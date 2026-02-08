@@ -1,0 +1,8 @@
+# this is a test
+
+timer 1h
+
+begin
+fg 1 DUMMY test2 93 4 1
+loop
+

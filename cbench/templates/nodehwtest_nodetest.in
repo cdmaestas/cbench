@@ -1,0 +1,12 @@
+# job template to run node-level hardware tests through batch
+# NOTE: bash syntax is used here
+
+export CBENCHOME=CBENCHOME_HERE
+
+# preamble command string or /bin/true if no preamble specified
+PREAMBLE_HERE
+
+# Some of the tests run in the nodehwtest framework require root
+# priveleges. See the cluster.def file parameters $run_as_root
+# and $run_as_root_cmd for how to control this behavior.
+COMMAND_HERE

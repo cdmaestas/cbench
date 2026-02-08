@@ -1,0 +1,24 @@
+= HOWTO On Utilizing ''Multidata'' Data from Output Parsing =
+
+This is a highly BETA feature.  I'm just capturing some command lines and output showing how it's used for now.
+
+See what multidata is available:
+{{{
+[bob@aws bandwidth]$ $CBENCHOME/tools/cbench_output_parse.pl --ident test2_dc,test2_sn,test2_ss --testset bandwidth --multidata --gnuplot --logx
+.
+
+WARNING: Multidata mode:
+Need to select a single set of multidata using --multidata 'NAME'
+WARNING: The current available sets are: Sendrecv_msgsize:bandwidth , msgsize:unidir_bw , msgsize:bidir_bw , msgsize:message_rate ,
+}}}
+
+So we select the ''Sendrecv_msgsize:bandwidth'' set of multidata:
+{{{
+[bob@aws bandwidth]$ $CBENCHOME/tools/cbench_output_parse.pl --ident test2_dc,test2_sn,test2_ss --testset bandwidth --multidata Sendrecv_msgsize:bandwidth --gnuplot --logx
+}}}
+This generated the following graph:[[BR]][[BR]]
+[[Image(bandwidth.png)]]
+
+Each data series on the graph is named of the form: testident-benchmark-numppn-numprocesses
+
+ 	  	 

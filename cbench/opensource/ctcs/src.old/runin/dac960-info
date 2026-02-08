@@ -1,0 +1,17 @@
+#!/bin/bash
+if [ ! -e "$1" ] ; then {
+	echo "status file ($1) not available"
+	exit 2
+} ; fi
+if [ -z "$2" ] ; then {
+	echo "temp file number not available"
+	exit 2
+} ; fi
+	
+tempfile=tmpdac960.$2
+tempfile2=tmpdac960_2.$2
+if [ -e $tempfile ] ; then
+	rm -f $tempfile
+	rm -f $tempfile2
+fi
+echo $*

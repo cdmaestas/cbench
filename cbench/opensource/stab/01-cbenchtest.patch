@@ -1,0 +1,37 @@
+--- bench/bin/dplot.orig	2006-09-15 13:16:59.621734000 -0600
++++ bench/bin/dplot	2006-09-15 13:21:55.051238000 -0600
+@@ -2,6 +2,7 @@
+ #egan@us.ibm.com
+ #egan@sense.net
+ 
++CBENCHTEST=`$CBENCHOME/sbin/get_benchtest`
+ 
+ function usage
+ {
+@@ -220,7 +221,7 @@
+ #create bins
+ FS=$FILE
+ TMPFILE=/tmp/dplot.$$
+-dplot.bins $BINS $FS $BIMODAL >$TMPFILE
++$CBENCHTEST/bin/dplot.bins $BINS $FS $BIMODAL >$TMPFILE
+ if [ "$?" = "2" ]
+ then
+ 	BIMODAL=0
+@@ -229,7 +230,7 @@
+ #check for -chi
+ if [ "$CHI" = "1" ]
+ then
+-	dplot.chi $TMPFILE $FS $BIMODAL $QUIET $TEXT $PNG $GIF $EMF $GEOMETRY $INTERACTIVE
++	$CBENCHTEST/bin/dplot.chi $TMPFILE $FS $BIMODAL $QUIET $TEXT $PNG $GIF $EMF $GEOMETRY $INTERACTIVE
+ 	rm -f $TMPFILE
+ 	exit
+ fi
+@@ -247,7 +248,7 @@
+ 	else
+ 		GEOMETRY=""
+ 	fi
+-	dplot.text $TMPFILE $BINS $GEOMETRY
++	$CBENCHTEST/bin/dplot.text $TMPFILE $BINS $GEOMETRY
+ 	rm -f $TMPFILE
+ 	exit
+ fi

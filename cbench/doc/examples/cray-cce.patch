@@ -1,0 +1,38 @@
+Index: make.def
+===================================================================
+--- make.def	(revision 725)
++++ make.def	(working copy)
+@@ -46,15 +46,15 @@
+   BUILD_PATH = $(MPIHOME)/$(MPIBINNAME)/
+ endif
+ 
+-CC = $(BUILD_PATH)mpicc
+-CCC = $(BUILD_PATH)mpicxx
+-CXX = $(BUILD_PATH)mpicxx
+-F77 = $(BUILD_PATH)mpif77
++CC = $(BUILD_PATH)cc
++CCC = $(BUILD_PATH)CC
++CXX = $(BUILD_PATH)CC
++F77 = $(BUILD_PATH)ftn
+ # If we are using GNU chain with GCC4 around, F77 works better using mpif90
+ # as it well generally pickup gfortran instead of g77. This is true for OpenMPI
+ # for sure. This would be a nice thing for configure.... :)
+ #F77 = $(BUILD_PATH)mpif90
+-F90 = $(BUILD_PATH)mpif90
++F90 = $(BUILD_PATH)ftn
+ # FC is the default gnu make fortran compiler
+ FC = $(F90)
+ INCLUDES = -I$(MPIHOME)/include
+Index: opensource/maketests/dummy.c
+===================================================================
+--- opensource/maketests/dummy.c	(revision 725)
++++ opensource/maketests/dummy.c	(working copy)
+@@ -3,7 +3,7 @@
+ #include <stdlib.h>
+ 
+ #ifdef FFTW
+-  #include "fftw.h"
++  #include "dfftw.h"
+ #endif
+ 
+ 

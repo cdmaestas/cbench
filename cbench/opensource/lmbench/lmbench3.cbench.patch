@@ -1,0 +1,114 @@
+Only in lmbench3-patched: bin
+Only in lmbench3-patched/results: x86_64-linux-gnu
+Only in lmbench3-patched/src: bk.ver
+diff -crB src/src/lat_mem_rd.c lmbench3-patched/src/lat_mem_rd.c
+*** src/src/lat_mem_rd.c	2005-08-22 20:19:54.000000000 -0400
+--- lmbench3-patched/src/lat_mem_rd.c	2011-03-29 21:38:59.339701380 -0400
+***************
+*** 16,22 ****
+  
+  #include "bench.h"
+  #define STRIDE  (512/sizeof(char *))
+! #define	LOWER	512
+  void	loads(size_t len, size_t range, size_t stride, 
+  	      int parallel, int warmup, int repetitions);
+  size_t	step(size_t k);
+--- 16,23 ----
+  
+  #include "bench.h"
+  #define STRIDE  (512/sizeof(char *))
+! //#define	LOWER	512
+! #define LOWER 2147483648
+  void	loads(size_t len, size_t range, size_t stride, 
+  	      int parallel, int warmup, int repetitions);
+  size_t	step(size_t k);
+***************
+*** 36,43 ****
+  	size_t	range;
+  	size_t	stride;
+  	char   *usage = "[-P <parallelism>] [-W <warmup>] [-N <repetitions>] [-t] len [stride...]\n";
+  
+! 	while (( c = getopt(ac, av, "tP:W:N:")) != EOF) {
+  		switch(c) {
+  		case 't':
+  			fpInit = thrash_initialize;
+--- 37,45 ----
+  	size_t	range;
+  	size_t	stride;
+  	char   *usage = "[-P <parallelism>] [-W <warmup>] [-N <repetitions>] [-t] len [stride...]\n";
++         size_t  lower_bound = 512;
+  
+! 	while (( c = getopt(ac, av, "tSP:W:N:l:")) != EOF) {
+  		switch(c) {
+  		case 't':
+  			fpInit = thrash_initialize;
+***************
+*** 52,57 ****
+--- 54,65 ----
+  		case 'N':
+  			repetitions = atoi(optarg);
+  			break;
++ 		case 'l':
++ 			lower_bound = atol(optarg);
++ 			break;
++                 case 'S':
++                         lower_bound = 0;
++                         break;
+  		default:
+  			lmbench_usage(ac, av, usage);
+  			break;
+***************
+*** 64,69 ****
+--- 72,81 ----
+          len = atoi(av[optind]);
+  	len *= 1024 * 1024;
+  
++         // single run has been specified on the command line
++         if (lower_bound == 0)
++             lower_bound = len;
++ 
+  	if (optind == ac - 1) {
+  		fprintf(stderr, "\"stride=%d\n", STRIDE);
+  		for (range = LOWER; range <= len; range = step(range)) {
+***************
+*** 74,80 ****
+  		for (i = optind + 1; i < ac; ++i) {
+  			stride = bytes(av[i]);
+  			fprintf(stderr, "\"stride=%d\n", stride);
+! 			for (range = LOWER; range <= len; range = step(range)) {
+  				loads(len, range, stride, parallel, 
+  				      warmup, repetitions);
+  			}
+--- 86,93 ----
+  		for (i = optind + 1; i < ac; ++i) {
+  			stride = bytes(av[i]);
+  			fprintf(stderr, "\"stride=%d\n", stride);
+! 			//for (range = LOWER; range <= len; range = step(range)) {
+! 			for (range = lower_bound; range <= len; range = step(range)) {
+  				loads(len, range, stride, parallel, 
+  				      warmup, repetitions);
+  			}
+diff -crB src/src/Makefile lmbench3-patched/src/Makefile
+*** src/src/Makefile	2005-08-22 20:19:54.000000000 -0400
+--- lmbench3-patched/src/Makefile	2011-03-29 21:38:59.339701380 -0400
+***************
+*** 165,173 ****
+  assembler:
+  	@env CFLAGS=-O MAKE="$(MAKE)" MAKEFLAGS="$(MAKEFLAGS)" CC="${CC}" OS="${OS}" ../scripts/build asm
+  
+! bk.ver: ../SCCS/s.ChangeSet
+  	rm -f bk.ver
+! 	-echo `bk prs -hr+ -d'$$if(:SYMBOL:){:SYMBOL: }:UTC:' ../ChangeSet;` > bk.ver
+  	touch bk.ver
+  
+  dist: bk.ver
+--- 165,173 ----
+  assembler:
+  	@env CFLAGS=-O MAKE="$(MAKE)" MAKEFLAGS="$(MAKEFLAGS)" CC="${CC}" OS="${OS}" ../scripts/build asm
+  
+! bk.ver:
+  	rm -f bk.ver
+! 	#-echo `bk prs -hr+ -d'$$if(:SYMBOL:){:SYMBOL: }:UTC:' ../ChangeSet;` > bk.ver
+  	touch bk.ver
+  
+  dist: bk.ver

@@ -1,0 +1,360 @@
+#!/usr/bin/perl
+
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+#
+# This is the main Cbench utility to run tests/diagnostics on a node. This
+# is really more of a 'glue' script that coordinates the hw testing
+# functionality that is contained in the Cbench hw_test library modules.
+# The library modules to be used are determined at runtime by looking
+# in the hw_test library directory for all *.pm files. This hopefully
+# creates a "plugin" type architecture where new hw testing methods/tests
+# can be easily added by writing a hw_test module.
+#
+
+BEGIN {
+    # need to know where everything cbench lives!
+    our $cbbasedir = undef;
+    if (defined($ENV{CBENCHSTANDALONEDIR})) {
+      $cbbasedir = $ENV{CBENCHSTANDALONEDIR};
+    } elsif (defined($ENV{CBENCHTEST})) {
+      $cbbasedir = $ENV{CBENCHTEST};
+    } elsif (defined($ENV{CBENCHOME})) {
+      $cbbasedir = $ENV{CBENCHOME};
+    } else {
+      die "Please define CBENCHOME or CBENCHTEST or CBENCHSTANDALONEDIR!\n"; 
+    }
+}
+
+use lib $cbbasedir;
+use lib "$cbbasedir/perllib";
+require "cbench.pl";
+$CBENCHOME = $BENCH_HOME = $cbbasedir;
+
+use Getopt::Long;
+
+GetOptions(
+	'class=s' => \$class,
+	'iterations=i' => \$iterations,
+	'burnin' => \$burnin,
+	'ident=s' => \$ident,
+	'binident=s' => \$BINIDENT,
+	'match=s' => \$match,
+	'exclude=s' => \$exclude,
+	'dump' => \$dump,
+	'random' => \$random,
+	'dryrun|dry-run' => \$dryrun,
+	'quiet' => \$quiet,
+	'small' => \$SMALL,
+	'numcpus=i' => \$NUMCPUS,
+	'maxmem=i' => \$MAXMEM,
+	'memory_util_factors|mem_factors=s' => \$new_memory_util_factors,
+	'debug:i' => \$DEBUG,
+	'help' => \$help,
+);
+
+#
+# process the command-line options
+#
+if (defined $help) {
+    usage();
+    exit;
+}
+
+if (!defined $class) {
+	# no work specified, do default tests
+	$class = 'cpu|memory|disk';
+}
+
+(!defined $iterations) and $iterations = 1;
+
+(!defined $ident) and $ident = $cluster_name . "1";
+
+$TESTBINPATH = 'bin';
+(defined $BINIDENT) and $TESTBINPATH = "bin.$BINIDENT";
+
+$testset = 'nodehwtest';
+$bench_test = get_bench_test();
+$testset_path = "$bench_test/$testset";
+$DEBUG and print "DEBUG: $bench_test $testset_path\n";
+
+if (defined $new_memory_util_factors) {
+	@memory_util_factors = split(',',$new_memory_util_factors);
+	debug_print(1,"DEBUG: overriding memory_util_factors array from command line ".
+		"with @memory_util_factors");
+}
+
+# output file path
+# if it does not exist, create it but warn about the event
+$output_path = "$testset_path/$ident";
+if (! -d "$output_path") {
+	print "The output path $output_path did not exist, creating it.\n";
+	mkdir "$output_path",0750;
+}
+
+$hn = `/bin/hostname`;
+chomp $hn;
+$date = `/bin/date`;
+chomp $date;
+
+$out_fh = undef;
+
+#
+# Depending on the command-line options, we need to figure 
+# out where the output from node_hw_test is going to go.
+#
+if (defined $dump) {
+	$out_fh = *STDOUT;
+}
+else {
+	# The default behavior is to write an output file in
+	# $testset_path/$ident named $hn.node_hw_test.runXXXX where
+	# XXXX is a 4 digit zero-padded integer.
+	# The run number will be incremented each time so that previous
+	# node_hw_test runs are saved (by default).  Thus if the last node_hw_test
+	# run generated n23.hode_hw_test.run0001, then the next time node_hw_test
+	# is invoked on node n23 it will save output by default to
+	# n23.node_hw_test.run0002 .
+
+	# find previous node_hw_test output files for the node we are running
+	# on, i.e. the node we are testing
+	@oldrunfiles = `cd $output_path; ls -1 $hn\.node_hw_test\.run???? 2>&1`;
+	$maxrunnum = 0;
+	for (@oldrunfiles) {
+		(/no such file/) and last;
+		chomp $_;
+		($num) = $_ =~ /^\S+\.node_hw_test\.run(\d+)$/;
+		if ($num > $maxrunnum) {
+			$maxrunnum = $num;
+		}
+		(defined $DEBUG and $DEBUG > 1) and print
+			"DEBUG: $_, $num, $maxrunnum\n";
+	}
+
+	$runidnum = $maxrunnum + 1;
+
+	defined $DEBUG and print "This will be run id $runidnum.\n";
+
+	# create and open the output file for this node_hw_test run
+	$output_file = sprintf "%s/%s\.node_hw_test\.run%04d",$output_path,$hn,$runidnum;
+
+	defined $DEBUG and print "Output file is $output_file\n";
+
+	open (NODEHWTESTOUT,">$output_file") or die
+		"Could not open $output_file for write ($!)";
+
+	$out_fh = *NODEHWTESTOUT;
+}
+
+# dump some information describing this run to the top of the 
+# output file
+$uname = `/bin/uname -a `;
+chomp $uname;
+print $out_fh
+	"######################################################################\n".
+	"Cbench node_hw_test run parameters\n\n".
+	"Host: $hn\n".
+	"Date: $date\n".
+	"Kernel: $uname\n\n".
+	"Run ID: $runidnum\n".
+	"Iterations: $iterations\n";
+if (defined $match) {
+	print $out_fh "Test Match: $match\n";
+}
+else {
+	print $out_fh "Test Classes Run: $class\n";
+}
+(defined $exclude) and print $out_fh "Test Exclude: $exclude\n";
+defined $dryrun and print $out_fh "DRY RUN\n";
+defined $burnin and print $out_fh "BURN IN MODE\n";
+defined $SMALL and print $out_fh "SMALL MODE\n";
+print $out_fh "######################################################################\n";
+
+# hash to pass to load_hwtest_modules() which will hold all the
+# object refernces for the hw_test modules that were loaded
+my %test_modules;
+
+# load the hw_test modules! pass our hash reference and the output_file
+# descriptor
+load_hwtest_modules(\%test_modules,$out_fh);
+
+# become the leader of a new process group so that all the child test
+# processes will see our signals
+setpgrp(0,0);
+$SIG{CHLD} = \&REAPER;
+$SIG{INT} = \&CATCH;
++$SIG{TERM} = \&CATCH;
++$SIG{KILL} = \&CATCH;
+$SIG{USR1} = \&CATCH;
+$SIG{USR2} = \&CATCH;
+
+
+# if we are in burn in mode, make $iterations be ridiculously big
+(defined $burnin) and $iterations = 9999999;
+
+# These are the loops that actually do all the work of running the tests
+$start = time;
+$iter_delta = 0.0;
+$total_delta = 0.0;
+for $i (1..$iterations) {
+	$iter_start = time;
+	if ($main::INTsignalled) {
+		print "Exiting testing iteration loop on SIGINT...\n";
+		last;
+	}
+	print $out_fh "$cbench_mark_prefix ITERATION $i\n";
+	#for $k (sort {$a cmp $b} keys %test_modules) {
+	for $k (list_of_test_modules()) {
+		if ($main::INTsignalled) {
+			print "Exiting testing module loop on SIGINT...\n";
+			last;
+		}
+
+		# get the object reference for this test module
+		my $tobj = $test_modules{$k};
+
+		# if --match was used, only run hw_test modules that 
+		# match the regex
+		# otherwise only run the module tests if the selected
+		# test classes to run are appropriate
+		if (defined $match and $k !~ /$match/) {
+			next;
+		}
+		elsif (!defined $match and $tobj->test_class !~ /$class/) {
+			next;
+		}
+
+		# if --exclude was used, only run hw_test modules that 
+		# DO NOT match the regex
+		if (defined $exclude and $k =~ /$exclude/) {
+			next;
+		}
+
+		print $out_fh "$cbench_mark_prefix MODULE $k\n";
+		$date = `/bin/date`;
+		chomp $date;
+		printf $out_fh "$cbench_mark_prefix TIMESTAMP elapsed=%0.1f min, %s\n",
+			$total_delta, $date;
+
+		if (!defined $quiet and !defined $burnin) {
+			print "Running \'$k\' hw_test module... ".
+				"(iteration $i of $iterations) ";
+		}
+		elsif (!defined $quiet and defined $burnin) {
+			print "Running \'$k\' hw_test module... ".
+				"(iteration $i, BURN IN MODE) ";		
+		}
+		printf "(total_elapsed=%0.1f min, last_iteration=%0.1f min)\n",
+			$total_delta, $iter_delta;
+		
+		# run it!
+		$tobj->run() unless defined $dryrun;
+		
+		# pause just a tiny bit to allow the OS to regroup
+		sleep(1) unless defined $dryrun;
+
+		$iter_end = time;
+		$total_delta = ($iter_end - $start) / 60;
+	}
+	$iter_end = time;
+	$iter_delta = ($iter_end - $iter_start) / 60;
+	$total_delta = ($iter_end - $start) / 60;
+}
+$end = time;
+$total_delta = ($end - $start) / 60;
+
+print "Finished testing. ";
+printf "(total_elapsed=%0.1f min, last_iteration=%0.1f min)\n",
+	$total_delta, $iter_delta;
+
+if ($main::INTsignalled) {
+	print $out_fh "$cbench_mark_prefix TERMINATED by SIGINT\n";
+}
+else {
+	print $out_fh "$cbench_mark_prefix FINISHED\n";
+}
+
+$date = `/bin/date`;
+chomp $date;
+printf $out_fh "$cbench_mark_prefix TIMESTAMP elapsed=%0.1f min, ".
+	"last_iteration=%0.1f min, %s\n",
+	$total_delta, $iter_delta, $date;
+
+close(OUT) unless defined $dump;
+
+
+$SIG{INT} = 'DEFAULT';
+
+
+sub list_of_test_modules {
+	use List::Util (shuffle);
+	my @list = sort {$a cmp $b} keys(%test_modules);
+	if (! defined $random) {
+		return @list
+	}
+	else {
+		my @random_list = shuffle @list;
+		return @random_list;
+	}
+}
+
+
+sub usage {
+	print "USAGE: $0 \n" .
+		"Cbench utility to run node-level hardware tests\n" .
+		"   --class <regex>    Run only tests whose test class matches the\n".
+		"                      provided regex string. For example:\n".
+		"                        --class 'cpu|disk|memory'\n".
+		"                      explicitly specifies the default behavior\n".
+		"                      of node_hw_test\n".
+		"   --iterations <num> Number of test iterations\n" .
+		"   --burnin           Start in 'burn in' mode where the tests are run\n".
+		"                      through continuously\n".
+		"   --dump             Dump testing output to STDOUT instead of a file\n".
+		"   --ident <string>   Identifier for the test group\n" .
+		"   --binident <string> Identifier for the set of binaries to use.\n" .
+		"                       Maps to $CBENCHTEST/<binident> .\n".
+		"   --match <regex>    Only run hw_test modules that match the\n" .
+		"                      the specified regex string. For example,\n" .
+		"                         --match streams\n" .
+		"                      would only run the streams hw_test module\n" .
+		"   --exclude <regex>  Do NOT run hw_test modules that match the\n" .
+		"                      the specified regex string. For example,\n" .
+		"                         --exclude streams\n" .
+		"                      would only run the streams hw_test module\n" .
+		"   --random           Randomize the ordering of test modules\n".
+		"   --numcpus <num>    Override the auto-detection of the number of CPU\n".
+		"                      cores\n".
+		"   --maxmem <num>     Override the auto-detection of free memory to be\n".
+		"                      used in testing. The value is the number of megabytes.\n".
+		"                      For example,\n".
+		"                         --maxmem 1024\n".
+		"                      would only use 1024MB or 1GB of memory for any tests\n".
+		"                      that utilize free memory detection.\n".
+		"   --memory_util_factors  Override the cluster.def \@memory_util_factors array.\n".
+		"                          For example:\n".
+		"                            --memory_util_factors 0.10,0.77,0.85\n".  
+		"   --dryrun           Do everything but actually run the tests\n" .
+		"   --quiet            Output as little as possible during run\n".
+		"   --debug <level>    Turn on debugging at the specified level\n";
+}

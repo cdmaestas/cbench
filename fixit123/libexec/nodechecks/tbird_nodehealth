@@ -1,0 +1,72 @@
+#!/bin/bash
+# -*-Shell-script-*-
+#
+# tbird_nodehealth   This file contains calls to check the health of a node 
+#                     during unused cycles and can be run via cron as well.
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+
+. $FIXIT123_HOME/libexec/nodechecks/cisco_ib_functions
+. $FIXIT123_HOME/libexec/nodechecks/os_functions
+
+return_error() {
+	if [ $? -ne 0 ]; then
+		local error=$1
+		echo "ERROR: $error"
+		exit 1
+	fi
+}
+
+
+test -f /etc/sysconfig/cap 
+return_error "Unknown cap configuration"
+. /etc/sysconfig/cap
+
+/sbin/ifconfig | grep 134.253 > /dev/null 2>&1
+if [ $? -ne 0 -a $CAPROLE = "worker" ]; then
+	check_cisco_ib_status > /dev/null 2>&1
+	return_error "ib port down"
+	check_for_local_cisco_subnet_manager > /dev/null 2>&1
+	return_error "running off local subnet manager"
+#	check_nfs_mount_count 4 > /dev/null 2>&1
+#	return_error "Incorrect number NFS mounts"
+	check_for_mount /home > /dev/null 2>&1
+	return_error "/home not mounted"
+	check_for_mount /projects > /dev/null 2>&1
+	return_error "/projects not mounted"
+	check_for_mount /mnt_projects/sysapps > /dev/null 2>&1
+	return_error "/mnt_projects/sysapps not mounted"
+#	check_for_mount /scratchn3 > /dev/null 2>&1
+#	return_error "/scratchn3 not mounted"
+	check_for_mount /scratchp3 > /dev/null 2>&1
+	return_error "/scratchp3 not mounted"
+	check_dir_sanity /tmp > /dev/null 2>&1
+	return_error "/tmp is having disk sanity issues"
+	check_dir_sanity /var > /dev/null 2>&1
+	return_error "/var is having disk sanity issues"
+	check_ps_sanity > /dev/null 2>&1
+	return_error "D state in process table"
+fi
+

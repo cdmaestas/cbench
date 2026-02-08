@@ -1,0 +1,26 @@
+#!/bin/bash
+if [ -z "$1" ] ; then echo need a modem device.. e.g. modem ttyS1 ',' etc ; exit ; fi
+
+dev=`echo $1 | sed s/[/]dev[/]//`
+
+
+# set baud rate
+stty 38400 < /dev/$dev 2>/dev/null
+if [ $? != 0 ] ; then exit 1 ; fi
+
+# too dependent on chat's location
+chat -S -t 5 ABORT ERROR '' 'at' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+chat -S -t 5 ABORT ERROR '' 'atz' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+chat -S -t 5 ABORT ERROR '' 'atm1l0' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+chat -S -t 5 REPORT U.S. ABORT ERROR '' 'ati3' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+chat -S -t 5 REPORT "Product ID" REPORT FLASH REPORT DSP  ABORT ERROR '' 'ati7' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+chat -S -t 5 ABORT ERROR '' 'ats18=15' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+chat -S -t 20 REPORT CONNECT ABORT ERROR '' 'at&t1' OK < /dev/$dev >> /dev/$dev
+if [ $? != 0 ] ; then exit 1 ; fi
+exit 0

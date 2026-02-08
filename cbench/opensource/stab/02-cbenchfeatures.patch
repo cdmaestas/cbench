@@ -1,0 +1,59 @@
+--- bench/bin/dplot.orig	2006-09-18 09:51:14.641279000 -0600
++++ bench/bin/dplot	2006-09-18 15:15:49.179187000 -0600
+@@ -333,7 +333,7 @@
+ if [ "$PNG" = "1" ]
+ then
+ 	cat >>/tmp/plot.$$ <<EOF
+-set terminal png small size $(echo $GEOMETRY | tr 'x' ',') \
++set terminal png medium size $(echo $GEOMETRY | tr 'x' ',') \
+ xffffff x000000 x808080 \
+ xff0000 x00ff00 x0000ff \
+ xd3d3d3 xadd8e6 xff7f50
+@@ -572,9 +572,12 @@
+ 	then
+ 		echo -n "\"$TMPFILE\" index 8 title \"std dev\" with boxes fill solid 1.0, "
+ 	else
+-		echo -n "\"$TMPFILE\" index 5 title \"std dev\" with boxes fill solid 1.0, "
++		echo -n "\"$TMPFILE\" index 6 title \"2*std dev\" with boxes fill pattern, "
++		echo -n "\"$TMPFILE\" index 5 title \"std dev\" with boxes fill pattern, "
+ 	fi
+ 	line=$(($line + 1))
++	XRM="$XRM -xrm 'gnuplot*line${line}Color: sienna'"
++	line=$(($line + 1))
+ 	XRM="$XRM -xrm 'gnuplot*line${line}Color: lightgrey'"
+ fi
+ if [ "$BIMODAL" = "1" ]
+@@ -658,6 +661,11 @@
+ 	XRM="$XRM -xrm 'gnuplot*line${line}Color: black'"
+ 	XRM="$XRM -xrm 'gnuplot*line${line}Width: 2'"
+ fi
++echo "set term postscript landscape enhanced color lw 2 solid"
++echo "set output 'dplot.ps'"
++echo "replot"
++echo "quit"
++
+ echo "#XRM $XRM"
+ 
+ #echo "set terminal x11"
+--- bench/bin/dplot.bins.orig	2006-09-18 09:58:04.805060000 -0600
++++ bench/bin/dplot.bins	2006-09-18 11:07:49.309574000 -0600
+@@ -195,6 +195,19 @@
+ print "\n";
+ print "\n\n";
+ 
++#two std box
++#index 6
++if(! $bimodal) {
++	print $avg;
++	print "\t";
++	print $top;
++	print "\t";
++	print $std * 4;
++	print "\n";
++	print "\n\n";
++};
++
++
+ #start bimodal hack
+ my $hi_avg = 0;
+ my $lo_avg = 0;

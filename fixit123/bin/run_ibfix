@@ -1,0 +1,54 @@
+#!/bin/bash
+#set -ex
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+if [ ! -z FIXIT123_CONF ]; then
+    . $FIXIT123_CONF
+elif [ -f /etc/sysconfig/fixit123 ]; then
+    . /etc/sysconfig/fixit123
+else
+    echo "fixit123 configuration file not found!"
+    exit 1
+fi
+
+#### FIXME ... need to do more error checking here and need cluster setup simplier and not dependent on SNL names for a non snl release -cdm
+. /etc/profile.d/cluster.sh
+
+if [ -z $FIXIT123_HOME ]; then
+	echo FIXIT123 environment variables not found!
+	exit 1
+fi
+
+. $FIXIT123_HOME/libexec/nodechecks/ib_functions
+
+check_ib_stack
+check_ib_port_speed 4X
+check_ib_firmware_versions v5.1.925 3.2.0.110
+echo
+if [ $? -ne 0 ]; then
+	update_ib_firmware /projects/global/FIRMWARE/CISCO-MT25208/fw-lioncub-memzero-beta-a0-5.1.925.bin
+	#update_ib_firmware /projects/global/FIRMWARE/CISCO-MT25208/fw-lioncub-memzero-a0-5.2.000.bin
+fi
+
+

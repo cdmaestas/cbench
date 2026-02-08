@@ -1,0 +1,146 @@
+#!/bin/bash
+#set -x 
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+# if we are invoked recursively, we need to source
+# the file specified by FIXIT123_CONF
+if [ -n "$STEP1_RECURSIVE_EXEC" ]; then
+	# setup fixit123 environment variables using the fixt123 profile script
+	if [ -f /etc/profile.d/fixit123.sh ]; then
+		. /etc/profile.d/fixit123.sh
+	else
+		# try to find the fixt123 profile script...	
+		. $FIXIT123_CONF
+		. $FIXIT123_HOME/etc/profile.d/fixit123.sh
+	fi
+fi
+
+# check for FIXIT123 environment
+if [ -z $FIXIT123_HOME ]; then
+	echo "FAILURE  FIXIT123_HOME variable not defined!"
+	exit 1
+fi
+
+if [ $# -ne 1 ]; then
+	echo "USAGE:  $0 <nodename>"
+	echo "e.g.    $0 an450"
+	exit 1
+fi
+NODE=$1
+
+# The original step1 assumed it was not running on the node being tested.
+# So, to keep all previous assumptions and methods of use for step1 working
+# correctly, we try to run ourselves on the node if we are not already
+# running from it via ssh.  We have to be careful of recursion and make
+# sure the right FIXIT123 environment propogates.
+if [ -z $STEP1_RECURSIVE_EXEC ]; then
+	# we are NOT in recursion yet
+
+	if [ `hostname` != $NODE ]; then
+		# so.... try to execute step1 recursively via ssh
+		/usr/bin/ssh -o ConnectTimeout=2 $NODE "FIXIT123_CONF=$FIXIT123_CONF STEP1_RECURSIVE_EXEC=1 $FIXIT123_HOME/bin/step1 $NODE"
+		if [ $? -ne 0 ]; then
+			echo "FAILED Cannot ssh to $NODE to run step1"
+			exit $?
+		fi
+	fi
+	exit 0
+else
+	# we ARE in recursion
+
+	# if we are still not on the node but one level deep in recursion,
+	# something is dreadfully wrong....abort
+	if [ `hostname` != $NODE ]; then
+		echo "FAILED Will not run step1 because `hostname` != $NODE"
+		exit 1
+	fi
+fi
+
+# init some vars
+STEP1_DBLOG=$FIXIT123_DB_HOME/breakfix.log
+STEP1_LOG=$FIXIT123_LOGDIR/step1.log
+found_error=0
+
+# clean out the on node step1 log file
+/bin/rm -f $STEP1_LOG
+touch $STEP1_LOG
+if [ $? -ne 0 ]; then
+	found_error=1
+fi
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+check_for_step1_pausefile
+
+#
+# start working...
+
+echo "STEP1 on $NODE"
+
+disable_interconnect_port $1
+
+# check results, ignore HCA status
+# run check command
+if [ -x /etc/rc.d/init.d/zzz_fixit123_bootcheck ]; then
+	echo "running /etc/rc.d/init.d/zzz_fixit123_bootcheck"
+	/etc/rc.d/init.d/zzz_fixit123_bootcheck chkconfigon
+	/etc/rc.d/init.d/zzz_fixit123_bootcheck restart > /dev/null 2>&1
+	/etc/rc.d/init.d/zzz_fixit123_bootcheck showfailure >> $STEP1_LOG 2>&1
+elif [ -x $FIXIT123_HOME/bin/run_nodecheck ]; then
+	echo "running $FIXIT123_HOME/bin/run_nodecheck" 
+	$FIXIT123_HOME/bin/run_nodecheck >> $STEP1_LOG 2>&1
+else
+	echo "FAILED to run check command on $NODE" >> $STEP1_LOG 2>&1
+fi
+
+# run network sanity checks
+if [ -x $FIXIT123_HOME/bin/run_netcheck ]; then
+	echo "running $FIXIT123_HOME/bin/run_netcheck" 
+	$FIXIT123_HOME/bin/run_netcheck >> $STEP1_LOG 2>&1
+else
+	echo "FAILED to run network checks on $NODE" >> $STEP1_LOG 2>&1
+fi
+
+# error message should be failure
+#		error_msg="FAILED node checks"
+#grep -v -P '(Checking IB HCA Status:)' $STEP1_LOG | grep FAIL > /dev/null 2>&1
+#		fi
+grep -v -P '(Checking IB HCA Port Status:)' $STEP1_LOG | grep FAIL
+if [ $? -eq 0 ]; then
+	error_msg="FAILED node checks"
+	found_error=1
+fi
+
+if [ $found_error -eq 0 ]; then
+	echo "Proceed to run step2a"
+    steplogentry "NODE $1 => STEP1 PASSED" $STEP1_DBLOG
+    exit 0
+else
+	echo "This node is NOT ready to proceed to step2a testing, $error_msg"
+    steplogentry "NODE $1 => STEP1 FAILED, $error_msg" $STEP1_DBLOG
+    exit 1
+fi
+
+

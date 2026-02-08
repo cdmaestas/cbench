@@ -1,0 +1,87 @@
+# this is a test
+set verbose 1
+timer 10m
+
+bg 0 COUNTING test1 1 2 3
+bg 0 COUNTING2 test1 1 2 3
+bg 0 COUNTING3 test1 1 2 3
+bg 0 COUNTING4 test1 1 2 3
+bg 0 COUNTING5 test1 1 2 3
+bg 0 COUNTING6 test1 1 2 3
+bg 0 COUNTING7 test1 1 2 3
+bg 0 COUNTING8 test1 1 2 3
+bg 0 COUNTING9 test1 1 2 3
+bg 0 COUNTING0 test1 1 2 3
+bg 0 COUNTINGa test1 1 2 3
+bg 0 COUNTINGb test1 1 2 3
+bg 0 COUNTINGc test1 1 2 3
+bg 0 COUNTINGd test1 1 2 3
+bg 0 COUNTINGe test1 1 2 3
+bg 0 SLEEPING test1 3 4
+bg 0 MONITOR test2 4 5
+bg 0 MONITOR1 test2 4 5
+bg 0 MONITOR2 test2 4 5
+bg 0 MONITOR3 test2 4 5
+bg 0 MONITOR4 test2 4 5
+bg 0 MONITOR5 test2 4 5
+bg 0 MONITOR6 test2 4 5
+bg 0 MONITOR7 test2 4 5
+bg 0 MONITOR8 test2 4 5
+bg 0 MONITOR9 test2 4 5
+bg 0 MONITOR0 test2 4 5
+bg 0 MONITORa test2 4 5
+bg 0 MONITORb test2 4 5
+bg 0 MONITORc test2 4 5
+bg 0 MONITORd test2 4 5
+bg 0 MONITORe test2 4 5
+bg 0 DUFUS test1 8 9
+bg 0 DUFUS1 test1 8 9
+bg 0 DUFUS2 test1 8 9
+bg 0 DUFUS3 test1 8 9
+bg 0 DUFUS4 test1 8 9
+bg 0 DUFUS5 test1 8 9
+bg 0 DUFUS6 test1 8 9
+bg 0 DUFUS7 test1 8 9
+bg 0 DUFUS8 test1 8 9
+bg 0 DUFUS9 test1 8 9
+bg 0 DUFUS0 test1 8 9
+bg 0 DUFUSa test1 8 9
+bg 0 DUFUSb test1 8 9
+bg 0 DUFUSc test1 8 9
+bg 0 DUFUSd test1 8 9
+bg 0 DUFUSe test1 8 9
+bg 0 DUFUSf test1 8 9
+bg 0 DUFUSg test1 8 9
+bg 0 DUFUSh test1 8 9
+bg 0 DUFUSi test1 8 9
+bg 0 DUFUSj test1 8 9
+bg 0 DUFUSk test1 8 9
+bg 0 DUFUSl test1 8 9
+bg 0 DUFUSm test1 8 9
+bg 0 DUFUSn test1 8 9
+bg 0 MOXIT1 test2 9 0
+bg 0 MOXIT2 test2 9 0
+bg 0 MOXIT3 test2 9 0
+bg 0 MOXIT4 test2 9 0
+bg 0 MOXIT5 test2 9 0
+bg 0 MOXIT6 test2 9 0
+bg 0 MOXIT7 test2 9 0
+bg 0 MOXIT8 test2 9 0
+bg 0 MOXIT9 test2 9 0
+bg 0 MOXIT0 test2 9 0
+bg 0 MOXITa test2 9 0
+bg 0 MOXITb test2 9 0
+bg 0 MOXITc test2 9 0
+bg 0 MOXITd test2 9 0
+bg 0 MOXITe test2 9 0
+bg 0 MOXITf test2 9 0
+bg 0 MOXITg test2 9 0
+bg 0 MOXITh test2 9 0
+bg 0 MOXITi test2 9 0
+bg 0 MOXITj test2 9 0
+bg 0 MOXITk test2 9 0
+bg 0 DUMMY test2 93 4 1
+bg 0 YEEHAW test1 9 8 7
+
+wait
+exit

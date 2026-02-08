@@ -1,0 +1,16 @@
+# this is a test
+
+# use timer statement to make a maximum limit on this
+#timer 10m
+#begin
+bg 0 SCSI_Drive_A data /dev/sda1 4096
+bg 0 SCSI_Drive_B data /dev/sdb1 4096
+bg 0 SCSI_Drive_C data /dev/sdc1 4096
+bg 0 Floppy data /dev/fd0 64
+bg 0 SCSI_DriveXX_D destructiveblocktst /dev/sdd 4096
+bg 0 SCSI_DriveXX_E destructiveblocktst /dev/sde 4096
+bg 0 SCSI_DriveXX_F destructiveblocktst /dev/sdf 4096
+bg 0 SCSI_DriveXX_G destructiveblocktst /dev/sdg 4096
+#loop
+wait
+

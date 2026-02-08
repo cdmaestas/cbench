@@ -1,0 +1,12 @@
+# this is a test
+timer 30s
+
+bg 12 TEN test1 4 5
+bg 25 EXERTION test2 4 5
+bg 0 NINER test1 2
+bg 0 XNINER test2 3
+fg 250 TOAST test1 5
+
+
+wait
+exit

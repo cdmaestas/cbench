@@ -1,0 +1,94 @@
+#!/bin/bash
+#set -ex
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+# vim: syntax=sh tabstop=4
+
+if [ -z $FIXIT123_HOME ]; then
+	logger "$0: FIXIT123 config environment variables not found!"
+	echo "$0: FIXIT123 config environment variables not found!"
+	exit 1
+fi
+
+# do any common nodecheck framework init work
+. $FIXIT123_HOME/libexec/nodechecks/common_functions
+nodecheck_init
+
+
+. $FIXIT123_HOME/libexec/nodechecks/lustrefs_functions
+. $FIXIT123_HOME/libexec/nodechecks/os_functions
+. $FIXIT123_HOME/libexec/nodechecks/hp_functions
+. $FIXIT123_HOME/libexec/nodechecks/ofed_ib_functions
+
+
+# EAE - No /etc/sysconfig/cap on blackrose yet, commented the check out
+# define CAPROLE = worker for now
+#
+CAPROLE=worker
+
+#if [ -f /etc/sysconfig/cap ]; then
+#	. /etc/sysconfig/cap
+#else
+#	logger "$0: Please define the role of this node"
+#	exit 1
+#fi
+
+WANT_REBOOT=0;
+
+# check link speed right off the bat
+check_eth_link_speed eth0 1000Mb/s
+
+hp_xw9400_bios_check v03.01
+if [ $? -ne 0 ]; then
+  	#failed
+	echo "***Upgrade BIOS firmware in Standalone Mode***"
+fi
+
+if [ $CAPROLE = "worker" ]; then
+	check_kernel_version 2.6.9-55.0.9.EL_lustre.1.4.11.1smp
+	if [ $? -ne 0 ]; then
+		#failed
+		updated_kernel_version 2.6.9-55.0.9.EL_lustre.1.4.11.1smp
+	fi
+
+	check_for_mount /home
+	check_for_mount /projects
+	check_dir_sanity /var
+	check_dir_sanity /var/spool/pbs
+	check_dir_sanity /tmp
+	check_for_mount /gscratch3
+	check_for_mount /gscratch1
+
+	check_sysctl
+
+        check_ib_stack
+	check_ib_port_speed 4X 
+        check_ib_firmware_versions 5.3.0 
+	echo
+
+
+elif [ $CAPROLE != "worker" ]; then
+	check_kernel_version 2.6.9-42.ELsmp
+fi
+
+# do any common cleanup, shutdown, post fixit stuff
+nodecheck_finalize

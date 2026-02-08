@@ -1,0 +1,184 @@
+#
+# ofed_ib_functions    This file contains ofed ib functions used by most or all
+#                     shell scripts in the nodechecks
+#
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+
+
+#
+# Creating ofed ib functions, was empty, but with xw9400 tvflash does not
+# work to query (Just says Primary image is valid, unknown source) so
+# we need ibstat to get f/w version.  In addition, now need a two programs
+# ibstat to check HCA's and tvflash to flash them.  So one variable FLASHPROG
+# as defined in original ib_functions will no longer work.  Also in original
+# ib_functions, check_ib_firmware_versions has two arguments, one is f/w
+# version, the other is a build version.  With ibstat cannot get build
+# version.  EAE - 4/3/08
+#
+
+
+FLASHPROG=UNDEFINED
+STATUSPROG=UNDEFINED
+STATPROG=UNDEFINED
+
+is_ofed() {
+        /sbin/lsmod | grep ib_mthca > /dev/null 2>&1
+        [ $? -eq 0 -a -d /usr/ofed ] && return 0
+        return 1
+}
+
+is_valid_ib_flash_image() {
+	[ -f $FW_IMAGE ] || return 1
+}
+
+is_valid_ib_flash_prog() {
+	[ -x $FLASHPROG ] || return 1
+}
+
+is_valid_ib_stat_prog() {
+	[ -x $STATPROG ] || return 1
+}
+
+is_valid_ib_status_prog() {
+	[ -x $STATUSPROG ] || return 1
+}
+
+check_for_mellanox_hca() {
+        echo
+        echo -n "Checking for an IB HCA: "
+        /sbin/lspci | grep Mellanox > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+                echo_success
+        else
+                echo_failure
+        fi
+}
+
+check_ib_port_status() {
+	echo
+	echo -n "Checking IB HCA Port Status: "
+	is_valid_ib_status_prog
+	if [ $? -eq 0 ]; then
+		if [ `$STATUSPROG | grep ACTIVE | wc -l` -ne 1 ]; then
+			echo_failure
+		else 
+			echo_success
+		fi
+	else
+		echo
+		echo "$STATUSPROG is not a valid program to use!"
+	fi
+}
+
+check_ib_port_speed() {
+	local speed=$1
+	echo
+	is_ofed || (echo "Warning: Can only check HCA port speed with OFED" && return 1)
+	echo -n "Checking IB HCA Port Speed ($1): "
+	local numports=`$STATUSPROG | grep rate | wc -l`
+	local actualspeed=`$STATUSPROG | grep rate | grep $1| wc -l`
+	if [ $actualspeed -eq $numports ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+}
+
+check_ib_firmware_versions() {
+	local fwvers=$1
+	echo
+	echo -n "Checking IB HCA firmware ($fwvers): "
+	[ `id -u` -eq 0 ] && is_valid_ib_stat_prog;
+	if [ $? -eq 0 ]; then
+		local nfwvers=`$STATPROG | grep Firmware | awk '{print $3}'`
+		if [ $nfwvers = $fwvers ]; then
+			echo_success
+		else 
+			echo
+			echo -n "Invalid firmware version: $nfwvers is not $fwvers":
+			echo_failure
+			echo
+		fi
+	else
+		echo
+		echo -n "User is not root or Invalid IB Status Program $IBSTATPROG:"
+		echo_failure
+		echo
+	fi
+}
+
+# arg1 the full path to the fw image
+update_ib_firmware() {
+	local fwimage=$1
+	echo
+	echo -n "Upgrading IB HCA Firmware with $fwimage:"
+	[ `id -u` -eq 0 ] && is_valid_ib_flash_prog;
+	if [ $? -eq 0 ]; then
+		is_valid_ib_flash_image; 
+		if [ $? -eq 0 ]; then
+			$FLASHPROG $fwimage
+			WANT_REBOOT=1
+			echo ATTENTION: IB HCA firmware updated, you must now reboot this system ...
+		else
+			echo "Invalid Firmware image $fwimage detected"
+			exit 1
+		fi
+	else
+		echo
+		echo -n "User is not root or Invalid flash Program $FLASHPROG:"
+		echo_failure
+	fi
+}
+
+check_ib_stack() {
+	# Check for an HCA to run tests against
+	check_for_mellanox_hca
+	if [ $? -eq 0 ]; then
+		is_ofed
+		if [ $? -eq 0 ]; then
+			OFEDHOME=/usr/ofed
+			FLASHPROG=$OFEDHOME/sbin/tvflash
+			STATUSPROG=$OFEDHOME/bin/ibstatus
+			STATPROG=$OFEDHOME/bin/ibstat
+		else
+			echo
+			echo -n "IB Environment is non-existent: "
+			echo_failure
+	        fi
+		# Check IB HCA Port Status
+		check_ib_port_status
+		if [ $? -ne 0 ]; then
+			echo
+			echo -n "IB port is down"
+		fi
+
+	else
+		echo 
+		echo -n "No Mellanox HCA found!"
+	fi
+}

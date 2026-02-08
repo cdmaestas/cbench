@@ -1,0 +1,9 @@
+runtest index:
+
+./README		This index
+./README.runtest:	Information about the runtest program.
+./README.tests:		Documentation on test modules, test module API
+./alt:			Alternate versions of tests
+./bad:			Old/obsolete tests or helper applications
+./bin:			Binary directory for non-test helper applications
+./src:			Source directory for tests and non-test helper applications

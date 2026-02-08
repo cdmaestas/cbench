@@ -1,0 +1,19 @@
+--- irs_hrcreate.orig	2008-08-14 12:04:52.000000000 -0600
++++ irs_hrcreate	2008-08-14 12:05:05.000000000 -0600
+@@ -136,11 +136,11 @@
+     $cc_command =~ s/ -c//;	        # Remove -c compiler option
+     $cc_command =~ s/-o rgst_types.i//; # Remove -o used with proprocesing
+ 
+-    if ($osname =~ /linux/i) {
+-      $cc_command =~ s/mpicc/cc/;       # mpicc compiler on linux doesn't work with -E
+-                                        # Use cc instead for preprocessing
+-      $cc_command =~ s/omcc/cc/;        # omcc compiler on linux doesn't work with -E
+-    }                                   # Use cc instead for preprocessing
++#    if ($osname =~ /linux/i) {
++#      $cc_command =~ s/mpicc/cc/;       # mpicc compiler on linux doesn't work with -E
++#                                        # Use cc instead for preprocessing
++#      $cc_command =~ s/omcc/cc/;        # omcc compiler on linux doesn't work with -E
++#    }                                   # Use cc instead for preprocessing
+ 
+     # print "\nDEBUG A $cc_command\n";
+ 

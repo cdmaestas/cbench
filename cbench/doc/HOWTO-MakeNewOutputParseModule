@@ -1,0 +1,36 @@
+= Creating A New Output Parse Module =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+The [source:trunk/cbench/perllib/output_parse output parse modules] are used by the [source:trunk/cbench/tools/output_parse_generic.pl core output parsing code] to contextually understand output from MPI tests, benchmarks, applications, etc.
+
+There currently is no easy way to create these modules. At some point, one will always have to figure out how to parse the text output of the test they want to use in Cbench.  Ticket #6 is version 1.2.X work which when implemented would make it much easier to create new output parsing logic for 90% of the MPI output one would want to parse.
+
+Currently, adding new output parsing involves grabbing an existing parse module ([source:trunk/cbench/perllib/output_parse/osu.pm perllib/output_parse/osu.pm] is fairly simple) for the mostly boilerplate code and then:
+ * write the the parse() method appropriately
+ * change $shortpackage var
+ * update the alias_spec() method with any additional benchmark names the module can grok
+ * update the $self->{METRIC_UNITS} hash to map metric names to the units for the metrics, for example
+{{{
+    %{$self->{METRIC_UNITS}} = (
+        'launch_time' => 'seconds',
+        'ave_mpi_mem' => 'MegaBytes',
+    );
+}}}
+ * update $self->{FILE_LIST} array to tell the output parsing core what files to provide for parsing; most modules just want STDOUT, but some look at a named file (HPCC for one)
+{{{
+@{$self->{FILE_LIST}} = qw/STDOUT/;
+}}}
+
+Note that the parse() method is not just looking for datapoints to pass back, but also for various states (which are returned to the core parser as the STATUS of the job) in the life of the job such as:
+ * STARTED (see valid output of any kind from the binary such as a header)
+ * NOTSTARTED (no indication the binary executed) 
+ * FOUNDDATA (found some valid data from the binary but haven't seen it end) 
+ * PASSED (we saw valid data from the binary, saw the binary end correctly, and saw no other errors
+ * ERROR(lastknownstate), e.g. ERROR(STARTED)  - we saw some sort of error during parsing of the output and the last state of the parsing was STARTED
+This list is not exhaustive, but a core set of the status/states the output parsers find in test output.
+ 
+Some parse modules parse() functions are somewhat complicated since they may have to do deal with more stateful context than one line at a time.
+ 	  	 

@@ -1,0 +1,286 @@
+= HOWTO Compile All Of Cbench =
+[wiki:doc/CbenchDocumentation Back to top-level of Documentation]
+
+
+This is a relatively brief howto for compiling and installing everything Cbench has to offer in the way of tests, benchmarks, opensource applications, and add-ons.
+
+== Assumptions ==
+ * Full checkout of Cbench core source tree located in /path/to/cbench
+   * i.e. svn co http://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench
+ * Full checkout of Cbench Openapps source tree located in /path/to/cbench/openapps
+   * i.e. svn co http://cbench.svn.sourceforge.net/svnroot/cbench/trunk/openapps
+ * Full checkout of Cbench Restricted source tree located in /path/to/cbench.restricted
+   * Most people will not have access to this tree
+ * Intel compilers
+ * !OpenMpi installed in /path/to/openmpi
+   * e.g. /path/to/openmpi/bin/mpicc 
+
+== Setup Environment ==
+ * Required Cbench variables
+{{{
+export CBENCHOME=/path/to/cbench
+export CBENCHTEST=/path/to/scratch/cbench-test
+export COMPILERCOLLECTION=intel
+export MPIHOME=/path/to/openmpi
+}}}
+ * Setup and test BLAS, LAPACK, and FFTW linkages
+{{{
+export LAPACKLIB="-L/usr/lib64 -llapack"
+export BLASLIB="-L/path/to/goto_blas -lgoto_blas -lpthread -lm -lgfortran"
+export FFTW_INCLUDE=/path/to/fftw-2.1.5/include
+export FFTW_LIB=/path/to/fftw-2.1.5/lib
+
+% make -C opensource/maketests
+===== Testing BLAS linkage ====
+.
+.
+
+===== Testing LAPACK linkage ====
+.
+.
+
+===== Testing FFTW linkage ====
+.
+.
+
+===== Testing BLAS+FFTW linkage ====
+.
+.
+
+LINKTEST: dummy_blas was built ok
+LINKTEST: dummy_lapack was built ok
+LINKTEST: dummy_fftw was built ok
+LINKTEST: dummy_blas_fftw was built ok
+}}}
+ * If you don't see that all four LINKTEST dummies were built ok, you'll need to fix the offending linkage.
+ * Enable the Cbench restricted tree
+{{{
+export CBENCHADDON=/path/to/cbench.restricted
+}}}
+   * For Cbench to utilize the addon restricted tree and its capabilities properly the CBENCHADDON envinroment varialbe must be set in any shell within which you are running Cbench commands, just like CBENCHOME and CBENCHTEST.
+ * Setup [source:trunk/cbench/cluster.def]
+   * [wiki:doc/HOWTO-RunTestHowTo_1.1#Configurecluster.def see also]
+
+== Compile Cbench Core and install to Cbench Testing Tree ==
+ * Build, build, build....  Depending on the size of your cluster configured in `cluster.def`, the total build of the Cbench core can take awhile.  Mainly this is due to NAS Parallel Benchmarks (NPB).
+{{{
+% cd $CBENCHOME
+% make doitall
+.
+.
+.
+
+% ls bin
+b_eff            hpcc                mpiGraph                nodeperf2        strid3c.Opt
+bonnie++         hpcc.ch_shmem       mpi_hello               nodeperf2-nompi  strid3.Opt
+cachec.Opt       hwtests             mpi_hello_ordered       osu_bcast        striddot.Opt
+cachedot.Opt     IMB-MPI1            mpi_latency             osu_bibw         torustest
+cache.Opt        IOR.mpiio           mpi_malloc              osu_bw           vecopc.Opt
+com              IOR.posix           mpi_overhead            osu_latency      vecop.Opt
+crunch_mpiBench  iozone              mpi_overhead_bcast      osu_mbw_mr       xhpl
+crunch_mpiGraph  linktest            mpi_overhead_time       psnap            xhpl2
+dplot            mmc                 mpi_routecheck          psnap.ch_shmem   xhpl.ch_shmem
+dplot.bins       mmf                 mpi_routecheck-cpumask  rotate
+dplot.chi        mpiBench_Allreduce  mpi_slowcpu             rotate_latency
+dplot.text       mpiBench_Barrier    mpi_tokensmash          sqmr
+generate         mpiBench_Bcast      nodeperf                stress
+
+% make -C opensource/NPB mpi
+.
+.
+.
+
+% ls opensource/NPB/bin
+bt.B    cg.B    cg.C.1  ep.B.1  ep.C.2  ep.D.4  ft.B.8  is.B.4  is.C.8  lu.C    lu-hp.B  mg.B.8  sp.B.4
+bt.B.1  cg.B.1  cg.C.2  ep.B.2  ep.C.4  ep.D.8  ft.C.4  is.B.8  lu.B    lu.C.1  lu-hp.C  mg.C.2  sp.C
+bt.B.4  cg.B.2  cg.C.4  ep.B.4  ep.C.8  ft.B    ft.C.8  is.C    lu.B.1  lu.C.2  mg.B     mg.C.4  sp.C.1
+bt.C    cg.B.4  cg.C.8  ep.B.8  ep.D    ft.B.1  is.B    is.C.1  lu.B.2  lu.C.4  mg.B.1   mg.C.8  sp.C.4
+bt.C.1  cg.B.8  dc.B    ep.C    ep.D.1  ft.B.2  is.B.1  is.C.2  lu.B.4  lu.C.8  mg.B.2   sp.B    ua.B
+bt.C.4  cg.C    ep.B    ep.C.1  ep.D.2  ft.B.4  is.B.2  is.C.4  lu.B.8  lu.D.8  mg.B.4   sp.B.1  ua.C
+}}}
+
+The NAS Parallel Benchmarks (NPB) compile can take awhile depending on the settings in `cluster.def` because it builds binaries for each test case.  The `install` target for the `opensource/NPB` subdirectory is a no-op because of the amount of binaries that NPB can generate.  Instead the `itests` target of the top-level Cbench makefile (thus the `make itests`) takes care of installing NPB binaries from `opensource/NPB` into '''$CBENCHTEST/bin'''.  
+
+ * Install the first wave of Cbench stuff into the Cbench Testing Tree
+{{{
+% make itests
+Installing core files to the Cbench testing tree (/path/to/scratch/cbench-test)...
+  The diff of cluster.def is in /path/to/scratch/cbench-test/cluster.def.patch
+  Syncing files in /path/to/scratch/cbench-test/sbin...
+  Syncing files in /path/to/scratch/cbench-test/tools...
+  Syncing files in /path/to/scratch/cbench-test/templates...
+  Writing /path/to/scratch/cbench-test/cbench-init.{sh.csh}...
+---------------------------------------------------------
+----- Installing /path/to/cbench/bin --> /path/to/scratch/cbench-test/bin
+---------------------------------------------------------
+Installing files for the BANDWIDTH testset...
+Installing files for the LINPACK testset...
+Installing files for the LINPACK2 testset...
+Installing files for the ROTATE testset...
+Installing files for the NODEHWTEST testset...
+Installing files for the MPIOVERHEAD testset...
+Installing files for the LATENCY testset...
+Installing files for the COLLECTIVE testset...
+Installing files for the IO testset...
+Installing files for the IOSANITY testset...
+Installing files for the HPCC testset...
+Installing files for the MPISANITY testset...
+Installing files for the SHAKEDOWN testset...
+Installing files for the HPCCG testset...
+Installing files for the NPB testset...
+Installing files for the TRILINOS testset...
+Installing files for the LAMMPS testset...
+Installing files for the AMG testset...
+WARNING: rsync_to_cbenchtest() rsync source '/path/to/cbench/openapps/amg/src/test/sstruct.in.AMG.FD', does not exist.
+Installing files for the IRS testset...
+Installing files for the SWEEP3D testset...
+Installing files for the PHDMESH testset...
+}}}
+
+The warning from the AMG testset is expected because AMG comes from the Cbench Openapps tree and we have not built it yet (which also downloads a source tarball).
+
+ * NOTE: If one wants to split hairs, this procedure does not compile every bit of source code represented in the `opensource` subdirectory.  However, it compiles everything that is usually useful.  To compile anything else just do something like
+{{{
+% make -C opensource/SOMEDIR
+% make -C opensource/SOMEDIR install
+}}}
+
+== Compile Cbench Openapps and install to Cbench Testing Tree ==
+ * Build, build.... again this may take awhile since the applications have much more source code to compile than little benchmarks
+{{{
+% make -C openapps
+.
+.
+.
+.
+}}}
+
+ * Check the results
+{{{
+% make -C openapps binstatus
+.
+.
+.
+
+SOURCE SUBDIR amg: AMG2006/test/amg2006 was built ok
+SOURCE SUBDIR hpccg: HPCCG-0.4/test_HPCCG was built ok
+SOURCE SUBDIR irs: build.space/codes_opt/irs was built ok
+SOURCE SUBDIR lammps: lammps/src/lmp_cbench was built ok
+SOURCE SUBDIR phdmesh: phdMesh/build_cbench/test_mesh.exe was built ok
+SOURCE SUBDIR phdmesh: phdMesh/build_cbench/test_mesh_big.exe was built ok
+SOURCE SUBDIR sppm: sppm/sppm was not built
+SOURCE SUBDIR sweep3d: sweep3d-2.2b/sweep was built ok
+SOURCE SUBDIR trilinos: trilinos-8.0.5/EPETRA_MPI_OPT/EpetraBenchmarkTest/trilinos_epetratest was built ok
+make: Leaving directory `/data2/home/jbogden/cbench/cbench.head/openapps'
+}}}
+
+An application subdirectory that "was not built" correctly should be investigated.  Hopefully it was not a library linkage problem since we tried to check that earlier with the `opensource/maketests` compile checks.  As with any complex compilation, it could be any number of things.  In this case SPPM was not built correctly because the Makefile is currently under construction.
+
+ * Install the Openapps binaries to the Cbench core tree, i.e. $CBENCHOME/bin
+{{{
+% make -C openapps install
+.
+.
+.
+
+% ls $CBENCHOME/bin
+amg2006          hpcc                mpiBench_Bcast          nodeperf2        strid3.Opt
+b_eff            hpcc.ch_shmem       mpiGraph                nodeperf2-nompi  striddot.Opt
+bonnie++         hwtests             mpi_hello               osu_bcast        sweep
+cachec.Opt       IMB-MPI1            mpi_hello_ordered       osu_bibw         test_HPCCG
+cachedot.Opt     IOR.mpiio           mpi_latency             osu_bw           test_mesh_big.exe
+cache.Opt        IOR.posix           mpi_malloc              osu_latency      test_mesh.exe
+com              iozone              mpi_overhead            osu_mbw_mr       torustest
+crunch_mpiBench  irs                 mpi_overhead_bcast      psnap            trilinos_epetratest
+crunch_mpiGraph  linktest            mpi_overhead_time       psnap.ch_shmem   vecopc.Opt
+dplot            lmp_cbench          mpi_routecheck          rotate           vecop.Opt
+dplot.bins       mmc                 mpi_routecheck-cpumask  rotate_latency   xhpl
+dplot.chi        mmf                 mpi_slowcpu             sqmr             xhpl2
+dplot.text       mpiBench_Allreduce  mpi_tokensmash          stress           xhpl.ch_shmem
+generate         mpiBench_Barrier    nodeperf                strid3c.Opt
+}}}
+
+Notice that binaries were added like amg2006, lmp_cbench, etc.
+
+ * Install the second wave of Cbench stuff into the Cbench Testing Tree which includes the Cbench Openapps binaries now
+{{{
+% make itests
+Installing core files to the Cbench testing tree (/path/to/scratch/cbench-test)...
+  The diff of cluster.def is in /path/to/scratch/cbench-test/cluster.def.patch
+  Syncing files in /path/to/scratch/cbench-test/sbin...
+  Syncing files in /path/to/scratch/cbench-test/tools...
+  Syncing files in /path/to/scratch/cbench-test/templates...
+  Writing /path/to/scratch/cbench-test/cbench-init.{sh.csh}...
+---------------------------------------------------------
+----- Installing /path/to/cbench/bin --> /path/to/scratch/cbench-test/bin
+---------------------------------------------------------
+Installing files for the BANDWIDTH testset...
+Installing files for the LINPACK testset...
+Installing files for the LINPACK2 testset...
+Installing files for the ROTATE testset...
+Installing files for the NODEHWTEST testset...
+Installing files for the MPIOVERHEAD testset...
+Installing files for the LATENCY testset...
+Installing files for the COLLECTIVE testset...
+Installing files for the IO testset...
+Installing files for the IOSANITY testset...
+Installing files for the HPCC testset...
+Installing files for the MPISANITY testset...
+Installing files for the SHAKEDOWN testset...
+Installing files for the HPCCG testset...
+Installing files for the NPB testset...
+Installing files for the TRILINOS testset...
+Installing files for the LAMMPS testset...
+Installing files for the AMG testset...
+Installing files for the IRS testset...
+Installing files for the SWEEP3D testset...
+Installing files for the PHDMESH testset...
+}}}
+
+== Compile Cbench Addon Tree (i.e. the Cbench restricted tree) and  install to Cbench Testing Tree ==
+Cbench Addon Trees, of which there is currently only one, are necessarily connected to the core of Cbench differently than the Cbench Openapps tree is.  The Openapps tree is basically completely integrated into the core Cbench tree except for the source code and build logic.  So job templates, output parsing modules, etc. are tracked  in the core Cbench tree in `templates` and `perllib/output_parse` respectively.  The Addon tree is completely separate by design.  The `CBENCHADDON` triggers integration logic between core Cbench and the Addon tree.  Since there is only a single Addon tree, we'll use Addon tree and Restricted tree interchangeably.  Again, most people will not have access to the Restricted tree.
+
+ * Build in the Addon tree
+{{{
+% cd $CBENCHADDON
+% make install
+.
+.
+.
+.
+}}}
+
+ * Check the build results
+{{{
+% make binstatus
+.
+.
+.
+
+SOURCE SUBDIR foo: bar was built ok
+SOURCE SUBDIR waxon: waxoff was built ok
+}}}
+
+ * Install the third wave of Cbench stuff into the Cbench Testing Tree which includes the Cbench Restricted  binaries now
+{{{
+% make itests
+CBENCHADDON=/path/to/cbench.restricted /path/to/cbench/sbin/install_cbenchtest --testtop --onlyaddon --allsets --bindir bin
+Installing core files to the Cbench testing tree (/path/to/scratch/cbench-test)...
+  The diff of cluster.def is in /path/to/scratch/cbench-test/cluster.def.patch
+  Syncing files in /path/to/scratch/cbench-test...
+  Syncing files in /path/to/scratch/cbench-test/sbin...
+  Syncing files in /path/to/scratch/cbench-test/tools...
+  Syncing files in /path/to/scratch/cbench-test/templates...
+  Writing /path/to/scratch/cbench-test/cbench-init.{sh.csh}...
+  Syncing files in /path/to/cbench.restricted/{templates,perllib}...
+Installing files for the FOO testset...
+Installing files for the WAXON testset...
+---------------------------------------------------------
+----- Installing /path/to/cbench/bin --> /path/to/scratch/cbench-test/bin
+---------------------------------------------------------
+}}}
+
+== Run some stuff! ==
+
+Go to the Cbench Testing Tree located at $CBENCHTEST and open the firehose.  Remember, to correctly use the Addon tree, $CBENCHADDON needs to remain set in the environment like $CBENCHOME and $CBENCHTEST.  Alternately, one can elect to use the Cbench Testing Tree in a completely self-contained mode (by setting $CBENCHOME to the same value as $CBENCHTEST in the environment).  If the Addon tree has been installed as above, the Addon capabilities will work in the self-contained mode.
+ 	  	 

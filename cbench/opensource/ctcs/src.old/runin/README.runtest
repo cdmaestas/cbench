@@ -1,0 +1,50 @@
+This is simple documentation for the runtest program, which is a component of
+the test control program suite and also can be run as a standalone test
+program.  The runtest program should really be a perl library called from
+run, but for now...
+
+Parameters:
+
+./runtest [x] [test] [testparams...]
+
+runtest will run [test] test [x] times, unless [x] == 0, in which case runtest
+will run the test continuously.
+
+If test-info exists, it runs that program first with the testparams given to
+get a more complete set of parameters.  This program is run only once, and is
+used by the test suite to mount filesystems, check free space, etc, etc and
+pass them on to the main program.
+
+If test-end exists, it runs that program after all passes are complete,
+passing it the parameters used in the test.  This should not be relied
+upon -- it is not yet configured to run if the test is terminated early.
+
+runtest collects standard output and error of its subprocesses and sends
+them to standard out.  Also on stdout is the final message that indicates
+test status, which is generated on exit:
+
+n fail n succeed n count
+
+If a test returns 0 [zero], it is assumed to have succeeded, and +1 is added
+to count and succeed.
+
+If a test returns 1 [one], it is assumed to have failed, and +1 is added to
+count and fail.
+
+If a test is interrupted, it is not counted at all.
+
+stderr is reserved for user error messages and other such things.  stdout
+is a channel for loggable information.
+
+At present two environment variables are monitored by runtest:
+
+RUNIN_VERBOSE -- when set to 1 will trigger the output of successes as
+well as errors to stderr.
+ELAPSEDTIME -- this time is added to the to the time that runtest starts
+for reporting reasons.  This sort of hack shouldn't be necessary, but the
+folding in of runtest into the run program will be a big project and one I
+don't need to do for version 1.0.
+
+On normal exit and on interrupt signals (TERM, HUP, INT) the runtest program
+searches for subprocesses, kills them with SIGTERM, and then displays the exit
+message above.

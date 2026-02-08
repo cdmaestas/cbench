@@ -1,0 +1,65 @@
+This file is intended to be a list of the locations where you can get the
+opensource tools we use in Cbench.
+
+The most up-to-date list can be found at http://cbench.sourceforge.net/wiki/doc/ListOfSoftware .
+
+
+LAMMPS
+------
+	http://www.cs.sandia.gov/~sjplimp/lammps.html
+	
+Intel MPI Benchmarks
+--------------------
+	http://www.intel.com/software/products/cluster/mpi/mpi_benchmarks_lic.htm
+
+IOR
+---
+	ftp://ftp.llnl.gov/pub/siop/ior/
+
+Iozone
+------
+	http://www.iozone.org/
+
+b_eff
+-----
+	http://www.hlrs.de/organization/par/services/models/mpi/b_eff/
+
+mpi_examples and perftest
+-------------------------
+	Taken from standard MPICH
+
+netperf
+-------
+	http://www.netperf.org/netperf/NetperfPage.html
+
+NAS Parallel Benchmarks
+-----------------------
+	http://www.nas.nasa.gov/Software/NPB/
+
+Pallas MPI Benchmarks
+---------------------
+	http://www.pallas.de/
+
+Presta Benchmarks from ASCI Purple Benchmarks
+---------------------------------------------
+	http://www.llnl.gov/asci/platforms/purple/rfp/benchmarks/limited/code_list.html
+
+STREAMS
+-------
+	http://www.cs.virginia.edu/stream/
+
+MPQC
+----
+	http://www.mpqc.org
+
+OSU MPI Benchmarks
+------------------
+	http://nowlab.cis.ohio-state.edu/projects/mpi-iba/benchmarks.html
+
+LLCbench - Low Level Architectural Characterization Benchmark
+-------------------------------------------------------------
+	http://icl.cs.utk.edu/projects/llcbench/
+
+PSNAP - PAL System Noise Activity Program
+-----------------------------------------
+	http://www.c3.lanl.gov/pal/software/psnap/

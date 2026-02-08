@@ -1,0 +1,98 @@
+#!/usr/bin/perl
+
+###############################################################################
+#    Copyright (2004) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+# String to identify the cluster
+$cluster_name = "liberty";
+
+# Total number of processors in the cluster to build/run benchmarks on
+$max_procs = 472;
+
+# Total number of nodes in the cluster
+$max_nodes = 236;
+
+# The max number of processors available at a given level of processor-per-
+# node (aka, ppn) usage. In other words, how many processors are available
+# when using 1ppn, 2ppn, etc..
+%max_ppn_procs = (
+	'1' => $max_nodes,
+	'2' => $max_procs,
+);
+
+# The raw (i.e. how much do the DIMMs add up to) amount of RAM available
+# PER PROCESSOR. For example, a dual processor node with 2GB of RAM has
+# 1GB of RAM per processor.
+#
+# This is specified in MBytes.  So 1GB is specified as 1024 for example.
+$memory_per_node = 1024;
+
+# Benchmarks/tests/test sets may use this array to generate parameters for
+# various jobs. At least a single value should be present. For normal linux,
+# 80% is a good starting point. Multiple comma separated values can be specified
+# to generate more test permutations using different amounts of memory.
+# Currently only the Linpack test set uses this.
+#@memory_util_factors = (0.25,0.80,0.85);
+@memory_util_factors = (0.25,0.75);
+
+# Select the parallel job launch mechanism. The job launch mechanism
+# must be correctly supported in cbench.pl.
+#
+# NOTE: This is not necessarily the name of the job launching binary,
+#       just the name of a configuration.
+$joblaunch_method = "mpiexec";
+
+# optional parameter to specify the exact binary, including path,
+# used for job launching
+#
+# NOTE: The binary must behave correctly with respect to what the
+#       $joblaunch_method setting specifies. So you can specify
+#       "/home/bob/bobcmd" here but it better behave like
+#       $joblaunch_method expects it too.... or else....
+$joblaunch_cmd = "";
+
+# optional parameter to add extra arguments to the launch command line
+$joblaunch_extraargs = "";
+
+# Select the batch system to use
+$batch_method = "torque";
+
+# optional parameter to set the exact binary, including path, used
+# for batch system submissions
+#
+# NOTE: This binary must behave like the setting for $batch_method expects
+#       it too...
+$batch_cmd = "";
+
+# optional parameter to add extra arguments to the batch command line
+$batch_extraargs = "";
+
+# Select the remote command execution method to use
+$remotecmd_method = "pdsh";
+
+# optional parameter to add extra arguments to the remote execution command line
+$remotecmd_extraargs = "-f 700";
+
+1;
+
+# vim: syntax=perl

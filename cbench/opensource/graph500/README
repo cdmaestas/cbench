@@ -1,0 +1,11 @@
+
+There are various sources of Graph500 code it seems.  The reference
+tarballs are on http://www.graph500.org .  The Git repository for the
+reference code seems to be located at: git://gitorious.org/graph500/graph500.git .
+
+There also is another unofficial Graph500 Git repository on Github that
+I've been told has some a bugfixed version of the reference code (note that
+this is something I heard on April 29 2011).  The Gitub repository is
+here: https://github.com/rudolph9/Graph500 .
+
+

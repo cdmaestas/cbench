@@ -1,0 +1,179 @@
+include $(CBENCHOME)/make.def
+
+# Option flags are:
+#       CC      the C compiler to use (cc, etc.)
+#       COMPOPT options to C compiler for OpenMP (-omp, -mp, -qsmp, etc.)
+#	COPT	cc options (optimization options and setting of F2C to
+#               establish Fortran to C linkage conventions--see c_io.c for
+#               values possible for F2C)
+#       CPP     the cpp preprocessor to use
+#       CPPOPT  cpp options  (including use of MPI or not)
+#       FC      the Fortran compiler to use
+#	FOPT3	Fortran optimization options to use
+#       FPSIZE  establish single or double precision (set REAL to single or 
+#               double)
+#       INCDIR  options to get to the correct header files
+#       LD      the loader to use
+#       LIBDIR  options to get to the correct libraries
+#       LIBS    options for libraries to load with
+#       M4      the m4 preprocessor to use
+# 	MOPT	m4 options (for dumps or change of directory)
+#       OMPOPT  options to Fortran compiler for OpenMP (-omp, -mp, -qsmp, etc.)
+#       SYS     Type of machine (used to get the correct cpthreads_sppm_*.c 
+#               file and for system specific extensions used in sync.h and
+#               IBM system specific names in main.m4)
+#	THLD 	thread options for loader
+#       THMODE  thread mode for no threads (-DTHREADED=0),
+#               pthreads (-DTHREADED=1), or OpenMP (-DTHREADED=1 -OPENMP=1)
+#	TOPT	options that go to cc, f77/f90, and to ld
+
+#########################################################################
+#Fortran-C Thread Interface Libraries in this release of benchmark
+#########################################################################
+#
+#   cpthreads_sppm_SGI.c   (sproc)
+#   cpthreads_sppm_DEC.c 
+#   cpthreads_sppm_IBM.c
+#   cpthreads_sppm_SUNsolaris.c
+#   cpthreads_sppm_IA64.c
+#   cpthreads_sppm_DEC == IA64 == POSIX
+
+#########################################################################
+###### CBENCH ###########################################################
+#########################################################################
+
+SYS = POSIX
+
+# Fortran compiler
+FC = $(F90)
+
+# loader
+LD = $(F90) $(FFLAGS)
+
+# C compiler - already defined in make.def
+#CC =
+
+# m4 preprocessor
+M4 = m4 -Uformat
+
+# cpp preprocessor - defined in make.def
+#CPP =
+
+# don't use MPI
+#CPPOPT= -DNOMPI                    
+
+# use MPI
+CPPOPT = -DMPI
+
+# MPI library path
+LIBDIR = -L$(MPI_LIB)
+
+# MPI include path
+INCDIR = -I$(MPI_INCLUDE)
+
+# don't use threads
+#THMODE = -DTHREADED=0              
+
+# use direct pthreads calls
+#THMODE = -DTHREADED=1
+
+# use OpenMP for threads
+THMODE = -DTHREADED=1 -DOPENMP=1
+
+# Fortran OpenMP option
+OMPOPT = $(OPENMP_ENABLE)
+
+# C OpenMP option
+COMPOPT = $(OPENMP_ENABLE)
+
+# threaded load options
+THLD =
+
+LIBS = -lmpi
+
+# single precision reals
+#FPSIZE= -DREAL=float
+
+# double precision reals
+FPSIZE = -DREAL=double
+
+# Fortran compiler options, double precision
+FOPT3= $(FFLAGS)
+
+# no dumps, no "brick of bytes", and no directory change
+#  enable this if you don't want massive amounts of output data
+#MOPT=  -DBOBOUT=0 -DDUMPS=0 -DNOCHDIR=1
+
+# dumps, "brick-of-bytes", and no directory change
+MOPT=  -DBOBOUT=1 -DDUMPS=1 -DNOCHDIR=1
+
+# C compiler options
+COPT= $(CFLAGS) -DF2C=1 -DNOCHDIR=1
+
+# double precision options
+TOPT = $(DOUBLE_PRECISION)
+
+
+################################################################
+## NO changes required beyond this line
+################################################################
+
+run/sppm : params.f main.o sppm.o runhyd3.o bdrys.o            \
+	              cpthreads_sppm_$(SYS).o c_io.o timers.o
+	$(LD) $(TOPT) main.o sppm.o runhyd3.o bdrys.o          \
+	                 cpthreads_sppm_$(SYS).o c_io.o timers.o \
+	$(LIBDIR) -o run/sppm  $(LIBS) $(THLD) $(OMPOPT)
+
+
+# This version can be used for THREADED=0 (no multitasking)
+
+run/sppm1 : params.f  main.o sppm.o runhyd3.o bdrys.o c_io.o timers.o
+	 $(LD) $(TOPT) main.o sppm.o runhyd3.o bdrys.o c_io.o timers.o \
+	 $(LIBDIR) -o run/sppm1  $(LIBS)
+
+params.f: params.m4 constants.h iq.h
+	$(M4) -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) params.m4 >params.f
+
+main.o : main.m4 constants.h iq.h msgcom.h params.f arrays.h buffers.h sppm.h \
+         cliches.h bdrys.h
+	$(M4) -B50000 -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   main.m4 >main.F
+	$(CPP) $(INCDIR) $(CPPOPT) $(THMODE) main.F >main.f
+	$(FC) $(FOPT3) $(TOPT) $(OMPOPT) -c main.f
+
+sppm.o : sppm.m4 constants.h iq.h sppm.h 
+	$(M4) -B150000 -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   sppm.m4 >sppm.F
+	$(CPP) $(INCDIR) $(CPPOPT) $(THMODE) sppm.F >sppm.f
+	$(FC) $(FOPT3) $(TOPT) $(OMPOPT) -c sppm.f
+
+runhyd3.o: runhyd3.m4 constants.h cliches.h params.f iq.h buffers.h\
+           arrays.h  msgcom.h sync.h
+	$(M4) -B150000 -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   runhyd3.m4 >runhyd3.F
+	$(CPP) $(INCDIR) $(CPPOPT) $(THMODE) runhyd3.F >runhyd3.f
+	$(FC) $(FOPT3) $(TOPT) $(OMPOPT) -c runhyd3.f
+
+bdrys.o: bdrys.m4 constants.h cliches.h iq.h msgcom.h params.f bdrys.h
+	$(M4) -B80000 -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   bdrys.m4 >bdrys.F
+	$(CPP) $(INCDIR) $(CPPOPT) $(THMODE) bdrys.F >bdrys.f
+	$(FC) $(FOPT3) $(TOPT) $(OMPOPT) -c bdrys.f 
+
+cpthreads_sppm_$(SYS).o: cpthreads_sppm_$(SYS).c
+	$(CC) $(COPT) -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   $(COMPOPT) -c cpthreads_sppm_$(SYS).c
+
+c_io.o: c_io.c
+	$(CC) $(COPT) -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   $(COMPOPT) -c c_io.c
+
+timers.o: timers.c
+	$(CC) $(COPT) -DSYSTEM=$(SYS) $(FPSIZE) $(THMODE) $(MOPT) \
+	   $(COMPOPT) -c timers.c
+
+clean:
+	rm -f  *.o *.F *.f *.l run/sppm run/sppm1
+
+
+

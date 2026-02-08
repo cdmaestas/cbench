@@ -1,0 +1,23 @@
+# io_ior job template
+# IOR MPI filesystem test using posix, 2 MB chunks
+# N to 1 file access pattern
+# NOTE: bash syntax is used here
+
+ALLARGS="-b 2m -C -i 2 -r -R -t 2m -v -w -W -e -d 30"
+TESTDIR="TESTDIR_HERE/$JOBID"
+mkdir -p $TESTDIR
+PSFILE=`/bin/mktemp $TESTDIR/posix.nto1.XXXXXX`
+PPFILE=`/bin/mktemp $TESTDIR/posix.nton.XXXXXX`
+
+echo "Nto1 file: $PSFILE"
+echo "NtoN files: $PPFILE"
+echo "TESTDIR: $TESTDIR"
+echo
+
+# n-to-one file pattern
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/IOR.posix -a POSIX $ALLARGS -o $PSFILE"
+cbench_run_cmd $CMD
+
+# quiet things down before the next job
+sync
+sleep 60

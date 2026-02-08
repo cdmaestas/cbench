@@ -1,0 +1,29 @@
+# job template to run node-level hardware tests through batch
+# NOTE: bash syntax is used here
+
+export CBENCHOME=CBENCHOME_HERE
+
+# preamble command string or /bin/true if no preamble specified
+PREAMBLE_HERE
+
+# Some of the tests run in the nodehwtest framework require root
+# priveleges. 
+
+# source the common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+NODE=`hostname`
+LOGDIR=$FIXIT123_DB_HOME
+MAINLOG=$LOGDIR/breakfix.log
+
+# try to make a tmp directory for possible local disk io testing
+mkdir -p /tmp/$FIXIT123_USER
+
+steplogentry "NODE $NODE => STEP2A STARTED RUNNING, jobid $PBS_JOBID" $MAINLOG
+logger "STEP2A STARTED RUNNING, jobid $PBS_JOBID"
+
+ulimit -Ss 10240
+
+COMMAND_HERE
+
+logger "STEP2A FINISHED RUNNING, jobid $PBS_JOBID"

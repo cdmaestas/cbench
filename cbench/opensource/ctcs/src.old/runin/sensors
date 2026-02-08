@@ -1,0 +1,7 @@
+#!/bin/bash
+sensors | grep -A 10000 -B 10000 ALARM
+while [ $? != 0 ] ; do {
+	sleep 60
+	sensors | grep -A 10000 -B 10000 ALARM
+} ; done
+exit 1

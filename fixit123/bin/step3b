@@ -1,0 +1,408 @@
+#!/usr/bin/perl
+# vim: syntax=perl tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+BEGIN {
+        die "Please define FIXIT123_HOME!\n" if !defined($ENV{FIXIT123_HOME});
+}
+#use lib ( $ENV{FIXIT123_HOME} eq "/usr" ? "/usr/libexec/fixit123" : "$ENV{FIXIT123_HOME}/libexec");
+
+# add Fixit123 perl library to the Perl search path
+use lib ("$ENV{FIXIT123_HOME}\/perllib");
+
+use Date::Manip;
+use Getopt::Long;
+use Env::Bash;
+use Term::ANSIColor qw(color :constants);
+
+$record=1;
+GetOptions(
+	'debug' => \$DEBUG,
+	'name=s' => \$logname,
+	'status' => \$status,
+	'record' => sub { $record=1; },
+	'norecord' => sub { $record=0; } ,
+	'dry-run' => sub { $record=0; } ,
+	'dryrun'  => sub { $record=0; } ,
+);
+
+
+$BINDIR = "$ENV{FIXIT123_HOME}/bin";
+$LOGDIR = "$ENV{FIXIT123_DB_HOME}";
+$MAINLOG = "$LOGDIR/breakfix_step3.log";
+$STEP3ADIR="$LOGDIR/step3a";
+$step3_logfile = "$LOGDIR/breakfix_step3.log";
+$HWTDIR = "$ENV{FIXIT123_CBENCHTEST}/nodehwtest";
+$hwt_output = "$HWTDIR/$ENV{FIXIT123_STEP2_TESTIDENT}";
+
+# check for the step3 pausefile which can disable our processing
+my $pausefile="$ENV{FIXIT123_HOME}/step3_pausefile";
+if (exists $ENV{FIXIT123_STEP3_PAUSEFILE}) {
+	$pausefile="$ENV{FIXIT123_STEP3_PAUSEFILE}";
+}
+if ( -f "$pausefile" ) {
+	print "Step3 scripts are currently disabled.\n";
+	system("cat $ENV{FIXIT123_STEP3_PAUSEFILE}");
+	exit 1;
+}
+
+# figure out the Cbench environment specified by Fixit123 config
+my $be = Env::Bash->new( Source => ". $ENV{'FIXIT123_CBENCHTEST'}/cbench-init.sh",
+	Keys => 1, );
+$CBENCHOME = $be->CBENCHOME;
+$CBENCHTEST = $be->CBENCHTEST;
+
+$job_running = 0;
+$job_finished = 0;
+$minimum_runtime = 12 * 60; # in minutes
+$finish_stamp = 99;
+$delta_min = -99;
+
+# find the most recent step3a log file
+$latest_log = `cd $STEP3ADIR; ls -1rt *.log | tail -1`;
+chomp $latest_log;
+die "Could not find a STEP3A log file" unless ($latest_log =~ /\.log/);
+($step3basename) = $latest_log =~ /(\S+)\.log/;
+
+(defined $logname) and $step3basename = $logname;
+$step3logfile = "$STEP3ADIR\/$step3basename\.log";
+$step3nodefile = "$STEP3ADIR\/$step3basename\.nodelist";
+$numnodes = `wc -l $step3nodefile | cut -f1 -d\' \'`;
+chomp $numnodes;
+
+
+print BOLD MAGENTA "The latest Step3a run is tagged: ", RESET, "$step3basename\n";
+print BOLD MAGENTA "  logfile: ", RESET, "$step3logfile\n";
+print BOLD MAGENTA "  nodelist: ", RESET, "$STEP3ADIR\/$step3basename\.nodelist\n";
+print BOLD MAGENTA "  number of nodes tested: ", RESET, "$numnodes\n";
+
+# lookup the Torque jobid for the step3a run
+$tmpbuf = `cd $STEP3ADIR; grep JOBID $step3logfile`;
+chomp $tmpbuf;
+($jobid) = $tmpbuf =~ /JOBID\=(\d+)\.\S+$/;
+if ($jobid =~ /\d+/) {
+	print BOLD MAGENTA "  Torque job ID: ", RESET, "$jobid\n";
+}
+else {
+	$jobid = 0;
+    print BOLD RED "No Job ID found...did the job run?",RESET,"\n";
+    exit;
+}
+
+# check if the step3a job is still running
+@buf = `qstat -a | grep step3`;
+$job_running_time = '';
+foreach $l (@buf) {
+    if ($l =~ /(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) {
+        $state = $10;
+        $runtime = $11;
+    	($pbsjobid) = $1 =~ /(\d+)\.\S+/;
+        ($hour,$min) = $runtime =~ /(\d+)\:(\d+)/;
+        $delta_min = ($hour * 60) + $min;
+        if ($jobid == $pbsjobid and $state eq 'R') {
+			#print "STEP3A Job $jobid is still RUNNING  $hour:$min\n";
+			$job_running_time = "$hour:$min";
+            $job_running = 1;
+        }
+        elsif ($jobid == $pbsjobid and $state eq 'Q') {
+			print BOLD BLUE "STEP3A Job $jobid is still QUEUED",RESET,"\n";
+            exit;
+        }
+    }
+}
+
+if (!$job_running) {
+	# find the step3a PBS job output files
+	$step3outputfile = `cd $STEP3ADIR; ls -1rt *.o$jobid`;
+	chomp $step3outputfile;
+	$step3errorfile = `cd $STEP3ADIR; ls -1rt *.e$jobid`;
+	chomp $step3errorfile;
+	if ($step3errorfile =~ /$jobid/) {
+		print BOLD MAGENTA "  stdout file: ", RESET, "$STEP3ADIR\/$step3outputfile\n";
+		print BOLD MAGENTA "  stderr file: ", RESET, "$STEP3ADIR\/$step3errorfile\n";
+	}
+}
+
+$tmpbuf = `cd $STEP3ADIR; grep \"STEP3A testing STARTED\" $step3logfile`;
+chomp $tmpbuf;
+($tmpbuf =~ /STARTED/) and print "$tmpbuf\n";
+
+$tmpbuf = `cd $STEP3ADIR; grep \"STEP3A testing FINISHED\" $step3logfile`;
+chomp $tmpbuf;
+if ($tmpbuf =~ /FINISHED/) {
+	print "$tmpbuf\n";
+	$job_finished = 1;
+}
+
+if (!$job_finished and $jobid !~ /\d+/) {
+	print BOLD BLUE "STEP3A may be starting up still?",RESET,"\n";
+    exit;
+}
+elsif (!$job_finished and $job_running) {
+	print BOLD GREEN "STEP3A started and is still",BOLD CYAN,"RUNNING";
+	print BOLD GREEN " ($job_running_time), jobid $jobid",RESET,"\n";
+}
+elsif (!$job_finished) {
+	print BOLD RED "STEP3A started but did not finish correctly. Looks like it died or was killed...";
+	print RESET "\n";
+}
+else {
+	print BOLD BLUE "STEP3A started and finished. Checking results....",RESET,"\n";
+}
+
+# read in the log file so we can get the details of the run
+$logfile = "$step3logfile";
+open (IN,"<$logfile") or die
+	"Could not open $logfile ($!)";
+@logbuf = <IN>;
+close(IN);
+
+# look for key log entries
+foreach $l (@logbuf) {
+	if ($l =~ /^(.*) STEP3A testing STARTED/) {
+    	($stamp = $1) =~ s/\-/\//g;
+    	$start_stamp = ParseDate($stamp);
+        #print "$stamp $start_stamp\n";
+    }
+	elsif ($l =~ /^(.*) STEP3A testing FINISHED/) {
+    	($stamp = $1) =~ s/\-/\//g;
+    	$finish_stamp = ParseDate($stamp);
+        #print "$stamp $finish_stamp\n";
+    }
+}
+
+# if the job is not running and there was no finish
+# log entry, stat the log file to see the last time
+# it was touched to get an approximate runtime
+if (!$job_running and $finish_stamp == 99) {
+    my($dev, $ino, $mode, $nlink, $uid, $gid, $rdev,
+        $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($logfile);
+	$finish_stamp = &ParseDateString("epoch $ctime");
+}
+
+
+if ($finish_stamp != 99) {
+	my $err;
+	$delta = DateCalc($start_stamp,$finish_stamp,\$err,0);
+    #print "$err\n";
+    $delta_min = Delta_Format($delta,0,"%mh");
+    
+    printf "STEP3A ran for %0.2f hours (%d minutes)\n",$delta_min/60,$delta_min;
+}
+
+# use the Cbench output parsing framework to look at the results of
+# jobs run
+$cmd = ". $CBENCHTEST/cbench-init.sh; cd $CBENCHTEST; ".
+	"$CBENCHOME/tools/output_parse_generic.pl --meta --ident step3a_$step3basename".
+    " --diag --custom --listfound --filestat --usecwd";
+@output = `$cmd` unless ($job_running and ! defined $status);
+(defined $DEBUG) and print @output;
+
+$step3b_passed = 0;
+@errors;
+@customparse_hits;
+# now we get to grok the output of the output parser.... recursion?  :)
+$passed_jobs = 0;
+foreach $l (@output) {
+	chomp $l;
+	$l =~ s/\033\[0m//g;
+	if ($l =~ /Total Jobs Parsed =\s+(\d+)/) {
+    	$total_jobs = $1;
+    }
+    elsif ($l =~ /PASSED =\s+(\d+)/) {
+    	$passed_jobs += $1;
+    }
+    elsif ($l =~ /NOTICE =\s+(\d+)/) {
+    	$passed_jobs += $1;
+    }
+	elsif ($l =~ /ERROR\((\S+)\) =\s+(\d+)/) {
+		($1 eq 'NOTBUILT') and $passed_jobs += $2;
+	}
+    elsif ($l =~ /Overall Job Success =\s+(\d+\.\d+)/) {
+    	$success_rate = $1;
+    }
+    elsif ($l =~ /ERROR with status/) {
+    	push @errors, $l;
+    }
+    elsif ($l =~ /\*\*PARSEMATCH\*\*/) {
+    	push @customparse_hits, $l;
+    }
+}
+
+# check if
+# 1 - jobs passed
+# 2 - runtime is less than or equal to min acceptable run time
+if ($total_jobs > 0 and $total_jobs == $passed_jobs and $delta_min >= $minimum_runtime) {
+	$step3b_passed = 1;
+}
+elsif ($total_jobs > $passed_jobs) {
+	print BOLD RED "STEP3A job did not pass all tests",RESET,"\n" unless $job_running;
+	$step3b_passed = 0;
+}
+elsif ($delta_min < $minimum_runtime) {
+	print BOLD RED "STEP3A job did not run long enough (less than $minimum_runtime minutes)",RESET,"\n" unless $job_running;
+	$step3b_passed = 0;
+}
+
+my @stdout_log = ();
+my $lastjob = '';
+if (!$step3b_passed) {
+	if (defined $status) {
+		# FIXME : need to check for the existence of qpeek
+		#@stdout_log =`/apps/torque/contrib/qpeek -o $jobid`;
+		@stdout_log =`qpeek -o $jobid`;
+		my $lastline = $stdout_log[$#stdout_log];
+		($lastjob) = $lastline =~ /jobname\s+(\S+)\s+\(.*$/;
+		#print "lastjob = $lastjob\n";
+	}
+
+	print GREEN "\n\nJobs that failed\n================",RESET,"\n";
+	foreach $k (@errors) {
+		print "$k\n" unless ((defined $status) and ($k =~ /$lastjob/));
+	}
+    
+	print GREEN "\n\nKey errors to track down\n========================",RESET,"\n";
+	# What we really want to do is figure out the list of unique runs that failed
+	# and then pass that list one-by-one to the output_parse_customparse.pl script.
+	# Otherwise we can gets lots of redundant errors because there can be multiple
+	# PARSEMATCHes per run.
+	my %customparse_files = ();
+	foreach my $k (@customparse_hits) {
+		$k =~ s/\033\[0m//g;
+		# find the jobid and .o/.e filenames
+		$k =~ /\*PARSEMATCH\*\*\((.*)\)\s*\=/;
+		my $o_file = $1;
+		my @parts = split("/",$o_file);
+		my $jobname = $parts[$#parts-1];
+		my $testset = $parts[$#parts-3];
+		my ($outid) = $o_file =~ /\.o(\d+)$/;
+		my $e_file = $o_file;
+		$e_file =~ s/\.o$outid/\.e$outid/;
+		$customparse_files{$e_file}{id} = $outid;
+		$customparse_files{$e_file}{jobname} = $jobname;
+		$customparse_files{$e_file}{testset} = $testset;
+		#print "$outid $jobname\n";
+	}
+
+	foreach my $k (keys %customparse_files) {
+		print "-----------> Errors for job \'$customparse_files{$k}{jobname}\' with id \'$customparse_files{$k}{id}\' from testset \'$customparse_files{$k}{testset}\'\n";
+		# run files through additional output diagnostics
+		#system("$DIR/SCRIPTS_step123/job_output_diag.pl --nocustom $CBENCHTEST\/$o_file");
+	    (defined $DEBUG) and print ". $CBENCHTEST/cbench-init.sh; $CBENCHTEST/tools/output_parse_customparse.pl --diag $CBENCHTEST\/$k\n";
+	    system(". $CBENCHTEST/cbench-init.sh; $CBENCHTEST/tools/output_parse_customparse.pl --diag $CBENCHTEST\/$k");
+		print "------------\n";
+	}
+
+	# run output diagnostics on the actual step3a batch job stderr file
+	if (!defined $status) {
+		print "-----------> Errors from the Step3 batch job stdout/stderr\n";
+	    #system("$DIR/SCRIPTS_step123/job_output_diag.pl $STEP3ADIR\/$step3errorfile");
+	    #system(". $CBENCHTEST/cbench-init.sh; $CBENCHTEST/tools/output_parse_customparse.pl $STEP3ADIR\/$step3errorfile");
+	    system(". $CBENCHTEST/cbench-init.sh; $CBENCHTEST/tools/output_parse_customparse.pl --diag $STEP3ADIR\/$step3errorfile");
+	    print "------------\n";
+	}
+
+}
+
+if ($total_jobs > 0) {
+	$pass_rate = $passed_jobs/$total_jobs*100;
+}
+else {
+	$pass_rate = $success_rate;
+} 
+printf("\n\nSTEP3B stats: %d of %d (%0.2f%%) jobs PASSED in %0.2f hours (%d minutes)\n",
+	$passed_jobs,$total_jobs,$pass_rate,$delta_min/60,$delta_min) unless $job_running;
+
+if (defined $status) {
+	print GREEN "\n\nTailing the STEP3A logfile\n==========================",RESET,"\n";
+	system("tail -10 $step3logfile");
+
+	print GREEN "\n\nTailing the STEP3A job's STDOUT\n================================",RESET,"\n";
+	print "@stdout_log";
+	print BOLD MAGENTA "\n\nCurrent running test is: ",RESET, "$lastjob\n";
+}
+
+if (defined $status) {
+	(!$job_running) and print BOLD BLUE "\nSTEP3A is NOT currently running. Run step3b without --status".
+		" if you want to\nrecord the results.",RESET,"\n";
+	exit;
+}
+
+$status = '';
+if ($step3b_passed and !$job_running) {
+	print BOLD GREEN "STEP3B PASSED",RESET,"\n";
+    $status = 'PASSED, READY for REINTEGRATION';
+	system ("mkdir -p $LOGDIR/step3b");
+	system ("cp $step3nodefile $LOGDIR/step3b");
+	my $nodefilebasename=`basename $step3nodefile`;
+	chomp $nodefilebasename;
+	print "NODES from this run are located in: $LOGDIR/step3b/$nodefilebasename\n"
+}
+elsif (!$step3b_passed and !$job_running) {
+	print BOLD RED "STEP3B FAILED",RESET,"\n";
+    $status = 'FAILED';
+}
+
+# if --record is specified, record the results of the step3 run
+# in the breakfix log for step3
+if ($record and !$job_running) {
+    open (IN,"<$step3nodefile") or die
+	    "Could not open $step3nodefile ($!)";
+    @nodebuf = <IN>;
+    close(IN);
+
+	# open the step3 breakfix log
+
+    open (OUT,">>$MAINLOG") or die
+	    "Could not open $MAINLOG ($!)";
+
+    # record log entries
+    foreach $l (@nodebuf) {
+	    chomp $l;
+        printf OUT "%s NODE %s => STEP3B %s, step3a tag %s\n",
+    		get_timestamp(),$l,$status,$step3basename;
+	($step3b_passed) and system("pbsnodes -c $l");
+    }
+
+    close(OUT);
+	print BOLD BLUE "\nRecorded STE3B results",RESET,"\n";
+	system("sync");
+}
+elsif ($job_running) {
+	print BOLD BLUE "\nSTEP3A is still running, STE3B will NOT be recorded yet...\n\n".
+		"Use 'step3b.pl --status' to check details on the STEP3A run",RESET,"\n";
+}
+else {
+	print BOLD BLUE "\nSTEP3B result was NOT recorded to the step3 breakfix log, use ".
+    	"the --record option to do so.",RESET,"\n";
+}
+
+
+
+sub get_timestamp {
+	my ($sec, $min, $hour, $day, $mon, $year, $wday, $yday, $isdst) = localtime;
+    
+    $year = $year - 100;
+    $stamp = sprintf "%02d/%02d/%02d %02d:%02d",$mon+1,$day,$year,$hour,$min;
+    return $stamp;
+}

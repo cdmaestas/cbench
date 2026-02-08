@@ -1,0 +1,15 @@
+# mpioverhead job template
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/mpi_overhead
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/mpi_overhead
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/mpi_overhead"
+
+# grab a timestamp that will be later compared with a timestamp
+# grabbed after MPI has started to measure job launch time
+TIMESTAMP=`date +%s`
+
+cbench_echo "Timestamp before MPI launch = $TIMESTAMP"
+cbench_run_cmd $CMD

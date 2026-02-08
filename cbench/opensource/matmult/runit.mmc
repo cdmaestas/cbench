@@ -1,0 +1,84 @@
+#!/bin/csh
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#
+#       This script runs the MatMult benchmarks...  All results come
+#       to STDOUT and STDERR.  This  script is intended  to  be  run
+#       from inside of make.  Do "make run" to run this benchmark.
+#
+#       To  prepare this  script for your   system edit the edit the
+#       "set nrep" and  "set size" statements.   For  SuperComputers
+#       use "nrep = 100" and "size  = 200".  For Mini-SuperComputers
+#       and below use "nrep  = 10" and  "size = 50".   Then edit the
+#       "foreach nproc ()" line to include the digits from 1  to the
+#       number of processors on the system being benchmarked.  There
+#       are two examples.  One  for  a system with  eight processors
+#       which  is commented out  and  another for a single processor
+#       system.  Then within the "foreach nproc ()" loop you can set
+#       what  ever   system  variables necessary   to  make sure the
+#       program only  runs  with the  number of processors specified
+#       with the "nproc"  variable.  On Cray  Research, Inc., UNICOS
+#       this means setting the envioronment variable NCPUS.  This is
+#       left in as an example.
+#
+#
+# touch results.mmc
+ 
+#
+echo -n "Running benchmarks on machine: "
+uname -a  
+echo -n "Starting MatMult benchmark on: "
+date
+time
+ 
+echo " "
+echo "**************************************************"
+echo "****          C MATMULT RESULTS BEGIN         ****"
+echo "**************************************************"
+echo " " 
+
+set MM_PROCS_PER_NODE_LIST = "1 2 4 8 16"
+set SWL_PROCS_PER_NODE=2
+
+@ MaxRep = 5000
+#@ MaxRep = 2400
+
+set SIZE_LIST = "128 256 1024 2048"
+#set SIZE_LIST = "128 256 1024"
+foreach DUP_CNT (1 2)
+
+    echo "Duplicate count: $DUP_CNT"
+
+    foreach size ($SIZE_LIST)
+
+        @ nrep = $MaxRep / $size
+
+        foreach nproc ($MM_PROCS_PER_NODE_LIST)
+
+            if ($nproc > $SWL_PROCS_PER_NODE) then
+                continue
+            endif
+
+            setenv OMP_NUM_THREADS $nproc
+            echo "OMP_NUM_THREADS = ${nproc}, nrep = $nrep"
+            echo " "
+
+            echo "/usr/bin/time -p mmc $nproc $nrep $size $size $size"
+            /usr/bin/time -p ./mmc $nproc $nrep $size $size $size
+
+            if ($status) then
+                echo "Error encountered in MMC...Aborting"
+                exit 1 
+            endif
+
+        end
+
+    end
+
+end
+
+echo " "
+echo "MatMult benchmark completed at: `date`"
+
+exit 0
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

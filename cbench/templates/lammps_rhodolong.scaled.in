@@ -1,0 +1,39 @@
+# lammps_rhodolong.scaled job template
+# Uses LAMMPS benchmark code Rhodopsin
+#
+# Cbench_walltime: 48:00:00
+#
+# The goal of this job is to run 24-96 hours, write restart files,
+# and restart from a set of restart files at least once.
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/lmp_cbench
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/lmp_cbench
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/lmp_cbench SCALING_PARAMS_HERE"
+
+# use cbench_runin_tempdir() to run ourselves in a unique isolated directory
+cbench_runin_tempdir
+# symlink files into our isolated working directory
+ln -s ../data.rhodolong
+
+# run LAMMPS from timestep 0 
+cbench_echo "======= LAMMPS base run ======="
+STDIN_FILE="CBENCHTEST_HERE/lammps/bench/in.rhodolong.scaled"
+cbench_run_cmd $CMD
+
+# LAMMPS will exit based on the timesteps in the in.rhodolong.scaled input
+# deck. Wait just a bit and then attempt a restart.
+cbench_echo ""
+cbench_echo ""
+cbench_echo "Sleeping before starting the restart run...."
+cbench_echo ""
+cbench_echo ""
+sleep 60
+
+cbench_echo "======= LAMMPS restart run ======="
+STDIN_FILE="CBENCHTEST_HERE/lammps/bench/in.rhodolong.scaled.restart"
+cbench_run_cmd $CMD
+

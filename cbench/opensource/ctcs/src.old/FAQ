@@ -1,0 +1,631 @@
+Frequently Asked Questions (Cerberus Test Control System)
+Jason T. Collins <moby1gnubie@yahoo.com>
+Last Updated: 6 Nov 2001
+
+I'll be updating this FAQ frequently as CTCS becomes more popular both
+within VA and outside of it.  Hopefully we'll be able to create a good
+information resource for what to do when hardware breaks under Linux.
+
+FAQ Index
+U  - Updated
+** - New
+
+** General
+1.1	Where is the latest copy?
+1.2	How do I pronounce Cerberus?
+1.3	What is Cerberus, anyway?
+1.4	Why the name Cerberus?
+1.5	CTCS is designed very differently from other test suites.  Why?
+1.6	Where can I get help using CTCS?
+1.7	How can I be notified whenever CTCS is updated?
+1.8	The Linux Test Project, UCSC-smartsuite, and other files are no 
+	longer here.  Why?
+		also
+	What other Linux test suites are there?
+1.9    	What tests are included in the default CTCS burn?  What do
+	the BBhdaN4, etc mean?
+1.10 	What burn options does VA Manufacturing use?
+
+** Technical
+2.0  U	What are the system requirements?
+2.1	How do I make Cerberus forget state information about burnin?
+	... and ... Where are the logs?
+2.2	I'm getting VFS: Out of filehandles or similar errors when running
+	my custom tests.  What's causing that?
+2.3	Why isn't the test control system terminating after the 
+	timeout/control-C?
+2.4	How do I customize my test?
+2.5	How do I reset the clock for the test?
+2.6	The run program doesn't do anything.
+2.7	The memory tester shows "Test Configuration Error" on my machine.
+2.8	I'm getting all kinds of syntax errors!  This program sucks!
+2.9	I'm running make install, but nothing is installed anywhere, I can't
+	find the binaries, etc.
+2.10	Given 2.9, how do I install Cerberus?
+2.11	I can't seem to run the run command outside of the directory it
+	is in.
+2.12	The kernel test seems to run right sometimes, but sometimes missing
+	files occur.
+2.13	What are the best command line parameters for testing [x]?
+2.14	I'm getting all kinds of MEMORY errors.  What gives?
+2.15 	The Per-Pass Memory Coverage has gone down since I upgraded to
+	the 1.3 series.
+
+** Failure Interpretation
+3.0 U	How do I interpret CTCS error messages?
+3.1	Wait a minute, these tests can't tell me exactly where the
+	the hardware failed?
+3.2	The KCOMPILE test is failing 90% of the time, but my system
+	seems otherwise stable.
+3.3 **  What do the purple TEST INTERNAL ERROR messages mean?
+
+
+
+memory failed?
+
+*
+* General
+*
+
+1.1 Where is the latest copy?
+	The latest official releases of Cerberus are available on
+	SourceForge, as well as anonymous access to the CVS tree.
+
+	http://sourceforge.net/projects/va-ctcs
+	SourceForge project name: va-ctcs
+	CVS module name: ctcs
+
+	Contributing development by everyone is happily
+	encouraged, and redistribution/use is under the GNU General
+	Public License.  See the file COPYING for further details.
+
+	Note some components of CTCS are seperate applications
+	in their own right, not under the GPL, necessarily.
+	See the file COPYING for the license restrictions on
+	those applications.
+
+1.2 How do I pronounce Cerberus?
+	A somewhat phonetic spelling would be "sir-burr-us".  Soft c,
+	three syllables.  No, I don't care if you pronounce it some other
+	way, I'll just grimace if you're around me :)
+
+1.3 What is Cerberus, anyway?
+	Cerberus was the code name for VA Linux Systems's internal test
+	software project. Part of that project is the Cerberus Test
+	Control System, which is released under the GPL by VA to help
+	create more stable Linux system software and hardware.
+
+1.4 Why the name Cerberus?
+	Cerberus is the guardian of the gates to the underworld
+	in ancient Greek/Roman religions. Since the Cerberus project was
+	originally started due to the need for Manufacturing Q/A software,
+	the choice of such a gatekeeper (to reject bad parts from
+	passing to the customer) was obvious.  The alternate spelling
+	Cerberus was chosen to differentiate from the well known
+	Kerberos authentication system.  
+	It is dependent on your point of view (and mood!) as to whether
+	the customer or VA is the underworld in this analogy.  :)
+
+1.5 CTCS is designed very differently from other test suites.  Why?
+	The CTCS's design goal was to collect a lot of "folklore", if you
+	will, about ways that computers fail, and turn them into
+	a system which can detect those failures automatically and
+	keep track of failure information.  A classic example is the
+	Cerberus "kernel" module.  While not specifically a CPU, Memory,
+	or Motherboard component test, it is a well known fact that
+	compiling kernels with GCC tends to reveal problems in hardware
+	that currently no "memory test" or "CPU test" can detect.
+	Cerberus makes it easy to add more ad-hoc tests as modules,
+	and integrate them into complex patterns with other tests to
+	reveal failures.
+
+	This test method was pioneered by VA's founders and I have
+	rewritten nearly all modules and the control software, cleaned
+	it up significantly, added features and a consistent reporting
+	mechanism.  This software has really proved valuable to VA
+	in improving quality for our customers and in helping the Linux
+	community to improve the quality of the software we love.
+
+	To make Cerberus more valuable/useful, I have integrated some free
+	software packages as test modules.  While the GPL does not
+	force release of code used only for internal purposes, I thought
+	it would be the right thing to release the new combination of VA's
+	own work and outside contributions so everyone can benefit.
+	VA agreed.
+
+1.6 Where can I get help using CTCS?
+	See question 1.1.  Post a message in the forums, or join the
+	mailing list.
+
+1.7 How can I be notified whenever CTCS is updated?
+	Use the SourceForge file monitor.  This requires that you get
+	an account on SourceForge, something I recommend that everyone
+	who is a regular user of CTCS do.  Then follow this link:
+
+	http://sourceforge.net/project/filemodule_monitor.php?filemodule_id=5363
+
+	You will now be e-mailed by SourceForge automatically whenever
+	I release a new version.
+
+1.8 The Linux Test Project, UCSC-smartsuite, and other files are no longer
+    here.  Why?
+	These projects are developed independently, and trying to keep
+	my project synchronized with theirs was becoming too much to bear.
+	Though it did have the positive benefit of inflating my sourceforge
+	statistics... ;)
+
+	Seriously, here's where to acquire this software so you can use
+	it with mine.  CTCS still supports integrating with these
+	systems when present.  See the help on the command line options
+	for newburn and the documentation in README.tests for the wrapper
+	scripts.
+
+	*	Linux Test Project (SGI)
+		http://ltp.sourceforge.net
+			This project is similar in structure to CTCS, but
+			they have a lot more programmers.  The module
+			API is mostly compatible with CTCS, but
+			my driver scripts are more intelligent.
+			They also have more modules, and they're more focused
+			on software testing then hardware.
+	*	BYTE Benchmarking Suite (Linux Port)
+		http://www.tux.org/~mayer/linux/bmark.html
+			This is a good port of the generic benchmark utility
+			for Linux.  You can use it for exercising basic
+			floating/integer/memory/IO operations.
+	*	UCSC SmartSuite
+		http://csl.cse.ucsc.edu/software/smart/
+			Monitor your hard drives for failures, and predict 
+			them before they happen.  Very nice, if your
+			drives support it.
+
+1.9 What tests are included in the default CTCS burn?
+	The burn script automatically determines what tests are appropriate 
+	for your hardware.  These tests will include at least the following,
+	and can be added to or removed through newburn's extremely large
+	variety of command line options.
+
+	By default, all tests are run simultaneously.  
+
+	Burn-in identifier is the key value used to store logs and keep 
+	track of failures for each instance of the test.  When burn
+	exits and displays results, the results are keyed off these values.
+	Some tests may run multiple instantiations, and the pattern for 
+	identifying which test is which is below.
+
+	Module names can be looked up in runin/README.tests for a detailed
+	technical/usage description of what each module does.
+
+	*	Jason's improved memory test (rewrite based on Larry's 
+		original memory tester)
+		Module:	memtest
+		Burn-in identifier:  MEMORY0, MEMORY1, et. al
+		This is a vicious little memory system thrasher that not
+		only exercises hardware but the Linux paging system
+		as well.  Only the best memory can survive this.  Unfortunately,
+		since it is a user space application, it can't touch
+		all memory, but CTCS will attempt to configure it
+		appropriately for you.
+	*	Kernel compilation loop
+		Module: kernel
+		Burn-in identifier:  FKCOMPILE, KCOMPILE
+		It's well known that the GNU C compiler can reveal problems
+		with memory, CPU, and cache RAM.  The kernel compilation loop
+		repeatedly compiles the Linux kernel, looking for GCC
+		signal 11 or other errors.
+	*	Disk (block device) read tests
+		Module: sblockrdtest
+		Burn-in identifier:  BBhdaN0, BBhdaN1, BBsdcN4, etc
+		CTCS's newburn will automatically launch 8 staggered
+		linear reads for each hard disk to induce rapid seeking.
+		If a sector can't be read, these tests will break.
+		BB stands for "badblocks", the program used to execute the
+		test.  hda, sda, etc. are block devices, N? indicates
+		the number in the group of 8 staggered reads.
+	*	System Log monitors
+		Module: dmesg
+		Module: messages
+		Burn-in identifier:  DMESG, SYSLOG
+		The Linux kernel is capable of detecting a large number
+		of error conditions that are outside the realm of
+		user applications such as Cerberus.  CTCS will
+		launch log monitors to watch for oopses or other
+		miscellaneous errors while the rest of the system
+		is running.
+
+	Depending on system configuration, you may or may not
+	see the following tests by default:
+
+	*	DAC960 driver monitor
+		Module: dac960
+		Burn-in identifier:  DAC960C0, DAC960C1, etc
+		The dac960 driver monitor will watch the current status file
+		for each DAC960 controller 
+		(/proc/rd/c[controller number]/current_status) and will
+		report any errors.  This test won't be run if you don't
+		have any controllers handled by the dac960 driver.
+
+1.10 What burn options does VA Manufacturing use?
+	Well, that's a little complicated.  The burn options they use that
+	actually affect testing are:  -K  -I
+	We actually only use -I on our 4450/9450 machines, because the Intel
+	backplane design is slightly broken and generates a few spurious
+	resets.
+
+	We also use the options for auto termination and build location
+	for the linux kernel, but they vary greatly depending on the
+	situation.
+
+
+*
+* Technical Questions
+*
+
+2.0 What are the system requirements for CTCS?
+	The system requirements for Cerberus are fairly modest.  Most
+	Linux x86 systems capable of running Perl 5 can run CTCS.
+	If you want to check your system for compatibility with Cerberus,
+	use "check-requirements" in the root directory of the CTCS
+	distribution.  This is run as part of newburn to help prevent
+	incorrect messages.  "make requirements" will also run this
+	script.
+
+	UPDATE:  You should have at least 128 MB of swap space if you
+	are running a 2.2.x series Linux kernel, and at least 2 to 2.5
+	times RAM in swap if you are running a 2.4.x series kernel.
+	The VM system has changed radically between 2.2 and 2.4 and
+	it's no longer safe to run with less swap in 2.4 (under
+	any conditions, but under Cerberus especially!)
+
+2.1 How do I make Cerberus forget state information about burnin?
+    Where are the logs?
+	The state and logging information is stored in 
+	log/newburn.tcf.log.####/ (####=some random number).  Delete this 
+	subdirectory to delete the state.  To delete the control file so a
+	new one can be generated, delete newburn.tcf.  Any
+	time you do this, state information should be deleted
+	as well.  Alternatively, you may use "burnreset".
+	A similar method follows for state information for
+	custom tests, the test logs are stored in directories called:
+	log/[testfilename].log.####
+
+2.2 I'm getting VFS: Out of filehandles or similar errors when running
+    my custom tests.  What's causing that?
+	Each test run in parallel by the CTCS requires about 40 file 
+	handles, so be sure that the system has enough filehandles to 
+	do this (check the file /proc/sys/fs/file-nr).  The program 
+	newburn includes a sample command to increase the number of 
+	filehandles to 65535, look at that file to see the command.
+
+2.3 Why isn't the test control system terminating after the
+	timeout/control-C?
+	This is an old bug... it is mostly fixed in 1.0.0p4, and should
+	be totally fixed from p6 onward.  If you DO see a situation where
+	the test software fails to terminate, please send in a bug report
+	to the mailing list.
+	The last termination bug set is believed fixed in p11 by using
+	brute force.  I suspect that some signals are being dropped on
+	the floor somewhere by Linux under heavy load -- but I can't 
+	prove it yet...  Things like this are why I wanted to release the
+	software :)
+
+2.4 How do I customize my test?
+	You can manually customize your test by editing the test control
+	file generated by the program "newburn-generator".  The newburn
+	program automatically runs the generator and creates the file
+	"newburn.tcf".
+	Read the documentation for details but remember:
+		- Always delete the state information (question 2.1) for
+		  the test whenever you manually edit it before running
+		  the test.
+		- Editing a test control file while it is in use has
+		  no effect on the test (the whole file is read into
+		  memory before processing begins), but the state
+		  information will no longer match the control file.  This
+		  means that you should delete the state information once
+		  the running test has terminated.
+
+2.5 How do I reset the clock for the test?
+	See question 2.1.  The clock is part of the state information.
+
+2.6 The run program doesn't do anything.
+	The run program is the heart of the Cerberus Test Control System,
+	as an interpreter of test control files and a manager of running
+	tests.  It requires a test control file, either through standard
+	input or as a command line parameter.
+
+2.7 The memory tester shows "Test Configuration Error" on my machine.
+	If you have a small machine (<64 MB RAM) or one without swap
+	space you may have to change the memory tester defaults.
+	See the memtst test information in runin/README.tests.
+	Also be sure you have compiled the software first (make).
+
+2.8 I'm getting all kinds of syntax errors!  This program sucks!
+	First, to run the manufacturing runin test, you must be root,
+	and a number of important programs (perl, fdisk, hdparm, df,
+	to name a few) must be in your path.  Not all of the modules
+	require root, but some used by the manufacturing test do, to do
+	hardware detection, et al.
+
+2.9 I'm running make install, but nothing is installed anywhere, I can't
+    find the binaries, etc.
+	Cerberus is not an ordinary software package in the sense that it
+	is "installed" like other programs on a system.  Perhaps it should
+	be one day, but it isn't for now.  Right now, make install simply
+	builds the appropriate binaries and installs them in runin/bin and
+	runin.  Please see the README for the runin directory and the
+	Makefiles for more information on where everything goes.
+
+	NEW: There is now the capability to build RPMs of CTCS.
+	Use ctcs.spec in the root of the distribution.  Installed
+	files will be in /root/ctcs.
+
+2.10 Given 2.9, how do I install Cerberus?
+	If you untar the ctcs tarball/checked it out of CVS, you've
+	installed it.  In addition, a source RPM is now available for
+	your compiling pleasure.
+
+2.11 I can't seem to run the run command outside of the directory it
+     is in.
+	That's right, you can't.  Because the run command uses relative
+	paths it is some effort I haven't had time to expend to make
+	it work this way (you're welcome to, I may do this eventually
+	myself). Just cd first.  Yes, that's programmer laziness,
+	but I've got too much else to do :)
+
+2.12 The kernel test seems to run right sometimes, but sometimes missing
+     files occur.
+	Check for tmpwatch, especially if you are using the defaults.
+	tmpwatch, a program run from cron to clean temporary directories, 
+	has been responsible for this in the past.  One way to be sure 
+	to avoid this is to kill cron before running the test, but 
+	that's overkill and shouldn't be necessary with a "correct"
+	tmpwatch configuration.
+
+2.13 What are the best command-line parameters for testing [x]?
+	The newer revisions of the CTCS test generator have a large number
+	of command line options.  Review the newburn help for more
+	information.
+	Here are some suggested combinations to try for different test
+	types.  This is by no means an exclusive list, I encourage you to
+	try several test varieties out for yourself.
+
+	Hardware Centric:
+		To all hardware centric tests, add -l if you have
+		hardware monitoring via lm_sensors installed and
+		configured.  Then, alarms triggered by the sensors
+		will show up as errors.
+
+		System Thermal/Power Loading:   -Ktrcijf
+			(enable fast kernel compiles, RR's thermal and
+			 cache memory exercisors, and all possible disks
+			 including floppy)
+		Core Stress (CPU/RAM/HDD):	-Kb
+			(enable fastkernel and benchmarking suite)
+		Core Thermal:       		-K
+			(enable fastkernel)
+		CPU/RAM only:       		-n
+			(disable disks)
+		CPU only:           		-nm
+			(disable disks, memory)
+		RAM only:			-nk
+			(disable disks, kernel compiles)
+		CPU/CacheRAM only:  		-nmtr
+			(disable disks, memory, enable RR's CPU/cache
+			tester)
+		HDD only:			-p [n] -km
+			(disable kernel, memory tests.  Enable 
+			non-destructive disk read/write test 
+			with [n] parallelization)
+	Software Centric:
+		Generic System Loading:		-V
+		System Loading w/Crash Watch:	-VS
+			(duplicate system logs synchronously)
+		System Stability:		-VCS
+			(duplicate system logs synchronously, use
+			crashme test).
+		NFS test:	-SkmnN hostname1:/share,hostname2:/dir
+			(activate data r/w testing over nfs, disable
+			other tests, duplicate system logs)
+		Disk/fs testing/loading:	-p 3 -mS
+			(activate data r/w testing on all r/w partitions,
+			disable memory test, duplicate system logs)
+
+2.14 I'm getting all kinds of MEMORY errors (many times per second).  What
+     gives?
+	If you're not using the manufacturing burn, you must compile
+	CTCS yourself.  Go to the top level directory and type "make".  If
+	it isn't compiled, missing programs might be detected as errors.
+
+2.15 The Per-Pass Memory Coverage has gone down since I upgraded to
+     the 1.3 series.
+	This is because I now have a greater understanding of how the Linux
+	VM system works.  The burn test generator now knows how to look into
+	/proc/sys/vm and reserve the appropriate amount of memory to avoid
+	massive swapping.  In reality, the coverage was always at
+	about the level now computed, it's just we used to be wasting
+	more time swapping.
+
+	To increase the memory coverage, you can adjust the following 
+	files:
+		/proc/sys/vm/buffermem
+		/proc/sys/vm/pagecache
+	Lowering the "borrow_percent" field in both of these will result
+	in more aggressive memory testing by the burn generator, but
+	may not be optimal for general system performance.
+
+	In the future I'll be adding a "VM killer" option that uses
+	the "min" fields instead of the borrow_percent field.
+
+
+
+*
+* Failure Interpretation
+*
+
+3.0 How do I interpret CTCS error messages?
+	Right now, while CTCS is very accurate at determining that
+	something is wrong (no false positives when configured
+	appropriately), determining exactly what is wrong is a bit of
+	a challenge.  View the logs (see 2.1 for location).  They're named
+	with the same name as the tests ("KCOMPILE", for example)
+	Currently, the most common error messages are:
+
+	DAC960C0/DMESG:  Errors detected by the DAC960 driver can
+	be problems with either the Mylex RAID controller or the
+	drives/backplanes attached to it.  The logs should contain
+	details about what is wrong.
+
+	NMI (DMESG/SYSLOG):  This usually says something like
+	"Dazed and confused, trying to continue" in the error logs.  This
+	almost always indicates a hardware fault -- usually memory.
+	On VA's 3500/4450 model, it might be a problem with the memory
+	riser card as well.
+
+	gcc: Internal compiler error (KCOMPILE):  signal 11 and signal 7
+	are often indicators of faulty memory.  Signal 4 sometimes
+	happens as well. If they are happening more frequently, a 
+	CPU cooling or cache RAM problems may be occurring.  RR's 
+	tools may be helpful narrowing this down (see runin/README.tests 
+	for more information on his modules).  While it's beginning to 
+	show its age, the sig11 FAQ is still a good resource for 
+	explaining why this happens and what you can do about
+	it:  http://metalab.unc.edu/pub/Linux/docs/faqs/GCC-SIG11-FAQ
+
+	This FAQ also has a lot of testimonial information and other
+	"common" error messages that also tend to show up during the
+	manufacturing burn.  This FAQ also planted a lot of seeds in
+	brains at VA, resulting in this fine hunk of code you see before
+	you.  :)
+
+	expected xxxxxxx, got xxxxxxx (MEMORY0):  This is the new memory
+	tester, and when it fails, it is _almost_ always a main memory
+	fault.  You can check the expected/got for the type of failure,
+	usually it is a single bit flip.  If the memory test is picking
+	up total garbage most of the time (not just single bit flipping),
+	you may have massive memory corruption due to screwed up page tables
+	or other software problems in the kernel.
+
+	Other common error messages are disk related (usually
+	DMESG/SYSLOG).  If the disk tests are failing with NO notice from
+	the kernel, you may have a software problem -- most disk drives
+	report read errors these days and these reports will show up in
+	the kernel logs.  However, if you have/suspect a problem with
+	the controller, it is possible that errors won't be picked up
+	in the logs.  For this, use the data tests (-p) that compute
+	checksums for you.
+
+3.1 Wait a minute, these tests can't tell me exactly where the
+hardware failed?
+	That's right.  One design tradeoff using the application layer for
+	testing is that I can't tell exactly which dimm or cache layer is
+	bad in a memory test, for example.  I would argue that it is 
+	logically impossible to do that anyway with a PC based test but we 
+	should at least give some suggestions as to a failure location.  
+	Modern PC hardware is approaching the level of complexity that it 
+	may be impossible to exactly pin down failures from this level.
+
+	New versions of the CTCS memory tester do some dangerous things
+	to work around this.  When a memory failure is found, the
+	tester parses /proc/kcore, attempting to find the physical page 
+        that the memory error occurs on.  While this (I've been told) 
+	could potentially cause system instability, I figure that if you 
+	have memory errors, your system is probably already unstable, and 
+	the attempt to find the physical page will be worth it.
+
+	Here are some things you can do to help this problem, and narrow
+	it down.   Remember, however, that this doesn't cover SW problems.
+	We're assuming the HW is bad here.
+
+	1)  Disable L2/L1 cache in the BIOS.  If your problem goes
+	    away, you may have to replace your CPU or MB.
+	2)  Disable some memory on the Linux command line.  Add mem=16M
+	    or some other amount smaller than your physical RAM.  If the
+	    problem goes away, you may be able to narrow down the problem
+	    by gradually increasing the amount of memory used for the
+	    test.
+	3)  Disable ECC/parity in the BIOS.  This is what other people
+	    often recommend, but I don't actually recommend it myself.
+	    Modern high-density memory has ECC for a reason -- because
+	    single bit flips are normal (unless you're in a cosmic
+	    ray bunker deep underground) and will happen.  Without parity,
+	    you won't have the NMIs that can clue you to something wrong.
+
+	    However, if you do this, and the problem goes away, you may
+	    have trouble with your ECC circuitry/bits on your memory or
+	    motherboard.
+
+	    There are also some kernel drivers that can give you
+	    information about ECC memory failure.  See
+	    http://www.anime.net/~goemon/linux-ecc/ for such a driver.
+	    Error messages noted by the driver in the system log
+	    will be picked up by CTCS's log parsers.
+	4)  Increase memory access wait times.  If this helps, you may have
+	    stress problems with your RAM or memory controller.  Some
+	    nice motherboards from vendors like Abit allow you to fine
+	    tune memory timings and utilization with a fine degree of
+	    granularity.  Remember that timing settings to failure rate
+	    is NOT necessarily a linear function, you may find that only
+	    a tiny adjustment will change reliability drastically.
+	5)  Decrease CPU clock speed/memory bus clock speed.  Some
+	    motherboards actually allow you to adjust clock speeds with
+	    fine increments in the BIOS.  A slight tuning error while
+	    overclocking (for example) can result in failures.  Back off
+	    a little bit and see if the frequency/type of failures
+	    reduces in severity.  Unfortunately, as above, speed vs 
+	    errors is not usually a linear function.
+	6)  Check power supply voltage levels.  If your power supply
+	    voltage is off by more than 10%, you will probably start
+	    to encounter errors and possibly lockups -- maybe even
+	    permanent HW damage.  Check the core voltage, I/O, 5, and 12
+	    volt lines to insure that they're within tolerances.  A good
+	    rule of thumb is to fail anything outside of 5% of spec.
+	    Many mainboards have sensor packages -- configure lm_sensors
+	    for your motherboard, set your alarms, and use the sensors
+	    module in CTCS to keep an eye on things during burn.  If
+	    you're encountering slight stability problems while 
+	    overclocking, increasing CPU and/or I/O voltage can sometimes 
+	    help, but if you fry your CPU, don't blame me.
+	7)  Check power supply amperage.  Insure that the P/S has capacity
+	    enough for your system at maximum load.  The burn test is
+	    very effective at getting system components up to near
+	    maximum current draw, and if you're power supply isn't up to
+	    par you might encounter crashes or even smoke the P/S or
+	    other components.  That's happened before, hence the
+	    fire warning at the top of some of my recent announcements.
+	8)  Check thermals.  Insure that your system is not out of spec.
+	    CPU core/memory temps above 50C are very likely to cause 
+	    problems.  Incorrectly installed heatsinks, failed fans,
+	    and the weather can all affect how your system performs.
+	    Modern systems have hardware monitoring, get yourself some
+	    thermistors and go to work.  Check your temps while burn is
+	    running against the manufacturer's specifications.
+
+	    If you become obsessed about thermal monitoring, I recommend
+	    getting a device like the DigitalDoc5 by MacPower as well as 
+	    using the lm_sensors patches.
+
+3.2	The KCOMPILE test is failing 90-100% of the time, but my system
+	seems otherwise stable.
+
+	The almost (but not quite) 100% failure problem is usually
+	due to a clock skew.  Check the KCOMPILE log.  If it says
+	clock skew all over the place, you probably don't have your
+	system time set to a reasonable value, and that will
+	screw up the parallel builds of the kernel attempted by the
+	KCOMPILE test.  Set your system clock right, and reattempt.
+
+	Also check for free disk space on the partition being used for
+	the kernel compile.  If there isn't enough room, you'll find
+	problems.  By default, the /home partition is used.
+	
+3.3     What do the purple TEST INTERNAL ERROR messages mean?
+
+	When the message "TEST INTERNAL ERROR" appears in purple the
+	test software has had a problem initializing the software.  This
+	is usually due to a problem with system or test configuration,
+	and usually ISN'T bad hardware or software (if your system is
+	bad enough the test system can't initialize, you'd know it already.)
+	Check the logs for the specific tests for error messages.  Usually,
+	this means you have missing software (run check-requirements), full
+	disk partitions, or other easily correctable problems.

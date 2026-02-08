@@ -1,0 +1,6 @@
+#!/bin/bash
+x=`./bin/random`
+echo crashme test value $x
+./bin/crashme +1024 $x 1000 >>/dev/null
+exit 0
+

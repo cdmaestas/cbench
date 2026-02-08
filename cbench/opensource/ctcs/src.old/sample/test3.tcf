@@ -1,0 +1,11 @@
+# this is a test
+
+timer 5m
+
+begin
+fg 3 COUNTING test1 1 2 3
+fg 4 SLEEPING test1 3 4
+fg 5 DUFUS test1 8 9
+fg 6 DUMMY test2 93 4 1
+loop
+

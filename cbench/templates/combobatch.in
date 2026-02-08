@@ -1,0 +1,20 @@
+# combination batch (combobatch) Cbench internal job template
+# this isn't a real job per se
+# NOTE: bash syntax is used here
+
+# Here we'll record details about the particular combobatch invocation
+#
+# COMBOBATCH_DETAILS_HERE
+#
+
+export CBENCHTEST=CBENCHTEST_HERE
+export CBENCHOME=CBENCHOME_HERE
+
+export IDENT=IDENT_HERE
+export TESTSET=TESTSET_NAME_HERE
+
+
+cd $CBENCHTEST/$TESTSET
+
+./"$TESTSET"_start_jobs.pl --interactive --match MATCH_HERE --ident $IDENT --minprocs MINPROCS_HERE --maxprocs MAXPROCS_HERE --repeat REPEAT_HERE --match MATCH_HERE --delay 30
+

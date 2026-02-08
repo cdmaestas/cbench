@@ -1,0 +1,89 @@
+\documentclass[landscape]{article}
+\usepackage{graphicx,float,wrapfig}
+\usepackage{listings}
+\usepackage[usenames,dvipsnames]{color}
+% stuff for code listing
+\lstset{language=C,rulesepcolor=\color{Gray},frame=shadowbox,
+        numbers=left,firstnumber=1,numberstyle=\tiny\color{Blue},
+        stepnumber=1,framexleftmargin=6mm,basicstyle=\small\ttfamily}
+
+% insert a file into a listing
+\newcommand{\csourcefile}[2]
+  {\begin{itemize}\item[]\lstinputlisting[caption=#2,label=#1]{#1}\end{itemize}}
+
+% Set margins
+%%% for landscape mode %%%
+%\setlength{\textwidth}{10in}
+%\setlength{\textheight}{7.5in}
+%\setlength{\evensidemargin}{0in}
+%\setlength{\oddsidemargin}{0in}
+%\setlength{\topmargin}{0in}
+
+%%% for portrait mode %%%
+%\topmargin=-0.45in          %
+%\evensidemargin=0in         %
+%\oddsidemargin=0in          %
+%\textwidth=6.5in            %
+%\textheight=9.0in           %
+%\headsep=0.25in             %
+
+\setlength{\parindent}{0in} % we don't want indents on paragraphs
+\setlength{\parskip}{7pt}
+
+% Fonts 
+\usepackage{mathpazo}       % math & rm
+\linespread{1.05}           % Palatino needs more leading (space between lines)
+\usepackage[scaled]{helvet} % ss
+\usepackage{courier}        % tt
+\normalfont
+\usepackage[T1]{fontenc}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{caption}
+\usepackage[cm]{fullpage} % use small (1.5 cm) margins
+\usepackage{colortbl}
+%\usepackage{nonfloat} % only exists in newer versions of TeXLive
+
+
+%\title{Cbench Single Node Benchmark Report for \texttt{}}
+TITLE_HERE
+%\author{\texttt{Cbench}}
+
+\begin{document}
+
+% http://mintaka.sdsu.edu/GF/bibliog/latex/floats.html
+% Alter some LaTeX defaults for better treatment of figures:
+% See p.105 of ``TeX Unbound'' for suggested values.
+%See pp. 199-200 of Lamport's ``LaTeX'' book for details.
+%   General parameters, for ALL pages:
+\renewcommand{\topfraction}{0.9}    % max fraction of floats at top
+\renewcommand{\bottomfraction}{0.8} % max fraction of floats at bottom
+%   Parameters for TEXT pages (not float pages):
+\setcounter{topnumber}{2}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}     % 2 may work better
+\setcounter{dbltopnumber}{2}    % for 2-column pages
+\renewcommand{\dbltopfraction}{0.9} % fit big float above 2-col. text
+\renewcommand{\textfraction}{0.07}  % allow minimal text w. figs
+%   Parameters for FLOAT pages (not text pages):
+\renewcommand{\floatpagefraction}{0.7}  % require fuller float pages
+% N.B.: floatpagefraction MUST be less than topfraction !!
+\renewcommand{\dblfloatpagefraction}{0.7}   % require fuller float pages
+% remember to use [htp] or [htpb] for placement
+
+\definecolor{snbgreen}{RGB}{102,228,128}
+\definecolor{snbyellow}{RGB}{255,255,118}
+\definecolor{snbred}{RGB}{255,124,124}
+
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+CORE_BODY_HERE
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\end{document}
+
+
+
+

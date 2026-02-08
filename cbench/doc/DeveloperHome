@@ -1,0 +1,64 @@
+= Cbench Developers Home =
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+The Cbench repository setup is separated into two different repositories:
+ 1. Opensource repository: contains opensource licensed code only, which can be redistributed
+ 1. Restricted repository: contains non-opensource code, code that cannot be distributed, code with proprietary licenses, or code with unknown licenses
+
+The main Cbench repository is the opensource one and is hosted on Sourceforge (as of 03-07-2008). The repository URL is https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench. Anybody now has read-only access to the repository.  Checkin access to the repository is now controlled by the Sourceforge mechanisms.  You'll need to register a Sourceforge account and then email the cbench-sf-devel list or one of the project admins asking for checkin access to be granted (make sure you tell us what your Sourceforge account name is).
+
+If you still have checkout trees from the previous Cbench Subversion URL (https://cbench.sandia.gov/SVNnew/trunk/cbench), here is how to easily switch them to the Sourceforge location:
+{{{
+# svn switch --relocate https://cbench.sandia.gov/SVNnew/trunk/cbench https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench
+}}}
+
+The Cbench repository moved to Sourceforge so that collaboration outside the networks of Sandia National Labs can occur more easily.  To this end, a shiny new clean Subversion respository was created (suitable for import to Sourceforge) and the historical opensource repository for Cbench was deprecated on August 14th, 2007 (at revision 1179).  The deprecated repository is read-only at this point.
+
+
+== Testing repository access ==
+{{{
+svn list https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench
+}}}
+
+If you are having trouble from the ''Sandia SRN'', try adding the following lines to the [global] section of your $HOME/.subversion/servers file:
+
+{{{
+http-proxy-host = wwwproxy.sandia.gov
+http-proxy-port = 80
+}}}
+[[BR]]
+
+== Branches, Versions in the Repository ==
+=== Version 1.2 Development ===
+As of August 14, 2007, the trunk of the Cbench repository, https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench, is home to the development work for Cbench version 1.2.  The trunk is fair game to be broken and played with.  If you need to isolate yourself against breakage for a time period, make a private branch and work in it until you can merge your changes back into the trunk.
+
+Checkout from the trunk:
+{{{
+svn co https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench
+}}}
+
+=== Version 1.1.X Branch ===
+The 1.1.X series of code for Cbench is in the ''cbench-1_1_X'' branch.  The URL is https://cbench.svn.sourceforge.net/svnroot/cbench/branches/cbench-1_1_X .
+The current release is 1.1.5.  All work in the branch should be bugfix only at this point.  No new non-bugfix releases are planned for the 1.1.X series.
+
+Checkout from the branch:
+{{{
+svn co https://cbench.svn.sourceforge.net/svnroot/cbench/branches/cbench-1_1_X
+}}}
+
+== Cbench Restricted Repository ==
+The restricted Cbench tree is isolated within Sandia networks, see https://synapse.sandia.gov/wiki/CbenchInternalHome for info.
+
+== Mailing Lists ==
+We are using Sourceforge to host the Cbench mailing list(s).  Currently there is just the cbench-sf-devel mailing list that sees Subversion checkin traffic as well as any large group technical discussions.
+
+== Cbench and Sourceforge Projects ==
+The Cbench project on Sourceforge is named ''cbench'', http://sourceforge.net/projects/cbench/ . The ''cbench-sf'' project was the original SF project we used (until we took over the ''cbench'' project) and still hosts the Cbench mailing list.
+
+== Cbench Trac Site Notes ==
+The live Cbench TRAC site is migrating to the Sourceforge Hosted Apps setup, https://apps.sourceforge.net/trac/cbench/ .  This is making steady progress as of March 2009.
+
+
+ 	  	 

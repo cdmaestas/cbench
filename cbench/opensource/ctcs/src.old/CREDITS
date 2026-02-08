@@ -1,0 +1,25 @@
+   Cerberus Test Control System
+	Author:	Jason T. Collins <jcollins@valinux.com> for VA Linux Systems
+	Contributing Sources:
+		Jason T. Collins <moby1gnubie@yahoo.com> for himself :)
+		Samuel J. Flory (maintaince releases) <sflory@rackable.com>
+	Due to the layoffs at VA, many of the following valinux.com e-mail
+	addresses are incorrect. I will attempt to remedy this.
+		Derrick Lee (LVM support) <derrick@valinux.com>
+		Larry M. Augustin (original memory test) <lma@valinux.com>
+		Vinh Bui (TCS testing) <vbui@valinux.com>
+		Greg Kucharo (TCS testing) <greg@valinux.com>
+		Chip Salzenberg (perl god) <chip@valinux.com>
+		
+   The following components used in the Cerberus Test Control System were
+   authored by outside sources:
+	flushb.c -- from e2fsprogs package, under the GPL.
+	cpuburn-1.2 -- Robert Redelmeier <redelm@ev1.net>, GPL.
+        crashme.c -- from crashme-2.4 by George C. Carrette, free to modify
+        	with no restrictions except maintenance of the copyright notice.
+        	(See runin/src/crashme/crashme.c for details)
+	
+   Please do not contact the authors of these programs about problems
+   with the test suite -- in many cases I have modified the software myself
+   and it is inappropriate to contact the original authors about problems
+   I may have caused.

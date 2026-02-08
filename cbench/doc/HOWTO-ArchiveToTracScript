@@ -1,0 +1,58 @@
+= Quick HOWTO on using the archive_data_to_trac.pl script =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+The [source:trunk/cbench/tools/archive_data_for_trac.pl script] is just a helper script to assist in "archiving" data to a Trac based wiki page.  It makes some assumptions but it might be useful to others maybe.
+
+Basically you output parse and gnuplot and then archive the gnuplot related files, i.e. the .cmd, .dat, .png, etc files, to a directory with optional renaming enroute.  Then the script generates some TRAC wiki text for you to cut and paste.
+
+So, here I'll do some output parsing in the latency testset
+{{{
+[jbogden@synapse latency]$ pwd
+/scratchsky3/cbench_data/tbird/cbench-test-systime-sept18/latency
+
+[jbogden@synapse latency]$ $CBENCHOME/tools/output_parse_generic.pl  --collapse 1to1opt --usecwd  --listfound --match rotlat-1ppn --gnuplot  --testset latency --ident 1to1opt-01,1to1opt-02 --yrange 0,300
+}}}
+
+Then I'm going to archive the data with the following conditions:
+ * output parse gnuplot files are named latency.* (--filebase)
+ * URL base is https://synapse.sandia.gov (--urlbase)
+ * relative dir for URLs is static/cbench_data/tbird/systime-sept18 (--urldir)
+ * destination directory is /data2/home/cbench/htdocs/cbench_data/tbird/systime-sept18 (--destdir)
+ * rename files to 1to1opt.* (--destbase)
+ * --description is used as the text for the bullet created in the wiki text
+ * --ident controls how many spaces are the base indentation level, which is used for matching with existing indentation levels in a wiki page 
+{{{
+[jbogden@synapse latency]$ $CBENCHOME/tools/archive_data_for_trac.pl --filebase latency --urlbase "https://synapse.sandia.gov" --urldir "static/cbench_data/tbird/systime-sept18" --destdir "/data2/home/cbench/htdocs/cbench_data/tbird/systime-sept18" --destbase 1to1opt --description "1-to-1 optimized (single job on the machine) latency results" --indent 3
+`latency.cmd' -> `/data2/home/cbench/htdocs/cbench_data/tbird/systime-sept18/1to1opt.cmd'
+`latency.dat' -> `/data2/home/cbench/htdocs/cbench_data/tbird/systime-sept18/1to1opt.dat'
+`latency.ps' -> `/data2/home/cbench/htdocs/cbench_data/tbird/systime-sept18/1to1opt.ps'
+`latency.png' -> `/data2/home/cbench/htdocs/cbench_data/tbird/systime-sept18/1to1opt.png'
+}}}
+
+A 1to1opt.jpg file will also be created in the --destdir directory as well as a wiki.txt file that contains
+{{{
+   * 1-to-1 optimized (single job on the machine) latency results
+     * raw files for graph below
+       * [/static/cbench_data/tbird/systime-sept18//1to1opt.cmd gnuplot script], [/static/cbench_data/tbird/systime-sept18//1to1opt.dat gnuplot data], [/static/cbench_data/tbird/systime-sept18//1to1opt.ps ps image], [/static/cbench_data/tbird/systime-sept18//1to1opt.png png image],
+
+       [[Image(https://synapse.sandia.gov/static/cbench_data/tbird/systime-sept18/1to1opt.jpg)]]
+
+}}}
+which you can then cut and paste into a wiki page.  I'll paste it just below here
+----
+   * 1-to-1 optimized (single job on the machine) latency results
+     * raw files for graph below
+       * [/static/cbench_data/tbird/systime-sept18//1to1opt.cmd gnuplot script], [/static/cbench_data/tbird/systime-sept18//1to1opt.dat gnuplot data], [/static/cbench_data/tbird/systime-sept18//1to1opt.ps ps image], [/static/cbench_data/tbird/systime-sept18//1to1opt.png png image],
+
+       [[Image(https://synapse.sandia.gov/static/cbench_data/tbird/systime-sept18/1to1opt.jpg)]]
+
+----
+
+Clearly the --urlbase and --urldir need to be tweaked for your webserver setup.  But it assumes there is some directory tree to put static content with a URL alias to point to it.
+
+Works for me!
+
+ 	  	 

@@ -1,0 +1,12 @@
+Some notes about sPPM in Cbench:
+-------------------------------------------------------------------------------
+
+ * Options for building sPPM are specified in Makefile.cbench.  
+
+ * The problem size for sPPM is defined in iq.cbench.h, which is then symlinked 
+   in the source tree as iq.h before sppm is built.  The default problem size 
+   will run at 1.2-1.4 GB/thread, depending on the number of threads
+
+ * sync.cbench.h is necessary to avoid an error in the stock sync.h when built 
+   with certain compilers. It is symlinked in the source tree as sync.h before 
+   sppm is built.

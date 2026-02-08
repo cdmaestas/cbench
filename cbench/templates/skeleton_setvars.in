@@ -1,0 +1,41 @@
+# Generic skeleton job template file with many templated
+# variables set 
+#
+#
+# NOTE: bash syntax is used and required here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/mpi_hello
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/mpi_hello
+
+CBENCHOME=CBENCHOME_HERE
+CBENCHTEST=CBENCHTEST_HERE
+CBENCHTEST_BIN=CBENCHTEST_BIN_HERE
+TESTSET_PATH=TESTSET_PATH_HERE
+RUN_TYPE=RUN_TYPE_HERE
+JOBLAUNCHMETHOD=JOBLAUNCHMETHOD_HERE
+WALLTIME=WALLTIME_HERE
+NUM_PROCS=NUM_PROCS_HERE
+NUM_NODES=NUM_NODES_HERE
+NUM_PPN=NUM_PPN_HERE
+JOBNAME=JOBNAME_HERE
+IDENT=IDENT_HERE
+JOBLAUNCH_CMD=JOBLAUNCH_CMD_HERE
+TESTSET_NAME=TESTSET_NAME_HERE
+OMP_NUM_THREADS=NUM_THREADS_PER_PROCESS_HERE
+
+# here we construct the command line to run a hello world MPI binary
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/mpi_hello"
+
+# here is an example of a more complicated command line
+# CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/IMB-MPI1 -npmin NUM_PROCS_HERE sendrecv"
+
+# Here we run the command line we built using a Cbench function that
+# deals with the complexities of capturing STDOUT/STDERR output from
+# the MPI command. The complexity comes in because a Cbench job template
+# will be used to generate batch jobs and interactive jobs.  STDOUT/
+# STDERR output generally ends up in different places in the two
+# job execution modes.  If you use the cbench_run_cmd() function,
+# you won't have to worry about it...
+cbench_run_cmd $CMD
+

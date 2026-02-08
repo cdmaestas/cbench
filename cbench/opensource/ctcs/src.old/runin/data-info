@@ -1,0 +1,87 @@
+#!/bin/sh
+#
+# takes a device/partition and mounts it, read and writes to it, etc
+# data-info  : give partition, return partition, mount-point,
+# space available for testing
+
+SLEEPDELAY=60
+
+if [ -z "$1" ] ; then {
+	echo give me a device or NFS point
+	exit 2
+} ; fi
+
+device="$1"
+if [ -z "$2" ] ; then {
+	maxsize=0
+} ; else {
+	maxsize=$2
+} ; fi
+
+mkdir mountlock >>/dev/null 2>&1
+while [ $? != 0 ] ; do
+	sleep $[$RANDOM % 5]
+	mkdir mountlock >>/dev/null 2>&1
+done
+
+# ok if it is mounted already it should be in /proc/mounts
+mpoint=`mount | grep "$device " | head -n 1 | cut -f 3 -d ' '`
+
+if [ ! -e "$mpoint" ] ; then {
+	unset mpoint
+	while [ -z "$mpoint" ] ; do {
+		mpoint="/tmp/datamount.$RANDOM$RANDOM"
+		mkdir $mpoint
+		if [ $? != 0 ] ; then {
+			unset mpoint
+		} ; fi
+	} done
+	# try several methods
+	mountok=0
+	mount $device $mpoint >> /dev/null 2>&1
+	if [ $? != 0 ] ; then {
+		for i in `cat /proc/filesystems | grep -v nodev` ; do {
+			mount -t $i $device $mpoint >> /dev/null 2>&1
+			if [ $? = 0 ] ; then mountok=1 ; break ; fi
+		} ; done
+	} ; fi
+} ; fi
+
+rmdir mountlock
+
+# ok if it is mounted already it should be in /proc/mounts
+mpoint=`mount | grep "$device " | head -n 1 | cut -f 3 -d ' '`
+if [ ! -e "$mpoint" ] ; then {
+	echo error -- unable to mount $device >&2
+	exit 2
+} ; fi
+
+
+spacefree=`df -P | grep "$device " | sed 's/[ \t\n\r\f]* / /g' | head -n 1 | cut -f 4 -d ' '`
+if [ $spacefree -lt 256 ] ; then {
+	echo error -- insufficient space on $device >&2
+	exit 2
+} ; fi
+
+if [ "$maxsize" = 0 ] ; then
+	maxsize=$[($spacefree / 6)] 
+else
+	if [ "$spacefree" -le "$maxsize" ] ; then {
+		echo error -- specified size too large >&2
+		exit 2
+	} ; fi
+fi
+
+## it is no longer the responsibility of the data test to keep
+## this limitation in force.
+# keep the size of files under 2 GB.  This is an ext2fs limitation.
+#if [ $spacefree -gt $[1024*1024*2-1] ] ; then {
+#	spacefree=$[1024*1024*2-1]
+#} ; fi
+
+
+if [ `basename $0` = "sdata-info" ] ; then {
+	sleep $[$RANDOM % $SLEEPDELAY]
+} ; fi
+
+echo $1 $mpoint $maxsize $spacefree

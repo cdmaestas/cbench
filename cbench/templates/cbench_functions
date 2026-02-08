@@ -1,0 +1,135 @@
+# vim: syntax=sh tabstop=4
+#
+# This file contains Cbench common support for the bash based
+# job scripts used
+
+#
+# Some common routines that Cbench job scripts use to help deal
+# with where stdout and stderr output is captured
+cbench_run_cmd()
+{
+	local cmd=$@
+
+	# if $STDIN_FILE is defined, the job script wants the file
+	# pointed to by $STDIN_FILE to be used as STDIN to the command line
+
+	# if $TEE_FILE is defined, the job script wants the output of the
+	# command line to be 'teed' to another file in addition to the normal
+	# piping/teeing we do behind the scenes
+
+
+	# add stdin file to command line if required
+	if [ -n "$STDIN_FILE" ] ; then
+		# echo out the command-line we'll exec for posterity
+		cbench_echo "Cbench joblaunch cmd line: $cmd < $STDIN_FILE"
+
+		# the simple batch mode case, we don't worry about catching any output
+		# unless TEE_FILE is defined
+		if [ "$CBENCH_RUN_TYPE" == "BATCH" -a -z "$TEE_FILE" ]; then
+		    $cmd < $STDIN_FILE
+			return
+		elif [ "$CBENCH_RUN_TYPE" == "BATCH" -a -n "$TEE_FILE" ]; then
+		    $cmd < $STDIN_FILE | tee $TEE_FILE
+			return
+		fi
+
+		# the interactive mode case with echoing of the output requested
+		if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a "$CBENCH_ECHO_OUTPUT" == "YES" -a -z "$TEE_FILE" ]; then
+		    $cmd < $STDIN_FILE 2>&1 | tee -a $STDOUT_FILE 
+			return
+		elif [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a "$CBENCH_ECHO_OUTPUT" == "YES" -a -n "$TEE_FILE" ]; then
+		    $cmd < $STDIN_FILE 2>&1 | tee $TEE_FILE | tee -a $STDOUT_FILE 
+			return
+		fi
+
+		# the simple interactive mode case with just catching the output to file
+		if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a -z "$CBENCH_ECHO_OUTPUT" -a -z "$TEE_FILE"  ]; then
+		    $cmd < $STDIN_FILE >> $STDOUT_FILE 2>&1
+			return
+		elif [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a -z "$CBENCH_ECHO_OUTPUT" -a -n "$TEE_FILE" ]; then
+		    $cmd < $STDIN_FILE 2>&1 | tee $TEE_FILE >> $STDOUT_FILE
+			return
+		fi
+	else
+		# echo out the command-line we'll exec for posterity
+		cbench_echo "Cbench joblaunch cmd line: $cmd"
+
+		# the simple batch mode case, we don't worry about catching any output
+		if [ "$CBENCH_RUN_TYPE" == "BATCH" -a -z "$TEE_FILE" ]; then
+		    $cmd
+			return
+		elif [ "$CBENCH_RUN_TYPE" == "BATCH" -a -n "$TEE_FILE" ]; then
+		    $cmd | tee $TEE_FILE
+			return
+		fi
+
+		# the interactive mode case with echoing of the output requested
+		if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a "$CBENCH_ECHO_OUTPUT" == "YES" -a -z "$TEE_FILE" ]; then
+		    $cmd 2>&1 | tee -a $STDOUT_FILE 
+			return
+		elif [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a "$CBENCH_ECHO_OUTPUT" == "YES" -a -n "$TEE_FILE" ]; then
+		    $cmd 2>&1 | tee $TEE_FILE | tee -a $STDOUT_FILE 
+			return
+		fi
+
+		# the simple interactive mode case with just catching the output to file
+		if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a -z "$CBENCH_ECHO_OUTPUT" -a -z "$TEE_FILE"  ]; then
+		    $cmd >> $STDOUT_FILE 2>&1
+			return
+		elif [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a -z "$CBENCH_ECHO_OUTPUT" -a -n "$TEE_FILE"  ]; then
+		    $cmd 2>&1 | tee $TEE_FILE >> $STDOUT_FILE
+			return
+		fi
+	fi
+}
+
+cbench_echo()
+{
+	local string=$@
+
+ 	# the simple batch mode case, we don't worry about catching any output
+    if [ "$CBENCH_RUN_TYPE" == "BATCH" ]; then
+	    echo "$string"
+		return
+	fi
+
+   	# the interactive mode case with echoing of the output requested
+    if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a "$CBENCH_ECHO_OUTPUT" == "YES" ]; then
+	    echo "$string" 2>&1 | tee -a $STDOUT_FILE 
+		return
+	fi
+
+	# the simple interactive mode case with just catching the output to file
+    if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" -a -z "$CBENCH_ECHO_OUTPUT" ]; then
+	    echo "$string" >> $STDOUT_FILE 2>&1
+	fi
+}
+
+cbench_check_for_bin() {
+    
+    local cbench_bin=$@
+
+    if [ ! -e $cbench_bin ]; then
+        cbench_echo "CBENCH NOTICE: $cbench_bin NOT BUILT"
+        exit 1
+    elif [ ! -x $cbench_bin ]; then
+        cbench_echo "CBENCH NOTICE: $cbench_bin NOT EXECUTABLE BY USER"
+        exit 1
+    else
+        # use ldd to capture the dynamic libraries used by this binary
+        cbench_echo "============ ldd of Cbench binary ============"
+        cbench_echo "ldd $cbench_bin:"
+        cbench_echo "`ldd $cbench_bin`"
+        cbench_echo "==============================================="
+        cbench_echo ""
+    fi
+}
+
+cbench_runin_tempdir()
+{
+	# make a uniquely named directory to allow a job to isolate itself
+	# from other jobs
+	TEMPDIR="job$JOBID"
+	mkdir -p $PWD/$TEMPDIR
+	cd $TEMPDIR
+}

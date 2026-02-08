@@ -1,0 +1,250 @@
+# -*-Shell-script-*-
+#
+# os_functions     This file contains os functions to be used by most or all
+#                     shell scripts in the nodechecks
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+# arg 1 is kernel to check for
+check_kernel_version() {
+	local kernel_version=$1
+	if [ -z $1 ]; then
+		echo check_kernel_version KERNELNAME
+		exit 1
+	fi
+	echo
+	echo -n "Checking Kernel Version $kernel_version:"
+	if [ $kernel_version != `uname -r` ]; then
+		echo_failure
+	else 
+		echo_success
+	fi
+}
+
+updated_kernel_version() {
+	local kernel_version=$1
+
+	[ $DOFIXIT -ne 1 ] && return 1
+
+	echo "Updating kernel to $kernel_version..."
+
+	up2date --nox -i -f $kernel_version
+}
+
+
+# arg 1 is num of procs to check for
+check_proc_count() {
+	local cnt=$1
+    if [ -z $1 ]; then
+        echo check_proc_count number
+        exit 1
+    fi
+	echo
+	echo -n "Checking Processor Count:"
+	if [ `cat /proc/cpuinfo | grep processor | wc -l` -ne $cnt ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+# arg1 is a dir to check write, touch, ...
+check_dir_sanity() {
+	local dir=$1
+	if [ ! -d $dir ]; then
+		echo "$dir is invalid:"
+		exit 1
+	fi
+	echo
+	echo "Checking for writeable areas in $dir"
+	echo -n "File touch test :"
+	touch $dir/g
+	if [ $? -ne 0 ]; then
+		echo_failure
+		exit 1
+	else
+		echo_success
+	fi
+
+	echo
+	echo -n "File removal test :"
+	rm -f $dir/g
+	if [ $? -ne 0 ]; then
+		echo_failure
+		exit 1
+	else
+		echo_success
+	fi
+}
+
+check_pbs_mom_init_state() {
+	echo
+	echo -n "Checking pbs_mom init state:"
+	if [ -x /etc/rc.d/init.d/pbs_mom ]; then
+		/sbin/chkconfig --list pbs_mom
+		if [ $? -eq 0 ]; then
+			echo_success
+		else
+			echo_failure
+		fi
+	else
+			echo_failure
+	fi
+}
+
+update_pbs_mom_init_state() {
+	/sbin/chkconfig --add pbs_mom
+	/sbin/chkconfig pbs_mom on
+	echo -n "Fixed pbs_mom state:"
+	echo_success
+}
+
+start_pbs_mom() {
+	if [ `/sbin/service pbs_mom status | awk '{print $3}'` = stopped ]; then
+		/sbin/chkconfig pbs_mom on
+		/sbin/service pbs_mom start
+	fi
+}
+
+# arg1 is number of nfs mounts to see
+check_nfs_mount_count() {
+	local count=$1
+	if [ -z $1 ]; then
+		echo "check_nfs_mount_count COUNT"
+		exit 1
+	fi
+	echo
+	echo -n "Checking for $count NFS mounts:"
+	if [ `cat /proc/mounts | awk '{print $3}' | grep -w nfs | wc -l` -ne $count ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+# arg1 would be mount to check for
+check_for_mount() {
+	local mnt=$1
+    if [ -z $1 ]; then
+        echo "check_mount MOUNT"
+        exit 1
+    fi 
+    echo
+    echo -n "Checking for mount $mnt: "
+	cat /proc/mounts | grep -w $mnt > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo_failure
+		# If DOFIXIT is set, try to mount the sucker
+		[ $DOFIXIT -ne 1 ] && return 1
+		echo
+		echo "  Trying to fix $mnt mount..."
+		mount $mnt
+		return $?
+    else 
+        echo_success
+		return 0
+    fi
+}
+
+# no args required
+check_sysctl() {
+    local key val junk
+    local SYSCTL="/sbin/sysctl"
+    local tmpfile=`mktemp`
+    echo
+    echo -n "Checking sysctl settings: "
+
+    # ensure that what's in /etc/sysctl.conf matches what's in /proc/sys/...
+    sed 's/#.*//' < /etc/sysctl.conf | grep = | tr -s [:blank:] | tr '\t' ' ' | while read key junk val ; do
+        actual_val=`$SYSCTL -n $key | tr -s [:blank:] | tr '\t' ' '`
+        if [ "$actual_val" != "$val" ] ; then
+            echo_failure
+            echo
+            echo "'$key' is incorrect.  sysctl.conf says '$val', actual value is '$actual_val'"
+            echo "incorrect" > $tmpfile
+        fi
+    done
+
+    grep incorrect $tmpfile >/dev/null
+    if [ $? -eq 0 ]; then
+        echo
+        echo -n "Fixing sysctl settings: "
+	# apply all settings from /etc/sysctl.conf
+        $SYSCTL -q -p
+
+        if [ $? -ne 0 ]; then
+		echo_failure
+	else 
+		echo_success
+	fi
+    else
+	echo_success
+    fi
+
+    /bin/rm -f $tmpfile
+}
+
+# check for " D " states
+check_ps_sanity() {
+    ps xau --forest | grep D | grep -v grep
+	if [ $? -eq 0 ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+# check to a src ip, check managemnet, hpc networks -cdm
+check_ping_state() {
+	local pingcmd=$1
+	local pingcnt=$2
+	local node=$3
+	local mgr=$4
+	if [ $pingcmd = "/usr/sbin/ipmiping" ]; then
+		preping="ssh $mgr"
+	fi
+	echo  -n "Checking $pingcmd $pingcnt times: "
+	$preping $pingcmd -c $pingcnt $node > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		echo_success 
+	else
+		echo_failure 
+	fi
+}
+
+# check an eth link speed, using ethtool
+check_eth_link_speed() {
+	local interface=$1
+	local speed=$2
+	echo -n "Checking network link $interface for speed of $speed: "
+	if [ ! -x /sbin/ethtool ]; then
+		echo_failure 
+	elif [ `/sbin/ethtool $interface | grep Speed | awk '{print $2}'` = $speed ]; then
+		echo_success 
+	else
+		echo_failure 
+	fi
+}

@@ -1,0 +1,8 @@
+MPI_INCLUDE= $(MPI_HOME)/include
+LIB_PATH    = -L$(MPI_HOME)/lib/uxpv/mplib2
+LIBS        = -lmpi -lmp -lpx -lelf -lm -L/usr/lang/mpi2/lib -lspfs -lsocket  -lrpcsvc -lnsl -lgen 
+CC          =  vcc
+OPTFLAGS    = -O -x - -K 4,lib,ARG,a4 -Wv,-Om
+CLINKER     =  vcc -Wl,-J,-P,-t,-dy
+LDFLAGS     =
+CPPFLAGS    = -DnoCHECK -I$(MPI_HOME)/INCLUDE 

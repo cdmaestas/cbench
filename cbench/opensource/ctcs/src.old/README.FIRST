@@ -1,0 +1,124 @@
+Welcome to the Cerberus Test Control System.
+
+Please read as much documentation as possible before attempting to use
+this program.
+
+First, however, heed this warning:
+
+THE CERBERUS TEST CONTROL SYSTEM CAN BE CONFIGURED IN WAYS THAT MAY
+DAMAGE HARDWARE, SOFTWARE, OR DATA.  IT IS NOT RECOMMENDED TO RUN THIS
+SOFTWARE ON A MACHINE USED FOR PRODUCTIVE PURPOSES, OR ON HARDWARE YOU DO
+NOT WANT TO DESTROY.
+
+In fact, one of the reasons behind the release of the test control system
+under the GPL is that some critical filesystem corruption bugs were
+revealed by using the VA test generator.  Even in standard mode, the VA
+runin test may cause your system to crash or lose data, or possibly even
+damage or reveal damage in hard drives or other devices.
+
+In default mode, the burn-in test generator should not cause system corruption
+if you are running a perfectly stable system (however, see the GPL
+for the NO WARRANTY notice..).  However, since Cerberus does things to
+a system that are rather unusual, there's no way to know whether your
+system or data may be affected abnormally before running the tests.  Hence
+the warning at the top.  It should also be noted that the developer runs
+this on his own workstation regularly during development, so most of the time,
+it is safe.  Just be careful!
+
+Now, the test control system can be configured in innocuous ways, or
+to do tests with modules that have nothing to do with system qualification
+tests in general or VA's in particular.  This usefulness is another reason
+for release under the terms of the GPL.
+
+
+Quick Start for newbies trying to run VA's manufacturing burn:
+	1.  Unpackage CTCS and cd to the directory containing "newburn".
+	2.  su to root, insuring that /usr/sbin and /sbin are in your
+	    path.
+	3.  Run ./newburn and watch for error messages.  If you're missing
+	    essential programs, it will warn you.  Install the software
+	    it requests, and try again.
+
+Quick Start for the CTCS architecture:
+	If you just want to see what the control program looks like while
+	running, there is a demo "dummy" test control file or two you 
+	can try.
+	1.  Copy sample/test.tcf to the current directory.
+	2.  View it.  Notice the tests, variables, and timers
+	    that are set.  "test1" and "test2" are not really
+	    tests of anything, they just randomly return success
+	    or failure.
+	3.  Now run it.  Type ./run test.tcf.
+	4.  The test will be initialized.  You will see a timer running
+	    for several minutes.  You may also see warning messages
+	    about the errors "detected" by the tests.
+	5.  After a couple of minutes the test will complete and
+	    show a report.
+	6.  To check the logs of the tests, you can cd into
+	    .test.tcf.log.### where ### is some random number, and
+	    view the files there.
+	7.  Note that after the test is completed, trying to run
+	    it again will result in the report being redisplayed.
+
+Here's a description of the various components of the Cerberus Test
+Control System:
+
+burnreset
+	Backup VA's manufacturing burn data (.newburn.tcf.log.####)
+	to a directory .newburn.old.nn where nn is a number starting
+	at 1 and incrementing each time you run burnreset.  Also
+	resets the test so you don't have to manually delete things every
+	time.
+
+quickfix
+	Saves existing newurn.tcf file, and does a burnreset.  This will
+	fix installations screwed when power is lost in the middle of
+	tests.
+
+newburn [--force] [opts] [time]		
+	VA's manufacturing run-in program.  This program
+	should be used with extreme caution, with the caveats
+	listed above.  It creates tests that should work on VA
+	hardware, but other types of machines (especially 
+	small machines) may not have the resources
+	for the test to run correctly.  Don't run this unless you
+	know for sure what you're doing.
+        Use -h for help. If you change options, this will be 
+	detected and you will be asked about it.
+	This program must be run as root, with /sbin and /usr/sbin
+	in the path.
+	--force		Override the detection of software necessary
+			to run Cerberus.  This might break the software
+			badly, so be warned.
+
+newburn-generator [opts] [time]
+	This program generates the VA manufacturing test control file.
+	It uses the same options as newburn (in fact, newburn simply
+	passes the options to this program), and must also
+	be run as root in order to run fdisk and friends.
+	The test control file is printed to standard output, error
+	messages to standard error.
+
+run [test control file] [test control file] [...]
+	The run command parses one or more test control files and 
+	executes the requested test, keeping track of state 
+	information in a hidden subdirectory keyed to the name of
+	the test control file.  It must be run as root only if
+	the tests requested in the control file require this
+	(this IS needed for the VA manufacturing test).
+	This program must be run from it's own directory in
+	order to properly find the runin subdirectory and state
+	information.
+
+runin/runtest [x] [test] [test-params]
+	This is a middle-level program that handles the iteration
+	of individual tests.  It runs the specified test with 
+	parameters X times, or infinitely long if X is 0.
+	See runin/README.runtest for further details.
+
+The other components are modules of the above programs, and their use
+should be sufficiently obvious -- most are documented by other files
+in this package.
+
+
+Jason

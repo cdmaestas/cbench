@@ -1,0 +1,2 @@
+-Fix broken -p option
+-Make diffkernel test use all mounted file systems with enough space.

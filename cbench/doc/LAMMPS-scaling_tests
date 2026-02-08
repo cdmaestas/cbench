@@ -1,0 +1,22 @@
+= LAMMPS Scaling Tests =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+== Rhodo.scaled runtime scaling ==
+
+[[Image(runtime_rhodo_scaling.png)]]
+
+||'''Steps''' || '''Real Time (min)'''  || '''CPU Loop Time (min)'''||
+||100    || 18.99      || 17.99        ||
+||200    || 34.45      || 33.76        ||
+||300    || 52.46      || 51.79        ||
+||500    || 88.39      || 87.67        ||
+||1000   || 185.4      || 184.72       ||
+
+
+ * Runtime scales linearly with the number of steps specified in the input deck file
+ * Runtime can also be scaled by increasing problem size, if desired
+
+ 	  	 

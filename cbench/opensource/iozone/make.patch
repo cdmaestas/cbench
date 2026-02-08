@@ -1,0 +1,36 @@
+--- iozone3_414/src/current/makefile.orig	2011-03-18 16:59:53.980613826 -0600
++++ iozone3_414/src/current/makefile	2011-03-18 17:00:59.470742087 -0600
+@@ -762,12 +762,12 @@
+ 	@echo ""
+ 	@echo "Building iozone for Linux"
+ 	@echo ""
+-	$(CC) -Wall -c -O3 -Dunix -DHAVE_ANSIC_C -DASYNC_IO -DHAVE_PREAD \
++	$(CC) -c -O3 -Dunix -DHAVE_ANSIC_C -DASYNC_IO -DHAVE_PREAD \
+ 		-DSHARED_MEM -Dlinux -D_LARGEFILE64_SOURCE $(CFLAGS) iozone.c \
+ 		-DNAME='"linux"' -o iozone_linux.o
+-	$(CC) -Wall -c -O3 -Dunix -DHAVE_ANSIC_C -DASYNC_IO -D_LARGEFILE64_SOURCE \
++	$(CC) -c -O3 -Dunix -DHAVE_ANSIC_C -DASYNC_IO -D_LARGEFILE64_SOURCE \
+ 		-DSHARED_MEM -Dlinux $(CFLAGS) libbif.c -o libbif.o
+-	$(CC) -Wall -c -O3 -Dunix -Dlinux -DHAVE_ANSIC_C -DASYNC_IO \
++	$(CC) -c -O3 -Dunix -Dlinux -DHAVE_ANSIC_C -DASYNC_IO \
+ 		-D_LARGEFILE64_SOURCE $(CFLAGS) libasync.c  -o libasync.o 
+ 
+ fileop_AIX.o:	fileop.c
+@@ -842,7 +842,7 @@
+ 	@echo ""
+ 	@echo "Building fileop for Linux"
+ 	@echo ""
+-	$(CC) -Wall -c -O3 $(CFLAGS) fileop.c -o fileop_linux.o
++	$(CC) -c -O3 $(CFLAGS) fileop.c -o fileop_linux.o
+ 
+ fileop_openbsd.o:	fileop.c
+ 	@echo ""
+@@ -878,7 +878,7 @@
+ 	@echo ""
+ 	@echo "Building fileop for Linux-AMD64"
+ 	@echo ""
+-	$(CC) -Wall -c -O3 $(CFLAGS) fileop.c -o fileop_linux-AMD64.o
++	$(CC) -c -O3 $(CFLAGS) fileop.c -o fileop_linux-AMD64.o
+ 
+ fileop_linux-arm.o:  fileop.c
+ 	@echo ""

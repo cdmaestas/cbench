@@ -1,0 +1,273 @@
+#!/usr/bin/perl
+# vim: syntax=perl tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+#
+# This is a script that will run iozone tests in parallel on several nodes
+# to several filesystems and then generate aggregate performance data. This
+# is useful for testing out groups of I/O nodes for instance.
+#
+
+# need to know where everything cbench lives!
+BEGIN {
+	die "Please define CBENCHOME!\n" if !defined($ENV{CBENCHOME});
+}
+use lib $ENV{CBENCHOME};
+require "cbench.pl";
+$CBENCHOME = $BENCH_HOME = $ENV{CBENCHOME};
+
+use Getopt::Long;
+use IPC::Open3;
+use IO::Select;
+use Symbol;
+
+GetOptions(
+	'nodes=s' => \$nodes,
+	'machinefile=s' => \$machinefile,
+	'fs=s' => \$fs,
+	'opts=s' => \$opts,
+	'size=s' => \$size,
+	'stripe=s' => \$stripe,
+	'local' => \$local,
+	'rsh=s' => \$rshcmd,
+	'iozonebin=s' => \$iozonebin,
+	'dryrun|dry-run' => \$dryrun,
+	'debug:i' => \$DEBUG,
+	'help' => \$help,
+);
+
+(defined $size) or $size = '4g'; 
+(defined $stripe) or $stripe = '1m';
+
+if (defined $help) {
+	usage();
+	exit;
+}
+
+if (!defined $nodes and !defined $machinefile) {
+	usage();
+	exit;
+}
+
+if (defined $nodes and defined $machinefile) {
+	die "Specify --nodes OR --machinefile";
+}
+
+(defined $iozonebin) and $iozone = $iozonebin;
+(!defined $iozonebin) and $iozone = "$BENCH_HOME/bin/iozone";
+(defined $rshcmd) or $rshcmd = "rsh ";
+
+if (defined $nodes) {
+# array of nodes to execute the iozone on
+	@nodelist = split(' ',$nodes);
+}
+elsif (defined $machinefile) {
+	open (IN,"<$machinefile") or
+		die "Could not open $machinefile ($!)";
+	while (<IN>) {
+		chomp $_;
+		push @nodelist, $_;
+	}
+	close(IN);
+}
+
+# array of filesystems to include in the test on each node
+@fslist = split(' ',$fs);
+
+# --local option given?
+if (defined $local) {
+	$thisnode = `hostname`;
+	chomp $thisnode;
+	@nodelist = ($thisnode);
+}
+
+(@nodelist and @fslist) or die "need --nodes or --machinefile and --fs";
+$numnodes = @nodelist;
+$numfs = @fslist;
+
+# build the iozone command
+$std_opts = "-i 0 -i 1 -e -+u -T";
+$iozone_base_cmd = "$iozone $std_opts -s $size -r $stripe $opts -t $numfs -F ";
+
+if ($DEBUG) {
+	print "DEBUG: nodelist=\'@nodelist\'\n";
+	print "DEBUG: numfs=$numfs fslist=\'@fslist\'\n";
+}
+
+print "Testing aggregate iozone read/write performance:\n".
+	  "$numnodes nodes (@nodelist)\n".
+	  "$numfs filesystems per node (@fslist)\n" .
+	  "$size file per filesystem\n".
+	  "$stripe stripe size\n".
+	  "Standard iozone options = $std_opts\n";
+(defined $opts) and print "Additional iozone options = $opts\n";
+(!defined $local) and print "Remote execution command = $rshcmd\n";
+
+%outbuf = ();
+@pids = ();
+
+# we need a hash to save the mapping of file descriptor fileno values
+# to the node of the forked process
+%filehash = ();
+
+my $selector = IO::Select->new();
+
+# grab a piece of unique info to help make sure there are no
+# output filename collisions for the iozone temporary files
+$tmpnum = `/bin/date +%s`;
+chomp $tmpnum;
+
+for $n (@nodelist) {
+	# finish building the iozone command line. we have to do it here
+	# because the iozone filenames need to be globally unique and we
+	# use node name to help which we have in this loop
+	$i = 0;
+	my $iozone_cmd = $iozone_base_cmd;
+	for $f (@fslist) {
+		$iozone_cmd .= "$f\/iozone_$n\_$i\_$tmpnum.dat ";
+		$i++;
+	}
+
+	my ($in, $out, $err) = (undef, undef, gensym);
+	my $cmd = "$rshcmd $n \"$iozone_cmd\"";
+	(defined $local) and $cmd = "$iozone_cmd";
+	$DEBUG and print "DEBUG: $cmd\n";
+	(defined $dryrun) and $cmd = "/bin/true";
+
+	# fork off a child to remotely run iozone on the node
+	unless ($child = open3($in, $out, $err, "$cmd")) {
+		# we are a child
+		exit;
+	}
+	
+	# we are the parent
+	push @pids, $child;
+	
+	# close stdin handle immediately to avoid deadlocks
+	close $in;
+	
+	# save the fileno information
+	$filehash{fileno($out)} = $n;
+	$filehash{fileno($err)} = $n;
+	
+	$DEBUG and print "DEBUG: $n stdout fileno " . fileno($out) . "\n";
+	$DEBUG and print "DEBUG: $n sterr fileno " . fileno($err) . "\n";
+
+	# add the filehandles to the select polling list
+	$selector->add($out,$err);
+}
+
+# poll for the output from all the remote forked processes
+while (my @ready = $selector->can_read) {
+	foreach (@ready) {
+		if (eof($_)) {
+			$selector->remove($_);
+		} else {
+			# cat the output to the appropriate buffer
+			$outbuf{$filehash{fileno($_)}} .= scalar <$_>;
+		}# build the iozone command
+
+	}
+}
+
+# wait for the children to finish
+for (@pids) {
+	waitpid($_,0);
+}
+
+#
+# The testing is done, now deal with the results
+
+# overall stats variables
+$total_write = 0.0;
+$total_read = 0.0;
+
+# parse the output of iozone for each node we executed on
+for $n (keys %outbuf) {
+	# make an array of the lines in the output
+	@lines = split("\n",$outbuf{$n});
+	for (@lines) {
+		if ($_ =~ /\s+Parent sees throughput for.* writers\s+=\s+(\d+\.\d+).*/) {
+			$total_write += $1 / 1000;
+			$DEBUG and print "DEBUG: parsed $1 KB/s write for $n\n";
+		}
+		if ($_ =~ /\s+Parent sees throughput for.* readers\s+=\s+(\d+\.\d+).*/) {
+			$total_read += $1 / 1000;
+			$DEBUG and print "DEBUG: parsed $1 KB/s read for $n\n";
+		}
+	}
+}
+
+$per_node_write = $total_write / $numnodes;
+$per_node_read = $total_read / $numnodes;
+$per_filesys_write = $total_write / ($numfs * $numnodes);
+$per_filesys_read = $total_read / ($numfs * $numnodes);
+
+printf ("\nAggregate write throughput across %d nodes: %.2f MB/s\n",
+	$numnodes,$total_write);
+printf ("Aggregate read throughput across %d nodes: %.2f MB/s\n",
+	$numnodes,$total_read);
+printf ("Write throughput per node: %.2f MB/s\n",
+	$per_node_write);
+printf ("Read throughput per node: %.2f MB/s\n",
+	$per_node_read);
+printf ("Write throughput per filesystem: %.2f MB/s\n",
+	$per_filesys_write);
+printf ("Read throughput per filesystem: %.2f MB/s\n",
+	$per_filesys_read);
+
+
+sub usage {
+    print "USAGE: $0 \n";
+    print "Cbench script to test aggregate iozone read/write performance\n".
+		  "across multiple nodes and/or multilple filesystems.\n".
+		  "   --nodes      Space separated list in quotes of the nodes to\n".
+		  "                execute the iozone tests on. For example:\n".
+		  "                   --nodes \'io1 io2\'\n".
+		  "   --machinefile <file>  A file containing a list of nodes to\n".
+		  "                         execute the iozone tests on. This option\n".
+		  "                         is mutually exclusive with --nodes.\n".
+          "   --fs         Space separated list in quotes of the filesystems\n".
+		  "                to test on each node. This assumes that each node\n".
+		  "                has identically named filesystems you want to test\n".
+		  "                For example:\n".
+		  "                   --fs \'/mnt/sda /mnt/sdb\'\n".
+		  "   --opts       Quoted string of command line options to pass to\n".
+		  "                iozone.\n".
+		  "   --size       Size of file to use in during testing (defaults to \n".
+		  "                $size). For example:\n".
+		  "                   --size 1g\n".
+		  "                   --size 250m\n".
+		  "   --stripe     Stripe size to use (the size of each chunk of data\n".
+		  "                read/written during testing). Default is $stripe.\n".
+		  "                For example:\n".
+		  "                   --stripe 1m\n".
+		  "                   --stripe 128k\n".
+		  "   --local      Flag indicating that only local filesystems will\n".
+		  "                be tested, i.e. no remote execution used.\n".
+		  "   --rsh        Specify the remote execution command to use. Defaults\n".
+		  "                to rsh.  For example:\n".
+		  "                   --rsh /usr/bin/ssh\n".
+		  "   --dryrun     Do everything but actually run the iozone test\n";
+		  "   --debug <level>  turn on debugging at the specified level\n";
+}

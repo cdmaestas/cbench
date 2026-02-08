@@ -1,0 +1,5 @@
+FIXIT123_HOME=/projects/contrib/fixit
+FIXIT123_NODEINFO_CMD="/apps/torque/bin/pbsnodes -a"
+FIXIT123_OFFLINE_CMD="/apps/torque/bin/pbsnodes -o"
+FIXIT123_CHECKSTATE_CMD="/apps/moab/bin/showres -n"
+FIXIT123_LOGDIR=/var/log

@@ -1,0 +1,24 @@
+# Cbench make hook
+include ../../../make.def
+
+# Enter root directory of mpich install
+MPI_HOME=$(MPIHOME)
+
+MPICC=$(MPIHOME)/bin/mpicc
+
+NULL_STRING :=
+MPI_INCLUDE := -I$(MPIHOME)/include
+LIB_PATH    =
+LIBS        = 
+#CC          = ${MPI_HOME}/bin/mpicc 
+#OPTFLAGS    = -O3
+CLINKER     = ${CC}
+#LDFLAGS     =
+#CPPFLAGS    = 
+
+export MPI_INCLUDE CC LIB_PATH LIBS OPTFLAGS CLINKER LDFLAGS CPPFLAGS
+
+clean:
+	/bin/rm -f *.o *~ PI* core IMB-IO IMB-EXT IMB-MPI1 exe_io exe_ext exe_mpi1
+
+include Makefile.base

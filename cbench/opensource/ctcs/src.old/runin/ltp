@@ -1,0 +1,15 @@
+#!/bin/bash
+q=`mktemp ltptemp.XXXXXX`
+ltpdir=$1
+exitstatus=0
+for i in `ls -1 $ltpdir/tests/* | grep -v Makefile | grep -v '\.c$'` ; do
+	./$i > $q
+	x=$?
+	if [ $x != 0 ] ; then {
+		cat $q
+		echo `basename $i` failed: result $x
+		exitstatus=1
+	} ; fi
+done
+rm -f $q
+exit $exitstatus

@@ -1,0 +1,47 @@
+#!/bin/bash
+# mre - wrapper to invoke configure properly for Trilinos/epetra + cbench build
+
+# assumes you're invoking this from the right place! (see the Makefile)
+PREFIX=$(pwd)
+
+#echo "* DEBUG: OLD CFLAGS = $CFLAGS"
+#echo "* DEBUG: OLD FFLAGS = $FFLAGS"
+#echo "* DEBUG: BLASLIB    = $BLASLIB"
+#echo "* DEBUG: LAPACKLIB  = $LAPACKLIB"
+
+# strip out -O option, so we can add our own
+CFLAGS=$(echo $CFLAGS | sed 's/-O[0-9]*//g')
+FFLAGS=$(echo $FFLAGS | sed 's/-O[0-9]*//g')
+
+if [ "$COMPILERCOLLECTION" == "pgi" ] ; then
+	CFLAGS="$CFLAGS -O3 -Mcache_align"
+	FFLAGS="$FFLAGS -O3 -Mcache_align -Munroll"
+else
+	CFLAGS="$CFLAGS -O3"
+	FFLAGS="$FFLAGS -O5 -funroll-all-loops"
+fi
+
+CXXFLAGS="$CFLAGS"
+LDFLAGS="$BLASLIB $LAPACKLIB"
+
+echo "*"
+echo "* Using the following FLAGS:"
+echo "* CFLAGS   = $CFLAGS"
+echo "* CXXFLAGS = $CXXFLAGS"
+echo "* FFLAGS   = $FFLAGS"
+echo "* LDFLAGS  = $LDFLAGS"
+echo "*"
+
+../configure \
+        CFLAGS="$CFLAGS" \
+        CXXFLAGS="$CFLAGS" \
+        FFLAGS="$FFLAGS" \
+        --prefix="$PREFIX" \
+        --enable-mpi \
+        --with-mpi-compilers=$BUILD_PATH \
+        --disable-default-packages \
+        --disable-tests \
+        --disable-examples \
+        --enable-epetra \
+        --with-gnumake \
+        --with-ldflags="$LDFLAGS"

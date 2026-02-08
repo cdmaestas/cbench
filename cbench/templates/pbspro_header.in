@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+############ Cbench pbspro_header.in ######################
+# Directives for PBS Pro
+# NOTE: Torque seems to require that these directives be
+#       first, I imagine PBS Pro does too...
+#
+# For the time being the only PBS Pro setup I've used is the Cray
+# XT3/XT4 setup on Sandia's Red Storm system.  I'm not sure if PBS
+# Pro in general uses the 'size' attribute instead of 'nodes'. 
+# For sure, 'size' is required instead of 'nodes' on Red Storm though.
+#PBS -l size=NUM_NODES_HERE
+#
+#PBS -l walltime=WALLTIME_HERE
+#
+# other attributes you might use but are hidden from PBS Pro processing
+#HIDE -q somequeue
+#HIDE -A 70400/01.01.02
+
+# include the common Cbench functions used in job scripts
+. BENCH_TEST_HERE/cbench_functions
+
+# this tells us what type of cbench job this is
+CBENCH_RUN_TYPE=RUN_TYPE_HERE
+
+# this tells us details of the Cbench job in the job output
+cbench_echo "Cbench numprocs: NUM_PROCS_HERE"
+cbench_echo "Cbench numnodes: NUM_NODES_HERE"
+cbench_echo "Cbench ppn: NUM_PPN_HERE"
+cbench_echo "Cbench jobname: JOBNAME_HERE"
+cbench_echo "Cbench joblaunchmethod: JOBLAUNCHMETHOD_HERE"
+cbench_echo ""
+
+# grap the Torque jobid
+JOBID=`echo $PBS_JOBID | cut -f1 -d'.'`
+

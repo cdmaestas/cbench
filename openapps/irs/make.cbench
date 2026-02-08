@@ -1,0 +1,77 @@
+
+#-----------------------------------------------------------------------
+# DESCRIPTION threaded compile for Cbench WITHOUT SILO
+#-----------------------------------------------------------------------
+
+GMAKE		= $(MAKE)
+
+#CC              = /usr/local/intel/compiler91_64/bin/icc
+#CC              = mpiicc
+#LINK            = /usr/local/intel/compiler91_64/bin/icc
+#LINK            = mpiicc
+LINK            = $(CC)
+
+#BASE_LIBPATH    = -L../libs -L/usr/lib \
+#                -L/usr/local/intel/compiler91_64/lib -L/usr/lib -L/usr/lib64
+BASE_LIBPATH    = 
+
+#BASE_INCPATH    = -I../.. -I../../includes -I/usr/local/include \
+#                -I/usr/local/apps/include \
+
+BASE_INCPATH    = -I../.. -I../../includes 
+
+BASE_LIBS       = -lpthread 
+
+
+#CC_FLAGS_OPT    = -c -g -O2 -openmp -openmp_report2
+#CC_FLAGS_DEB    = -c -g -O2 -openmp -openmp_report2
+CC_FLAGS_OPT    = -c $(CFLAGS)
+CC_FLAGS_DEB    = -c -g $(COMMON_FLAGS)
+
+
+#LINK_FLAGS_OPT	= -g -O2 -openmp -openmp_report2
+#LINK_FLAGS_DEB	= -g -O2 -openmp -openmp_report2
+LINK_FLAGS_OPT	= $(CFLAGS)
+LINK_FLAGS_DEB	= -g $(COMMON_FLAGS)
+
+
+
+MPI_DEFINE      = -DCOMMPI
+MPI_LIBS        = 
+MPI_LIBPATH     = 
+MPI_INCPATH     = 
+
+# JBO - Intel doesn't seem to like the -DOMP2COMPILER code...
+#       PGI doesn't either
+#OPENMP_DEFINE   = -DOPENMP -DOMP2COMPILER
+OPENMP_DEFINE   = -DOPENMP
+OPENMP_LIBS     = 
+OPENMP_LIBPATH  =
+OPENMP_INCPATH  =
+
+
+OTHER_LIBS 	=
+OTHER_LIBPATH 	=
+OTHER_INCPATH 	= 
+
+DEFINES_BASE	= -DUNIX -DFUNCTION_TIMERS -Dlinux 
+
+IRS_LIBS 	=       $(MPI_LIBS) \
+			$(BASE_LIBS) \
+			$(OTHER_LIBS)
+
+IRS_INCPATH 	= 	$(BASE_INCPATH) \
+			$(MPI_INCPATH) \
+			$(OPENMP_INCPATH) \
+			$(OTHER_INCPATH)
+
+IRS_LIBPATH 	= 	$(BASE_LIBPATH) \
+			$(MPI_LIBPATH) \
+			$(OTHER_LIBPATH)
+
+IRS_DEFINES	=	$(DEFINES_BASE) $(MPI_DEFINE) $(OPENMP_DEFINE)
+
+
+ARCHIVE		= ar rc
+ARCHIVE_X	= ar x
+

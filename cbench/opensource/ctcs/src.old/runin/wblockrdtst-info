@@ -1,0 +1,47 @@
+#!/usr/bin/perl -w
+# block rw testing in nondestructive mode
+# give it a device and it will go after it
+
+$SLEEPDELAY=120;
+$device = $ARGV[0];
+if ( $device !~ "dev" ) {
+    print "device required, maxblocks optional";
+    exit 1;
+}
+if (defined $ARGV[1]) {
+    $maxblocks=$ARGV[1];
+}
+else{
+    $maxblocks=0;
+}
+
+if ( "$device" =~ "/dev/fd" ){
+    # hack for floppy disks (no size information... grr)
+    $size=2880;
+    $bsize=512;
+}else{
+   
+    $bsize=`bin/print_disk_info $device| awk '{ print \$2;}'`;
+    $size=`bin/print_disk_info $device| awk '{ print \$1;}'`;
+    chomp $size;
+    chomp $bsize;
+}
+    if ( ! defined $size or ! defined $bsize ) {
+	print "Unable to configure test.  $device not present or not readable.";
+	exit 2;
+} 
+if ( "$size" < 100 ) {
+    print "error in size calculation... aborting";
+    exit 2;
+}
+
+if ( "$size" > "$maxblocks" && "$maxblocks" != "0" ) {
+    $size=$maxblocks;
+} 
+if  ( __FILE__  =~  "sblockrdtst-info" )  {
+	srand;
+	$RANDOM = rand($SLEEPDELAY)+1;
+	sleep($RANDOM);
+}  
+print "$device $bsize $size";
+exit 0;

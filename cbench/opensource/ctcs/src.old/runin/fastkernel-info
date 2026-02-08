@@ -1,0 +1,66 @@
+#!/bin/bash
+. ../lib/sh/ctcslib.sh
+
+if [ -z "$1" ] ; then
+	makej=""
+else
+	makej="-j $1"
+fi
+
+if [ -z "$2" ] ; then
+	dir=/tmp/linux
+else
+	dir="$2"
+fi
+
+
+function interrupt () {
+	trap interrupt SIGUSR1
+        trap interrupt SIGTERM
+	trap interrupt SIGINT
+#        echo $failed fail $succeed succeed $count count
+	rm -f $ls1 $ls2
+	rm -rf $dir
+        # this just grabs the process id and all children.  and kills them
+	# until they're dead
+	x=1
+	while [ $x -gt 0 ] ; do {
+		kill_children --KILL
+		x=$?
+	} ; done
+        exit 255
+}
+trap interrupt SIGUSR1
+trap interrupt SIGTERM
+trap interrupt SIGINT
+
+if [ -d "/usr/src/linux" ] ; then
+        LINUXDIR=/usr/src/linux
+else 
+        if [ -d "/usr/src/linux-2.4" ] ; then
+        LINUXDIR=/usr/src/linux-2.4
+        else
+                if [ -d "/usr/src/linux-2.6" ] ; then
+                LINUXDIR=/usr/src/linux-2.6
+                else
+                echo Linux source dir does not exist.  Help'!'
+                echo "Tried: /usr/src/linux /usr/src/linux-2.4 /usr/src/linux-2.6"
+                exit 2
+                fi
+        fi
+fi
+
+rm -rf $dir >&2
+sync
+mkdir -p $dir >&2
+cd $dir >&2
+cp -a $LINUXDIR/* . >&2
+
+if [ ! -d "$dir" ] ; then {
+	echo $dir
+	echo test configuration error >&2
+	exit 2
+} ; fi
+
+echo $1 $2
+cd $dir

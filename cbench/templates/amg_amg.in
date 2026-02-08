@@ -1,0 +1,38 @@
+# LLNL AMG application job template
+# NOTE: bash syntax is used here
+
+# need to make an isolated directory for each QCD run to keep them
+# from stepping on each others output files
+#TEMPDIR="job$JOBID"
+#mkdir -p $PWD/$TEMPDIR
+#cd $TEMPDIR
+# symlink the input files
+#ln -s TESTSET_PATH_HERE//pg.input pg-input-data
+#cbench_echo "Cbench job tempdir: $PWD"
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/amg2006
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/amg2006
+
+PX=PX_HERE
+PY=PY_HERE
+PZ=PZ_HERE
+Rxyz="14 14 14"
+
+# Run solver 3 
+cbench_echo ""
+cbench_echo "=========== solver 3 ============="
+cbench_echo ""
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/amg2006 -P $PX $PY $PZ -r $Rxyz -printstats -solver 3"
+cbench_run_cmd $CMD
+timestamp=`date --iso-8601=seconds`
+cbench_echo "Cbench amg solver3 timestamp: $timestamp"
+
+# Run solver 4
+cbench_echo ""
+cbench_echo "=========== solver 4 ============="
+cbench_echo ""
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/amg2006 -P $PX $PY $PZ -r $Rxyz -printstats -solver 4"
+cbench_run_cmd $CMD
+timestamp=`date --iso-8601=seconds`
+cbench_echo "Cbench amg solver4 timestamp: $timestamp"

@@ -1,0 +1,68 @@
+= Cbench Testsets =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+== Overview ==
+"Test sets" are a concept in Cbench used to package up useful collections of testing work with utility scripts to highly assist the entire testing process. Each test set is a subdirectory within the Cbench testing tree.
+
+There are three key utility scripts that facilitate the use of a given test set (TESTSET below gets replaced with the actual test set name, e.g. linpack, bandwidth, ...):
+
+`TESTSET_gen_jobs.pl` 
+ This script is responsible for generating all the directories, scripts, and other files required for generating batch and interactive jobs.  Jobs are generated based on the parameters in cluster.def and scaled as specified in the @run_sizes array of cluster.def.
+
+`TESTSET_start_jobs.pl` 
+ This script is responsible for starting all the test jobs matching your criteria in either batch or interactive mode.
+
+`TESTSET_output_parse.pl` 
+ This script will analyze output on-the-fly from test jobs that you have started and generate various forms of easily digestible summaries.
+
+See the help output of any utility for more information on specific parameters.
+
+A key parameter that is used in the test set utility scripts is the `--ident` parameter. This parameter is used to identify different test runs with different ''test identifiers''.  This parameter allows you to generate and keep track of many different test runs within a given test set.  Depending on the particular properties of a given test set, `--ident` can be useful to run with different optimized binaries, different hardware configurations, different test iterations, etc. For example:
+{{{
+linpack_gen_jobs.pl --ident linpack_gcc343
+linpack_gen_jobs.pl --ident linpack_intel90
+}}}
+The top-level of the Cbench test tree includes scripts that know how to call the related scripts in all available test sets. For example, you can use `gen_jobs.pl` at the top-level to generate jobs in all available test sets in one command which could amount to hundreds of job test jobs.
+
+The top-level of the Cbench test tree also will hold key job generation header templates (*.in) for your selected batch system and for interactive jobs. You'll need to take a look at the batch system header (i.e. `torque_header.in`) and make sure the `#PBS` directives are correct with regards to queues, node properties requested, etc.
+
+The approach Cbench uses in the generation of files (batch scripts, interactive run scripts, input files, etc.) is keyword replacement within template files. The main use of this is to build the run files for batch or interactive execution. This is done by building a script that is composed of:
+ 1. either a batch or interactive header template (i.e. `torque_header.in` and `interactive_header.in`)
+ 2. a common header template (`common_header.in`) for any common pre-processing
+ 3. a core job template (i.e. `bandwidth_com.in`, `linpack_xhpl.in`) where each job template is named `TESTSETNAME_JOBNAME.in`
+ 4. a common footer template for any post-processing desired (defaults to none)
+
+Each script is then processed for keyword replacements by the `*_gen_jobs.pl` scripts.  The `*_gen_jobs.pl` scripts are pretty well commented and use as much common code as possible so that one can see the process and logic involved. Input files such as the `HPL.dat` file for HPlinpack are generated as well using templates (see `xhpl_dat.in` and `linpack_gen_jobs.pl` for an example).
+
+== Supported Test Sets ==
+The currently available test sets are (as of 05-04-2009):
+ * '''amg'''
+ * '''Bandwidth''' -  Tests the unidirectional and bidirectional bandwidth at the MPI level in a cluster. In other words, a bandwidth scaling study. Currently the benchmarks used are the common Bandwidth Effective (b_eff) and the bandwidth benchmark from Presta 1.2, com. Presta 1.2 is part of the ASCI Purple benchmarks.
+ * '''Collective'''    -  Scaling study measuring MPI collectives
+ * '''hpcc'''
+ * '''hpccg'''
+ * '''IO'''            -  Scaling study measuring filesystem performance. Currently uses iozone and IOR.
+ * '''iosanity'''
+ * '''irs'''
+ * '''lammps'''
+ * '''Latency'''       -  Scaling study measuring MPI latency
+ * '''Linpack'''       -  Uses the High Performance Linpack (xhpl) codebase with the ASYOUGO patches to perform a Linpack scaling study.
+ * '''linpack2'''
+ * '''MPI Overhead'''  -  Scaling study that measures the memory overhead per process for MPI as well as the job launch time.
+ * '''mpisanity'''
+ * '''news05'''
+ * '''nodehwtest'''
+ * '''NPB'''           -  NAS Parallel Benchmark scaling study.
+ * '''phdmesh'''
+ * '''purple'''
+ * '''Rotate'''        -  Rotate is a cross-sectional bandwidth benchmark developed at Sandia National Labs. It is useful for measuring how well an interconnect takes advantage of the available hardware bandwidth at the MPI level. Specifically, this benchmark is useful to see the effects of static routing in fully connected CLOS network. The test set is a scaling study using rotate.
+ * '''shakedown'''
+ * '''sweep3d'''
+ * '''trilinos'''
+
+Note that work in a 'test set' is most often generated using a "scaling study" type approach. The ''nodehwtest'' test set is the current most notable exception to this rule.
+
+ 	  	 

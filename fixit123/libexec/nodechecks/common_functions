@@ -1,0 +1,60 @@
+# -*-Shell-script-*-
+#
+# common_functions     This file contains common functions to be used by nodechecks 
+#                  shell scripts
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+nodecheck_init() {
+	echo -n "Today's date is: "
+	date +%D
+
+	local myname=`basename $0`
+	echo "FIXIT123 script: $myname"
+	echo "FIXIT123_HOME=$FIXIT123_HOME"
+	echo "FIXIT123_CONF=$FIXIT123_CONF"
+
+	# check the name of process that invoked us to determine if we should
+	# enable DOFIXIT mode
+	echo $myname | grep -q nodefix
+	if [ $? -eq 0 ]; then
+		DOFIXIT=1
+		$SETCOLOR_FAILURE
+		echo -n "DOFIXIT mode enabled - attempts will be made to correct problems"
+		$SETCOLOR_NORMAL
+		echo
+	else
+		DOFIXIT=0
+	fi
+
+	echo
+}
+
+nodecheck_finalize() {
+	if [ $WANT_REBOOT -eq 1 ]; then
+		echo "ATTENTION: a mandatory reboot has been requested by Fixit123!"
+	fi
+}

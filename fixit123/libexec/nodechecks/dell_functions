@@ -1,0 +1,391 @@
+# -*-Shell-script-*-
+#
+# dell_functions     This file contains dell functions to be used by most or all
+#                     shell scripts in the nodechecks
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+is_omreport_found() {
+	if [ ! -x /usr/bin/omreport ]; then
+		echo_failure
+		return 1
+	fi
+	return 0
+}
+
+is_omconfig_found() {
+	if [ ! -x /usr/bin/omconfig ]; then
+		echo_failure
+		return 1
+	fi
+	return 0
+}
+
+
+omsa_check_src_dir() {
+	local dir=$1
+	echo
+	echo -n "Checking for Dell OMSA src tree in $dir: "
+	if [ ! -x ${dir}/linux/supportscripts/srvadmin-services.sh ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+omsa_check_install_dir() {
+	local dir=$1
+	echo
+	echo -n "Checking for Dell OMSA installaton in $dir: "
+	if [ ! -d ${dir}/dell/srvadmin ]; then
+		echo_failure
+		return 1
+	fi
+
+	if [ ! -f ${dir}/dell/srvadmin/oma/bin/omreport ]; then
+		echo_failure
+		return 1
+	else
+		echo_success
+		return 0
+	fi
+}
+
+# arg1 = http server, arg2 = http dir, 
+# arg3 = install dir, arg4 = omsa_src_pkg_name
+omsa_update() {
+	local http_server=$1
+	local http_dir=$2
+	local instdir=$3
+	local omsa_src_name=$4
+	echo
+	echo "Attempting to update Dell OMSA ... "
+	export DELLOMSW_PREFIX=${instdir}/dell/srvadmin
+	if [ -z $4 ]; then
+		#DELLOMSW_SRC=OMI-SrvAdmin-Dell-Web-LX-450-32-335_A00.tar.gz
+		DELLOMSW_SRC=OM_5.1_ManNode_LIN_A00.tar.gz
+	else
+		DELLOMSW_SRC=$omsa_src_name
+	fi
+	DELLOMSW_DIR=${http_dir}
+	echo "Updating needed software dependencies if any ..."
+	up2date --nox -i kernel-smp-devel 
+	if [ ! -f /usr/src/dell/linux/supportscripts/srvadmin-uninstall.sh ]; then
+        echo "Dell OMSA Package Upgrade: ERROR: NON-EXISTENT UNINSTALL SCRIPT!"
+        exit 1
+	else
+		/usr/src/dell/linux/supportscripts/srvadmin-uninstall.sh -f
+	fi
+	mkdir -p /usr/src/dell
+	cd /usr/src/dell
+	rm -fr linux
+
+	wget http://${http_server}/${DELLOMSW_DIR}/${DELLOMSW_SRC}
+	tar -zxf ${DELLOMSW_SRC}
+	rm -f ${DELLOMSW_SRC}
+	if [ ! -d /usr/src/dell/linux/supportscripts ]; then
+		echo "Dell OMSA Package: ERROR: DELL OMSW PACKAGE DIR STRUCTURE HAS CHANGED!" 
+		exit 1
+	fi
+
+	if [ $DELLOMSW_PREFIX != "/opt/dell" ]; then
+		/usr/bin/perl -spi -e 's|INSTALL_PREFIX=""$|INSTALL_PREFIX="$ENV{DELLOMSW_PREFIX}"|' /usr/src/dell/linux/supportscripts/srvadmin-install.sh
+	fi
+
+	# need to fool it that we are installing in an xterminal environment - cdm
+	TERM=xterm
+	export TERM
+	# with recent omsa -d goes away
+	#/usr/src/dell/linux/supportscripts/srvadmin-install.sh -b -d 
+	/usr/src/dell/linux/supportscripts/srvadmin-install.sh -b 
+	/usr/src/dell/linux/supportscripts/srvadmin-services.sh restart 
+}
+
+
+#echo
+#echo -n "Checking for installed firmware (BIOS BMC BP): "
+#if [ `omreport system version | grep -P '(BIOS|BMC|BP)' | wc -l` -lt 3 ]; then
+#	echo_failure
+#	exit 1
+#else
+
+# arg1 is bios version to check for
+omsa_check_bios_version() {
+	local bios_version=$1
+	if [ -z $1 ]; then
+		echo omsa_check_bios_version BIOS_VERSION
+		exit 1
+	fi
+	echo
+	echo -n "Checking BIOS Version ($bios_version): "
+	is_omreport_found || return 1
+	omreport chassis bios | grep Version > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		if [ `omreport chassis bios | grep Version | awk '{print $3}'` != $bios_version ]; then
+			echo_failure
+		else
+			echo_success
+		fi
+	else
+			echo
+			echo -n "Failed to find BIOS $bios_version using omreport: "
+			echo_failure
+	fi
+}
+
+omsa_update_firmware() {
+	local firmware=$1
+	local firmwareversion=$2
+	if [ -z $1 -o -z $2 ]; then
+		echo "omsa_update_firmware bios|bmc|bp|perc version"
+		exit 1
+	fi
+	echo
+	echo Attempting to update $firmware to $firmwareversion ...
+
+	# figure out which PERC controller
+	if [ $DELL_SRV_MODEL = 'pe1850' ]; then
+		PERC=PERC4ESI
+	elif [ $DELL_SRV_MODEL = 'pe1950' ]; then
+		#FIXME this is just a place holder
+		PERC=PERC5
+	fi
+
+	# setup relative paths correctly for /projects/global/FIRMWARE
+	# FIXME: this is seriously broken for the fixit123 1.0 release, we
+	#        need to think about how to handle this
+	if [ $1 = "bios" ]; then
+		FIRMWARE=BIOS/$DELL_SRV_MODEL
+	elif [ $1 = "bmc" ]; then
+		FIRMWARE=BMC/$DELL_SRV_MODEL
+	elif [ $1 = "bp" ]; then
+		FIRMWARE=BP/$DELL_SRV_MODEL
+	elif [ $1 = "perc" ]; then
+		FIRMWARE=$PERC
+	else
+		FIRMWARE="BIOS/$DELL_SRV_MODE BMC/$DELL_SRV_MODEL BP/$DELL_SRV_MODEL $PERC"
+	fi
+
+	for n in $FIRMWARE
+	do
+		local firmwarefile="/projects/global/FIRMWARE/${n}/$firmwareversion"_firmware
+		if [ ! -x $firmwarefile ]; then
+			echo "Cannot find $firmware firmware version $firmwareversion update file: $firmwarefile"
+			return 1
+		fi
+		echo "Updating ${n} ..."
+		$firmwarefile -q
+	done
+
+	# set the WANT_REBOOT flag if needed
+	if [ $firmware = "bios" ]; then
+		WANT_REBOOT=1
+		echo ATTENTION: Updated Dell $firmware to $firmwareversion, you must now reboot this system ...
+	fi
+}
+
+omsa_check_bmc_version() {
+	local bmc_version=$1
+	if [ -z $1 ]; then
+		echo omsa_check_bmc_version BMC_VERSION
+		exit 1
+	fi
+	echo
+	echo -n "Checking BMC Version ($bmc_version): "
+	is_omreport_found || return 1
+	omreport system version | grep -A 1 BMC > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		if [ `omreport system version | grep -A 1 BMC | grep Version | awk '{print $3}'` != $bmc_version ]; then
+   	     echo_failure
+		else
+			echo_success
+		fi
+	else
+		echo
+		echo -n "Failed to find bp $bp_version using omreport: "
+		echo_failure
+	fi
+}
+
+
+omsa_check_bp_version() {
+    local bp_version=$1
+    if [ -z $1 ]; then
+        echo omsa_check_bp_version BP_VERSION
+        exit 1
+    fi
+	echo
+	echo -n "Checking Primary BP Version ($bp_version): "
+	is_omreport_found || return 1
+	omreport system version | grep -A 1 "Primary BP" > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		if [ `omreport system version | grep -A 1 "Primary BP" | grep Version | awk '{print $3}'` = $bp_version ]; then
+			echo_success
+		else
+			echo_failure
+		fi
+	else
+		echo
+		echo -n "Failed to find bp $bp_version using omreport: "
+        echo_failure
+
+	fi
+}
+
+omsa_check_for_bmc_static_ip() {
+	echo
+	echo -n "Checking BMC for valid configuration: "
+	is_omreport_found || return 1
+	if [ `omreport chassis bmc | grep -A1 -w "Attribute : IP Address Source" | grep Value | awk '{print $3}'` = "Static" ]; then
+		if [ `omreport chassis bmc | grep -A1 -w "Attribute : IP Address$" | grep Value | awk '{print $3}'` = "0.0.0.0" ]; then
+			echo_failure
+		else
+			echo_success
+		fi
+	else
+		echo_failure
+	fi
+}
+
+omsa_update_bmc_to_static_ip() {
+	echo
+	echo "Attempting to fix BMC IP configuration..."
+	${FIXIT123_HOME}/libexec/nodechecks/convert-bmc-static.sh
+}
+
+omsa_check_bios_baud_rate() {
+	local baud_rate=$1
+    if [ -z $1 ]; then
+        echo omsa_check_bmc_baud_rate BAUD_RATE
+        exit 1
+    fi
+	echo
+	echo -n "Checking for correct BIOS Baud Rate ($baud_rate): "
+	is_omreport_found || return 1
+	if [ `omreport chassis biossetup | grep -A 1 BAUD | grep Setting | awk '{print $3}'` -ne $baud_rate ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+omsa_update_bios_baud_rate() {
+		echo
+		echo "Attempting BIOS setting fixes ..."
+		/apps/breakfix-testing/SCRIPTS/dell/biosconf/cmoscfg -update -filename /apps/breakfix-testing/SCRIPTS/dell/biosconf/bios.dat 
+		/apps/breakfix-testing/SCRIPTS/dell/omsa-bios.script 
+}
+		
+omsa_check_for_scsi_conversion() {
+	echo
+	echo -n "Checking for SCSI conversion: "
+	is_omreport_found || return 1
+	omreport chassis biossetup | grep -A1 "RAID On Motherboard" > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo
+		echo -n "No RAID Controller on this motherboard: "
+		echo_success
+	elif [ `omreport chassis biossetup | grep -A1 "RAID On Motherboard" | grep Setting | awk '{print $3}'` != "SCSI" ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+}
+
+omsa_check_disk_firmware_version() {
+	# FIXME.... these shouldn't be stuffed in here locally... but we have no
+	# better place currently
+	local diskfirmware[0]="SEAGATE ST373207LC D704"
+	local diskfirmware[1]="SEAGATE ST373454LC D404"
+	local diskfirmware[2]="SEAGATE ST373307LC DS09"
+	local diskfirmware[3]="MAXTOR ATLAS10K5_73SCA JT02"
+	local diskfirmware[4]="FUJITSU MAW3073NC 5803"
+	local diskfirmware[5]="FUJITSU MAX3073NC 5D03"
+	local diskfirmware[6]="FUJITSU MAT3073NC 5704"
+
+	echo
+	echo "Checking Dell drive firmware version(s): "
+	is_omreport_found || return 1
+
+	# figure out what controller(s) we've got
+	local num_ctrlr=`omreport storage controller | egrep ^ID | wc -l`
+	num_ctrlr=$((num_ctrlr-1))
+
+	# grab the storage report for all controllers
+	for i in `seq 0 $num_ctrlr`; do
+
+		# grab the disk report for each controller
+		omreport storage pdisk controller=$i > /tmp/fixit123_dell_functions_disk_ctrlr_$i.$$ 2>&1
+
+		local phys_drives=`egrep ^ID /tmp/fixit123_dell_functions_disk_ctrlr_$i.$$ | egrep ^ID | awk -F ' : ' '{print $2}'`
+		
+		# look at each physical disk
+		for j in $phys_drives; do
+			local success=0
+			local disk=`omreport storage pdisk controller=$i pdisk=$j | grep -e Vendor -e Product -e Revision | awk -F ': ' '{print $2}' | tr '\n' '\0' | tr -s [:blank:]`
+
+			echo -n " $disk : "
+
+			for diskfirm in "${diskfirmware[@]}"; do
+				if [ "$disk" == "$diskfirm" ]; then
+					echo_success
+					success=1
+				fi 
+			done
+
+			if [ $success -eq 0 ]; then
+				echo_failure
+				echo
+
+				local knowntype=0
+				local model=`echo $disk | awk '{print $2}'`
+				local make=`echo $disk | awk '{print $1}'`
+				for diskfirm in "${diskfirmware[@]}"; do
+					local rev=`echo $diskfirm | awk '{print $3}'`
+					echo $diskfirm | grep $model > /dev/null
+					if [ $? -eq 0 ]; then
+						knowntype=1
+						echo "  Probably want rev $rev for $make model $model" 
+					fi
+				done
+
+				if [ $knowntype -eq 0 ]; then
+					echo "  Warning: do not have data for drive $make model $model"
+				fi
+			fi
+		done
+	done
+
+}
+
+conv2scsi() {
+	export PATH=/projects/global/noarch/dell/dtk2.2/toolkit/bin:$PATH
+	export LD_LIBRARY_PATH=/projects/global/noarch/dell/dtk2.2/toolkit/bin:$LD_LIBRARY_PATH
+	# turn off memory checks in bios
+	syscfg --memtest=disable
+	syscfg --embscsiraid=scsi --noraidprompt
+}
+

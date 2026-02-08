@@ -1,0 +1,102 @@
+#!/bin/bash
+#set -ex
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+#. /projects/contrib/fixit/fixit-env.sh
+
+if [ -z $FIXIT123_HOME ]; then
+	logger "$0: FIXIT123 config environment variables not found!"
+	exit 1
+fi
+
+. $FIXIT123_HOME/libexec/nodechecks/panfs_functions
+. $FIXIT123_HOME/libexec/nodechecks/os_functions
+. $FIXIT123_HOME/libexec/nodechecks/dell_functions
+
+if [ -f /etc/sysconfig/cap ]; then
+	. /etc/sysconfig/cap
+else
+	logger "$0: Please define the role of this node"
+	exit 1
+fi
+
+WANT_REBOOT=0;
+
+# europa
+if []
+	. $FIXIT123_HOME/libexec/nodechecks/europa_vals
+fi
+# ganymede
+
+# DELL omsa checks
+omsa_check_src_dir /usr/src/dell
+echo
+if [ $? -eq 0 ]; then
+	DELL_OMSA_SRC_OK=1
+	/usr/src/dell/linux/supportscripts/srvadmin-services.sh start > /dev/null 2>&1
+	/sbin/service ipmi start
+else 
+	DELL_OMSA_SRC_OK=0
+fi
+omsa_check_install_dir /var/local
+omsa_check_bios_version A05
+omsa_check_bmc_version 1.52
+omsa_check_bp_version 1.00
+omsa_check_for_bmc_static_ip
+omsa_check_bios_baud_rate 19200
+
+if [ $CAPROLE = "worker" ]; then
+	# check if on srn
+	/sbin/ifconfig | grep 134.253 > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		omsa_check_for_scsi_conversion
+	fi
+
+	check_kernel_version 2.6.9-42.0.2.EL_lustre.1.4.7.3smp
+	check_for_mount /home
+	check_for_mount /projects
+	check_dir_sanity /var
+	check_dir_sanity /var/spool/pbs
+	check_dir_sanity /tmp
+	check_panfs_software 2.3.7 panfs-2.6.9-42.0.2.EL_lustre.1.4.7.3-mp-2.3.7-194456.5
+	check_num_of_panfs_mounts 1
+	check_panfs_mount_option
+	check_for_mount /scratchp3
+	check_for_mount /scratchl2
+	check_sysctl
+	# srn nodes don't have ib (usually)
+	/sbin/ifconfig | grep 134.253 > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		/projects/contrib/fixit/run_ibcheck.sh
+	fi
+
+elif [ $CAPROLE != "worker" ]; then
+	check_kernel_version 2.6.9-42.0.2.ELsmp
+fi
+echo
+
+if [ $DELL_OMSA_SRC_OK -eq 1 ]; then
+	/usr/src/dell/linux/supportscripts/srvadmin-services.sh stop > /dev/null 2>&1
+	/sbin/service ipmi stop
+fi

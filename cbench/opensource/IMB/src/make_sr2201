@@ -1,0 +1,9 @@
+MPI_HOME    = /usr/local/mpi
+MPI_INCLUDE = $(MPI_HOME)/include
+LIB_PATH    = -L$(MPI_HOME)/lib/hmpp2/cml
+LIBS        = -lmpi
+CC          = cc
+OPTFLAGS    = 
+CLINKER     = cc 
+LDFLAGS     =
+CPPFLAGS    = -DnoCHECK

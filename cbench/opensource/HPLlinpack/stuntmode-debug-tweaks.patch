@@ -1,0 +1,118 @@
+Index: opensource/HPLlinpack/hpl/Make.cbench
+===================================================================
+--- opensource/HPLlinpack/hpl/Make.cbench	(revision 678)
++++ opensource/HPLlinpack/hpl/Make.cbench	(working copy)
+@@ -191,7 +191,8 @@
+ #              their data.  As it does this, this routine has a marginal
+ #              intrusive overhead.
+ #   -DMEMINFO_RUN  Add some memory allocation stats
+-HPL_OPTS     =  -DASYOUGO
++#HPL_OPTS     =  -DASYOUGO
++HPL_OPTS     =  -DASYOUGO -DHPL_USE_MPI_DATATYPE
+ #
+ # ----------------------------------------------------------------------
+ #
+Index: opensource/HPLlinpack/hpl/testing/ptest/HPL_pddriver.c
+===================================================================
+--- opensource/HPLlinpack/hpl/testing/ptest/HPL_pddriver.c	(revision 862)
++++ opensource/HPLlinpack/hpl/testing/ptest/HPL_pddriver.c	(working copy)
+@@ -108,16 +108,33 @@
+    MEMINFO memdata;
+ #endif
+    time_t start_timestamp, tmp_timestamp;
++   char hostname[64];
++   int jms_counter = 0;
+ 
+ /* ..
+  * .. Executable Statements ..
+  */
++#ifdef MEMINFO_RUN
++   meminfo(&memdata);
++   gethostname(hostname, sizeof(hostname));
++   fprintf(stderr, "%s: Before MPI_INIT: (%d,%d): memfree = %llu kB\n",
++           hostname, myrow,mycol,memdata.free/1024);
++   fflush(stderr);
++#endif
++
+    MPI_Init( &ARGC, &ARGV );
+ #ifdef HPL_CALL_VSIPL
+    vsip_init((void*)0);
+ #endif
+    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+    MPI_Comm_size( MPI_COMM_WORLD, &size );
++
++#ifdef MEMINFO_RUN
++   meminfo(&memdata);
++   fprintf(stderr, "%s: After MPI_INIT: %d=(%d,%d): memfree = %llu kB\n",
++           hostname, rank,myrow,mycol,memdata.free/1024);
++   fflush(stderr);
++#endif
+ /*
+  * Read and check validity of test parameters from input file
+  *
+@@ -161,6 +178,12 @@
+ #ifdef HPL_DETAILED_TIMING
+    if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with HPL_DETAILED_TIMING\n");
+ #endif
++#ifdef HPL_USE_MPI_DATATYPE
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with HPL_USE_MPI_DATATYPE\n");
++#endif
++#ifdef HPL_NO_MPI_DATATYPE
++   if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with HPL_NO_MPI_DATATYPE\n");
++#endif
+ #ifdef CYCLIC
+    if ( rank == 0 ) fprintf(stdout,"HPLPACK compiled with CYCLIC\n");
+ #endif
+@@ -186,6 +209,12 @@
+  * Loop over different process grids - Define process grid. Go to bottom
+  * of process grid loop if this case does not use my process.
+  */
++#ifdef MEMINFO_RUN
++   meminfo(&memdata);
++   fprintf(stderr, "%s: Before all iterations: %d=(%d,%d): memfree = %llu kB\n",
++           hostname, rank,myrow,mycol,memdata.free/1024);
++   fflush(stderr);
++#endif
+    for( ipq = 0; ipq < npqs; ipq++ )
+    {
+       (void) HPL_grid_init( MPI_COMM_WORLD, pmapping, pval[ipq], qval[ipq],
+@@ -253,8 +282,8 @@
+ 
+ #ifdef MEMINFO_RUN
+               meminfo(&memdata);
+-              fprintf(stderr,"%d=(%d,%d): memfree = %llu kB\n",
+-                     rank,myrow,mycol,memdata.free/1024);
++              fprintf(stderr,"%s: iteration %d: %d=(%d,%d): memfree = %llu kB\n",
++                      hostname, ++jms_counter, rank,myrow,mycol,memdata.free/1024);
+               fflush(stderr);
+ #endif
+               if ( rank == 0 ) {
+Index: opensource/HPLlinpack/hpl/testing/ptest/HPL_pdtest.c
+===================================================================
+--- opensource/HPLlinpack/hpl/testing/ptest/HPL_pdtest.c	(revision 862)
++++ opensource/HPLlinpack/hpl/testing/ptest/HPL_pdtest.c	(working copy)
+@@ -137,6 +137,12 @@
+  */
+    (void) HPL_grid_info( GRID, &nprow, &npcol, &myrow, &mycol );
+ 
++   if (0 == myrow && 0 == mycol) {
++     int rank;
++     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
++     HPL_fprintf( TEST->outfp, "WHOA!  Weirdness: MCW rank %d got 0/0 for myrow/mycol\n", rank);
++   }
++
+    mat.n  = N; mat.nb = NB; mat.info = 0;
+    mat.mp = HPL_numroc( N, NB, NB, myrow, 0, nprow );
+    nq     = HPL_numroc( N, NB, NB, mycol, 0, npcol );
+@@ -162,6 +168,11 @@
+  */
+    vptr = (void*)malloc( (ALGO->align + (mat.ld+1)*(mat.nq))*sizeof(double) );
+    info[0] = (vptr == NULL); info[1] = myrow; info[2] = mycol;
++   if (NULL == vptr) {
++     int rank;
++     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
++     HPL_fprintf( TEST->outfp, "WHOA!  Weirdness: MCW rank %d got NULL when trying to allocate %lu bytes\n", rank, (unsigned long) ((ALGO->align + (mat.ld+1)*(mat.nq))*sizeof(double) ));
++   }
+    (void) HPL_all_reduce( (void *)(info), 3, HPL_INT, HPL_max,
+                           GRID->all_comm );
+    if( info[0] != 0 )

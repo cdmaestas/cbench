@@ -1,0 +1,28 @@
+#!/bin/bash
+#set -ex
+
+. /projects/contrib/fixit/fixit-env.sh
+
+if [ -z $NODECHECKS_HOME ]; then
+        echo Please define NODECHECKS_HOME env variable
+        exit 1
+fi
+
+. $NODECHECKS_HOME/panfs_functions
+. $NODECHECKS_HOME/os_functions
+
+/etc/rc.d/rc.updateclient
+echo
+check_panfs_nfs_mount
+if [ $? -ne 0 ]; then
+	update_fstab_panfs_nfs_mount
+	mount $PANFS_NFS_MOUNT
+	echo
+	check_panfs_nfs_mount
+	echo
+	if [ $? -ne 0 ]; then
+		echo_failure
+	else
+		echo_success
+	fi
+fi

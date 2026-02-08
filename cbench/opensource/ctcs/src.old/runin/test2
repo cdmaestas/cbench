@@ -1,0 +1,8 @@
+#!/bin/bash
+# a dummy test
+sleep 1
+if [ $[$RANDOM % 10000] -lt 4000 ] ; then
+	exit 1
+else
+	exit 0
+fi

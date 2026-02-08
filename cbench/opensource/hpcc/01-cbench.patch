@@ -1,0 +1,11 @@
+diff -Naurp hpcc-1.0.0-orig/hpl/Make.top hpcc-1.0.0/hpl/Make.top
+--- src-orig/hpl/Make.top	2004-05-18 15:03:54.000000000 -0600
++++ src/hpl/Make.top	2006-03-23 10:07:46.249336000 -0700
+@@ -188,5 +188,7 @@ leaf             :
+ 	- ( $(CD) $(le) ; $(MKDIR) $(arch) )
+ 	- ( $(CD) $(le)/$(arch) ; \
+             $(LN_S) $(TOPdir)/Make.$(arch) Make.inc )
++	- ( $(CD) $(le)/$(arch) ; \
++            $(LN_S) $(TOPdir)/make.def make.def )
+ #
+ ########################################################################

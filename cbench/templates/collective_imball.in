@@ -1,0 +1,48 @@
+# collective_imb job template
+# full set of Intel MPI Benchmarks
+# 
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/IMB-MPI1
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/IMB-MPI1
+
+
+# build the message lengths file if it doesn't exist
+if [ ! -f ./lengths ]; then
+	cat << EOF >> ./lengths
+0
+1
+2
+4
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+4096
+8192
+16384
+32768
+65536
+131072
+262144
+524288
+EOF
+
+fi
+
+# we add some extra options to make the collective testing more
+# scalable time and stability wise with larger node counts (200+
+# or so)
+#
+# FIXME: for now we limit memory to 2.0GB, we need to parameterize
+#        this from cluster.def
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/IMB-MPI1 -msglen ./lengths -mem 2.0 -iter 5 -time 5.0 -npmin NUM_PROCS_HERE"
+
+cbench_run_cmd $CMD
+

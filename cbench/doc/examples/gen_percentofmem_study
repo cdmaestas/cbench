@@ -1,0 +1,38 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Long;
+
+my $baseident = "base";
+
+GetOptions(
+	'base=s' => \$baseident,
+);
+
+my $clusterdef_saved = "$ENV{'CBENCHOME'}/cluster.def.SAVED";
+my $clusterdef_in = $clusterdef_saved;
+my $clusterdef_out = "$ENV{'CBENCHOME'}/cluster.def";
+
+my @perc_factors = (10,15,20,30,40,50,55,60,65,70,72,75,78,80,82,85,87,90,91,92,93);
+my $runsizes = "1,2,4,8,16,32,64,128,240,256,440,480,500,512,960,1024,1920,2000";
+
+# save original cluster.def
+system("cp $clusterdef_out $clusterdef_saved");
+
+foreach my $f (@perc_factors) {
+	my $temp = $f / 100;
+	my $factors = "\@memory_util_factors = (0.15, $temp)";
+
+	my $sedcmd = "sed -e \'s/\@memory_util_factors =.*\$\/$factors\;\/g\' $clusterdef_in";
+	print "$sedcmd > $clusterdef_out\n";
+	system("$sedcmd > $clusterdef_out");
+
+	my $ident = "$baseident\-$f"."perc";
+	#my $cmd = "./linpack_gen_jobs.pl --ident $ident --runsizes $runsizes --jobcbenchtest /cbench-test";
+	my $cmd = "./linpack_gen_jobs.pl --ident $ident --runsizes $runsizes";
+	print "$cmd\n";
+	system("$cmd");
+}
+
+# restore original cluster.def
+system("cp $clusterdef_saved $clusterdef_out ");

@@ -1,0 +1,52 @@
+include $(CBENCHOME)/make.def
+###############################################################################
+#    Copyright (2009) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+# vim: syntax=make
+
+# just using this to be able to deal with the 
+# directory tree easier
+
+# build a list of directories, once... thus the := syntax
+DIRLIST := $(filter-out Make%, $(shell ls -p | grep \/))
+
+default:
+	$(MAKE) PASSTARGET=all $(DIRLIST)
+
+binstatus:
+	$(MAKE) PASSTARGET=$@ $(DIRLIST)
+	@echo;echo
+	@for dir in $(DIRLIST); do \
+		[ -f $$dir/.binstatus ] && cat $$dir/.binstatus; \
+	done
+
+distclean:
+	$(MAKE) PASSTARGET=$@ $(DIRLIST)
+	@for dir in $(DIRLIST); do \
+		[ -f $$dir/.binstatus ] && /bin/rm -f $$dir/.binstatus; \
+	done
+
+%:
+	$(MAKE) PASSTARGET=$@ $(DIRLIST)
+
+.PHONY: $(DIRLIST)
+$(DIRLIST):
+	-$(MAKE) -C $@ $(PASSTARGET)

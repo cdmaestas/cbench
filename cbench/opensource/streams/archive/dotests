@@ -1,0 +1,7 @@
+#!/bin/bash
+
+for i in binary-from-greg strm-*
+do
+    echo "############### $i ###############" >> results
+    ./$i >> results
+done

@@ -1,0 +1,13 @@
+# this is a test
+
+#set test one
+#set test2 three
+
+
+bg 20 DUMMY test2 93 4 1
+bg 10 DUFUS test1 92 30 1
+bg 15 DIMROD test1 92 10 9
+wait
+exit
+
+

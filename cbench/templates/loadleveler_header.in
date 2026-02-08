@@ -1,0 +1,43 @@
+#!/bin/bash
+#
+############ Cbench loadleveler_header.in ######################
+# Directives for LoadLeveler
+# NOTE: LoadLeveler may require that these directives be first...
+#@ job_name = JOBNAME_HERE
+#@ wall_clock_limit = WALLTIME_HERE
+#@ node = NUM_NODES_HERE
+#@ tasks_per_node = NUM_PPN_HERE
+
+### working to see how to translate this
+#@ output = $(job_name).$(jobid).$(stepid).out
+#@ job_type = parallel
+#@ error = $(job_name).$(jobid).$(stepid).err
+#@ resources = ConsumableMemory(2048mb) ConsumableVirtualMemory(2048mb)
+#@ queue
+# grap the LSF jobid
+JOBID=$LSB_JOBID
+#@ class = default
+#@ initialdir = ~/cbench
+### working to see how to translate this
+
+# include the common Cbench functions used in job scripts
+. BENCH_TEST_HERE/cbench_functions
+
+# this tells us what type of cbench job this is
+CBENCH_RUN_TYPE=RUN_TYPE_HERE
+
+# grab the BSUB_NODEFILE nodelist
+### TODO get nodelist from what is running
+#NODELIST=$(CBENCHTEST_HERE/sbin/hostlist -c $LSB_HOSTS)
+
+# this tells us details of the Cbench job in the job output
+cbench_echo "Cbench numprocs: NUM_PROCS_HERE"
+cbench_echo "Cbench numnodes: NUM_NODES_HERE"
+cbench_echo "Cbench ppn: NUM_PPN_HERE"
+cbench_echo "Cbench benchmark: BENCHMARK_NAME_HERE"
+cbench_echo "Cbench jobname: JOBNAME_HERE"
+cbench_echo "Cbench testset: TESTSET_NAME_HERE"
+cbench_echo "Cbench joblaunchmethod: JOBLAUNCHMETHOD_HERE"
+cbench_echo "Cbench lsf nodelist: $NODELIST"
+cbench_echo ""
+

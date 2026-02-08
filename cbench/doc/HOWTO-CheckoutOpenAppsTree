@@ -1,0 +1,16 @@
+= HOWTO Check out the Openapps Tree of Cbench =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+== Goal ==
+Check out the Openapps tree into your open cbench repository
+
+== Steps ==
+{{{
+ $ svn checkout https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/cbench
+ $ cd cbench
+ $ svn checkout https://cbench.svn.sourceforge.net/svnroot/cbench/trunk/openapps
+}}}
+ 	  	 

@@ -1,0 +1,146 @@
+# -*-Shell-script-*-
+#
+# myrinet_functions    This file contains core myrinet functions 
+#
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+[ -x ${FIXIT123_HOME}/libexec/nodechecks/functions ] || exit 1;
+. ${FIXIT123_HOME}/libexec/nodechecks/functions
+
+check_for_myrinet_card() {
+	echo
+	echo -n "Checking for a Myrinet card: "
+	/sbin/lspci | grep MYRICOM > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+}
+
+check_for_myrinet_mx_driver() {
+	echo
+	echo -n "Checking for Myrinet MX driver: "
+	/sbin/lsmod | grep mx > /dev/null 2>&1
+	if [ $? -eq 0 -a -d /opt/mx ]; then
+		echo_success
+	else
+		echo_failure
+	fi
+}
+
+check_myrinet_mx_state() {
+	local tmpfile=`mktemp`
+
+	echo
+	echo -n "Checking Myrinet MX state: "
+
+	/opt/mx/bin/mx_info -q > $tmpfile 2>&1
+	if [ $? -ne 0 ]; then
+		echo_failure
+		return 1
+	fi
+
+	# check for card type, assume rev E two port PCIX card
+	local type="M3F2-PCIXE"
+	grep "Product code" $tmpfile | grep $type >/dev/null
+	if [ $? -ne 0 ]; then
+		# not the card we assumed
+		type=`grep "Product code" $tmpfile | awk -F ':' '{print $2}' | tr -s [:blank:] | tr -d '\t'`
+	fi
+	
+	# check for mapper not configured
+	grep -P 'Mapper .*, !configured' $tmpfile > /dev/null
+	if [ $? -eq 0 ]; then
+		echo_failure
+		return 1
+	fi
+
+	# rev E cards
+	local match=`expr match "$type" 'M3F2-PCIXE'`
+	if [ "$match" == "10" ]; then
+		grep -iP 'Status:\s+Running, P0: Link up, P1: Link up' $tmpfile > /dev/null
+		if [ $? -eq 0 ]; then
+			/opt/mx/bin/mx_counters -c > /dev/null
+			echo_success
+			return 0
+		else
+			echo_failure
+			return 1
+		fi
+	fi
+
+	# rev D cards
+	match=`expr match "$type" 'M3F-PCIXD'`
+	if [ "$match" == "9" ]; then
+		grep -iP 'Status:\s+Running, P0: Link up' $tmpfile > /dev/null
+		if [ $? -eq 0 ]; then
+			/opt/mx/bin/mx_counters -c > /dev/null
+			echo_success
+			return 0
+		else
+			echo_failure
+			return 1
+		fi
+	fi
+
+	echo_failure
+	echo
+	echo "  Unknown Myrinet card type ($type)!"
+	return 1
+}
+
+check_myrinet_software() {
+	local type=$1
+	local version=$2
+
+	local rpm="$type"-"$version"
+
+	echo
+	echo -n "Checking for Myrinet software $type $version: "
+
+	rpm -qa | grep $type > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		if [ `rpm -qa | grep $type` = $rpm ]; then
+			echo_success
+		else
+			echo_failure
+		fi
+	else
+		echo_failure
+	fi
+}
+
+update_myrinet_software() {
+	local type=$1
+
+	#PVER=`rpm -qa | grep panfs`
+	#if [ $? -eq 0 ]; then
+		#rpm -e --noscripts --nodeps $PVER
+	#	rpm -e $PVER
+	#fi
+	#up2date --nox -i panfs-2.6.9-15.EL.root-mp
+	up2date --nox -i $type
+}
+
+

@@ -1,0 +1,188 @@
+#!/bin/bash
+# run tests
+# first parameter is number of iterations. if it is zero
+# then loop forever until interrupted.  
+# loggable output & reporting information will go to stdout.
+# reporting information for end users will go to stderr.
+
+# start the clock
+if [ -z "$ELAPSEDTIME" ] ; then ELAPSEDTIME=0 ; fi
+# roll back virtual start so that computations work based
+# on the TOTAL amount of time the test has been run
+SECONDS=$ELAPSEDTIME
+
+# checks before start, initialization
+if [ -z "$2" ] ; then exit 1 ; fi
+
+timecalc_output=""
+failed=0
+succeed=0
+count=0
+
+iterations=$1
+shift
+ttrun=$1
+shift
+
+# make sure we start in the right directory, if we've been
+# launched from somewhere else.
+
+t=`echo $0 | cut -c 1`
+if [ "$t" = "/" ] ; then
+        testpath=`dirname $0`
+else
+	p=`pwd`
+	testpath=`dirname $p/$0`
+fi
+cd $testpath
+
+# Now we can load the library
+. ../lib/sh/ctcslib.sh
+
+# color defns (that way we don't have to run a color program!)
+REDBLINK='\33[31m\33[5m\33[1m'
+MAGBLINK='\33[35m\33[5m\33[1m'
+RESET='\33[0m'
+
+function do_on_event {
+	if [ -z "$CTCS_ON_ERROR" ] ; then 
+		if [ -z "$CTCS_ON_EVENT" ] ; then
+			return
+		else
+		echo doing: $CTCS_ON_EVENT
+		$CTCS_ON_EVENT >>/dev/null 2>&1 &
+		unset CTCS_ON_EVENT
+		fi
+	else
+		echo doing: $CTCS_ON_ERROR
+		$CTCS_ON_ERROR >>/dev/null 2>&1 &
+		unset CTCS_ON_ERROR
+	fi
+}
+
+function timecalc {
+	timecalc_output=""
+	seconds=$1
+	days=$[$seconds/$[60*60*24]]
+	if [ "$days" -gt 0 ] ; then 
+		timecalc_output="$timecalc_output""$days"
+		timecalc_output="$timecalc_output"d
+		seconds=$[$seconds - $days * 60 * 60 * 24]
+	fi
+	hours=$[$seconds/$[60*60]]
+	if [ "$hours" -gt 0 ] ; then
+		timecalc_output="$timecalc_output"$hours
+		timecalc_output="$timecalc_output"h
+		seconds=$[$seconds - $hours * 60 * 60]
+	fi
+	minutes=$[$seconds/60]
+	if [ "$minutes" -gt 0 ] ; then
+		timecalc_output="$timecalc_output"$minutes
+		timecalc_output="$timecalc_output"m
+		seconds=$[$seconds - $minutes * 60]
+	fi
+		timecalc_output="$timecalc_output"$seconds
+		timecalc_output="$timecalc_output"s
+}
+
+# this function on SIGINT or SIGEXIT -- trys to clean up child
+# processes
+function interrupt () {
+	trap interrupt EXIT
+	# USR1 is a deprecated termination signal.
+	trap interrupt SIGUSR1
+	trap interrupt SIGTERM
+	trap interrupt SIGINT
+	echo $failed fail $succeed succeed $count count
+	# this just grabs the process id and all children...
+#	for i in `pstree -p $$ | sed 's/[a-z\+\`\(\)\|\.\/\-]/ /g'` ; do {
+#	    if [ $i != $$ ] ; then {
+#		kill $i >> /dev/null 2>&1
+#	    } ; fi
+#	} ; done
+	kill_children
+	# untrap the exit before we exit :)
+	trap EXIT
+	exit
+}
+
+# Here we must insure that the interrupt lock file is not present before
+# we actually return results.  This solves a race condition, see comments
+# in "run" command.  Yet another reason to roll runtest into the main
+# program.
+function check_result () {
+	if [ -z "$interrupt_flag" ] ; then
+		return $1
+	fi
+	if [ -e "$interrupt_flag" ] ; then
+		# we are being interrupted.  Shut down.
+		interrupt
+	fi
+	return $1
+}
+
+
+trap interrupt EXIT
+trap interrupt SIGUSR1
+trap interrupt SIGTERM
+trap interrupt SIGINT
+
+if [ ! -z "$KEYVALUE" ] ; then {
+	key="$KEYVALUE"
+} ; else {
+	key="$ttrun"
+} ; fi
+
+
+if [ -x ./$ttrun-info ] ; then
+    params=`./$ttrun-info $*`
+    if [ $? -ne 0 ] ; then
+        failed=$[$failed + 1]
+	count=$[$count + 1]
+	xx=`date`
+	echo -e "$MAGBLINK$xx: $key $count/$iterations TEST INITIALIZATION ERROR$RESET" >&2
+	echo "$xx: $key $count/$iterations TEST INITIALIZATION ERROR"
+	do_on_event
+	exit 2
+    fi
+else
+    params="$*"
+fi
+
+while [ $iterations -lt 1 -o $count -lt $iterations ] ; do
+	./$ttrun $params 2>&1
+	check_result $?
+	result=$?
+	xx=`date`
+#	now=`date +%s`
+	timecalc $SECONDS
+	et=$timecalc_output
+	if [ $result = 0 ] ; then
+		succeed=$[$succeed + 1]
+		count=$[$count + 1]
+		echo "$xx: $key success: on $count/$iterations after $et"
+		if [ "$RUNIN_VERBOSE" = "1" ] ; then
+			echo "$xx: $key success: on $count/$iterations after $et" >&2
+		fi
+	elif [ $result = 2 ] ; then
+	        failed=$[$failed + 1]
+		count=$[$count + 1]
+		echo -e "$MAGBLINK$xx: $key TEST INTERNAL ERROR: on $count/$iterations after $et$RESET" >&2
+		echo "$xx: $key TEST INTERNAL ERROR: on $count/$iterations after $et"
+		do_on_event
+		exit 2
+	elif [ $result = 255 ] ; then
+	        kill $$
+	else
+	        failed=$[$failed + 1]
+		count=$[$count + 1]
+		echo -e "$REDBLINK$xx: $key FAILED: on $count/$iterations after $et$RESET" >&2
+		echo "$xx: $key FAILED: on $count/$iterations after $et"
+		do_on_event
+	fi
+done
+
+
+if [ -x ./$ttrun-end ] ; then {
+	./$ttrun-end $params 2>&1
+} ; fi

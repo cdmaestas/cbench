@@ -1,0 +1,52 @@
+= Cbench Documentation =
+
+
+
+Most of this is a work in progress...  Please email the Cbench [../wiki/WikiStart#MailingLists mailing list] with any  questions.
+
+[https://apps.sourceforge.net/trac/cbench/wiki Back to main Cbench page]
+
+== Information on What is in Cbench ==
+ * [wiki:doc/ListOfSoftware List of Software in Cbench]
+ * [wiki:doc/SupportedBatchJobLaunchers List of Batch Systems and Job Launchers Cbench Supports]
+
+== Getting Started ==
+ * [wiki:doc/README Distribution README]
+ * [wiki:doc/INSTALL Compiling and Installing]
+
+== HOWTO Guides ==
+'''Cbench Version 1.2 Guides'''
+ * [wiki:doc/HOWTO-QuickInstall_1.2 Cbench 1.2 Quick Start Installation Guide]
+ * [wiki:doc/HOWTO-RunTestHowTo_1.2 Cbench 1.2 Testing Guide]
+ * [wiki:doc/HOWTO-UsingSlurm Using Cbench with SLRUM]
+ * [wiki:doc/HOWTO-CompileAllOfCbench Compile All of Cbench (including Openapps)]
+
+'''Cbench Version 1.1 Guides'''
+ * [wiki:doc/HOWTO-QuickInstall_1.1 Cbench 1.1 Quick Start Installation Guide]
+ * [wiki:doc/HOWTO-RunTestHowTo_1.1 Cbench 1.1 Testing Guide]
+
+'''General Guides'''
+ * [wiki:doc/HOWTO-NodeLevelTesting Basic HOWTO on Node Level Testing, i.e. the nodehwtest testset]
+ * [wiki:doc/HOWTO-LustreTesting Basic HOWTO on testing Lustre filesystems with Cbench IO testset]
+
+ * [wiki:doc/HOWTO-UsingCbenchAddon HOWTO Utilize a Cbench Addon tree]
+ * [wiki:doc/HOWTO-MakeNewTestset HOWTO Create a New Testset]
+ * [wiki:doc/HOWTO-MakeNewOutputParseModule HOWTO Create a New Output Parse Module]
+
+ * [wiki:doc/HOWTO-ArchiveToTracScript Using the archive_data_for_trac.pl script]
+ * [wiki:doc/HOWTO-SingleNodeBenchmark Using the single_node_benchmark.pl script]
+ * [wiki:doc/HOWTO-UsingMultidata Using the BETA ''multidata'' mode of output parsing]
+
+== General Documentation ==
+ * [wiki:doc/TestSets About Cbench Testsets]
+ * [wiki:doc/DeveloperHome Developer Home (including information on checking out from the Subversion repository)]
+
+== Cbench User Applications Support ==
+ * [wiki:doc/HOWTO-CheckoutOpenAppsTree Checking Out the Openapps Tree of Cbench]
+ * [wiki:doc/HOWTO-CompilingAppsTree Compiling the Openapps Tree ]
+
+ * [wiki:doc/APPS-LAMMPS Using LAMMPS with Cbench]
+ * [wiki:doc/APPS-SWEEP3D Using Sweep3D with Cbench]
+ * [wiki:doc/TAUandCbench TAU and Cbench]
+
+ 	  	 

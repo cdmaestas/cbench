@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# block read testing
+# give it a device and it will go after it
+
+set -m
+
+if [ -z "$3" ] ; then
+    echo device paralleltests delay  required
+    exit 1
+fi
+size=0
+
+if [ "$1" = "/dev/fd0" ] ; then
+    # hack for floppy disks (no size information... grr)
+    size=$[1440 * 2]
+    bsize=512
+else
+    scratch=`fdisk -l $1`
+#    echo "$scratch"
+    cylinders=`echo "$scratch" | grep Disk | cut -f 7 -d ' '`
+    bpcyl=`echo "$scratch" | grep Units | cut -f 5 -d ' '`
+    bsize=`echo "$scratch" | grep Units | cut -f 7 -d ' '`
+#    echo "$cylinders $bpcyl $bsize"
+    size=$[$cylinders * $bpcyl]
+fi
+
+if [ "$size" -lt 100 ] ; then {
+    echo error in size calculation... aborting
+    exit 1
+} ; fi
+
+result=0
+i=0
+while [ $i -lt $2 ] ; do {
+    badblocks -b $bsize $1 $size &
+    sleep $3
+    i=$[ $i + 1]
+} ; done
+
+while [ $i -gt 0 ] ; do {
+    wait %$[$i -1]
+    if [ $? -ne 0 ] ; then {
+	echo Parallel process $i encountered an error.
+	result=1
+    } ; fi
+    i=$[ $i - 1]
+} ; done

@@ -1,0 +1,7 @@
+# this is a test
+
+# use timer statement to make a maximum limit on this
+timer 10s
+fg 1 MONITOR monitor
+wait
+exit

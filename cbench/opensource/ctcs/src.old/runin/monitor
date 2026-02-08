@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# depends on chartst in the current directory
+# open seems to do a nohup or otherwise protects its subprocesses
+# so I can't kill them.  So for now, the convienence feature of switching
+# back the VC is foregone.
+
+echo sending $2 as repeating output to tty12...
+switchto 12
+./chartst $* >>/dev/tty12 </dev/tty12
+

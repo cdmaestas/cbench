@@ -1,0 +1,69 @@
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+== What is Cbench? ==
+
+Cbench in a phrase is hopefully a "Scalable Cluster Benchmarking and Testing Toolkit."
+It's goal is to be a relatively straightforward collection of tests,
+benchmarks, applications, utilities, and framework to hold them together with
+the goal to facilitate scalable testing, benchmarking, and analysis of a Linux parallel
+compute cluster.  It grew gradually out of frustration having to redo the same
+work over and over as new Linux clusters were being integrated and brought
+online. I've continually found labor intensive tasks in cluster integration that
+could be assissted so that labor could be applied to the true goals of system integration,
+i.e. getting the system tested and debugged.  As this toolkit has grown, it has
+opened the doors to more sophisticated system integration and testing capabilities.
+
+Some examples that are relatively painless to do with Cbench:
+ * run 1000+ of parallel jobs over a range of 2 to 1024 processors using 10-15 different tests/benchmarks overnight and analyze what happened the next morning in minutes
+ * plot results in semi real-time (using gnuplot) for supported tests as hundreds of jobs run through the scheduler
+ * for a set of supported test jobs, easily analyze success/failure ratios according to job size (number of processes)
+ * run node-level (i.e. on a single node w/o worrying about MPI) nightly burn-in tests on a 4500 node cluster, analyze the results, and generate a statistic performance and fault profile for the nodes
+ * cease to worry about the hassles of changing mpi job launchers and batch schedulers
+
+== Licensing ==
+Cbench is free opensource software licensed under [http://www.gnu.org/licenses/gpl.txt GPL version 2]. See the doc/LICENSE file as well.  Cbench was originally developed at Sandia National Laboratories and is thus copyrighted by Sandia Corporation (except, of course, for work developed outside of Sandia and contributed to Cbench.  The official copyright is in [wiki:Copyright doc/COPYRIGHT].
+
+Cbench has been officially release as GPL v2 licensed opensource as of
+November 4, 2005!
+
+Cbench includes many opensource and freely downloadable tools
+in its distribution.  These tools maintain their own copyright and license
+identity obviously.  All tools included in the opensource tree of Cbench should
+have licenses that allow their source code to be distributed with Cbench. Any
+licensing problems are purely unintended and will be immediately rectified.
+Please email jbogden_AT_sandia_DOT_gov with any concerns.
+
+== Disclaimer ==
+There is no warranty for the program, to the extent permitted by
+applicable law.  Except when otherwise stated in writing the copyright
+holders and/or other parties provide the program "as is" without warranty
+of any kind, either expressed or implied, including, but not limited to,
+the implied warranties of merchantability and fitness for a particular
+purpose.  The entire risk as to the quality and performance of the program
+is with you.  Should the program prove defective, you assume the cost of
+all necessary servicing, repair or correction.
+
+== Resources, Documentation, Help, etc. ==
+The best place is the Cbench homepage which is located at http://cbench.sourceforge.net or http://cbench.org.
+
+There is an email list you can email questions to: cbench-sf-devel_AT_lists_DOT_sourceforge_DOT_net .
+The email list is archived and searchable on Sourceforge at http://sourceforge.net/mail/?group_id=153330 .
+Documentation is periodically exported from the Wiki pages on the Cbench website to the
+doc directory of the Cbench distribution tarball.
+
+Cbench tarballs can be found at http://sourceforge.net/projects/cbench under the Files section.
+
+== Contributors ==
+Cbench historically is the result of work done at Sandia National Laboratories by
+Jeff Ogden (jbogden_AT_sandia_DOT_gov) as a Hewlett-Packard consultant under contract
+to Sandia.  These days many fine contributions come from others.  Other contributors include:
+ * Chris Maestas (Hewlett-Packard contractor to Sandia)
+ * Marcus Epperson (Sandia Technical Staff Member)
+ * Ryan Braithwaite (Undergraduate Intern to Sandia)
+ * Randy Scott (Hewlett-Packard contractor to Sandia)
+ * Jonathan Atencio (Hewlett-Packard contractor to Sandia)
+
+
+ 	  	 

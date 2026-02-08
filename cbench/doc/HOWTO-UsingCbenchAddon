@@ -1,0 +1,32 @@
+= Howto use the Cbench "addon" hook =
+
+
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+The Cbench "addon" hook is really just a generalized way to easily add the capabilities provided by the [wiki:DeveloperHome#CbenchRestrictedRepository Cbench Restricted tree] without requiring that the restricted tree code be dumped into the normal Cbench source tree.  Because the restricted tree has various code with various restrictions, we want to really force it to be treated separately.  At this point there is only a single addon tree, the restricted tree, but there could potentially be others in the future.
+
+The key to the seamless integration of two separate source trees is the CBENCHADDON environment variable.  The existence of this variable tells Cbench that an addon tree exists and to use it.  CBENCHADDON is treated  very much like the CBENCHOME environment variable.  Cbench looks for ''cluster.def'' and all loadable modules in $CBENCHOME/perllib.  When CBENCHADDON is present, Cbench also looks for loadable modules in $CBENCHADDON/perllib.  CBENCHADDON points to a single path currently:
+{{{
+export CBENCHADDON=/path/to/addondir
+}}}
+A space/comma/whatever separated list will confuse the CBENCHADDON hooks currently.
+
+CBENCHADDON existence does not trigger any different behavior in the core Cbench makefile system.  Currently the compilation and installation from the  addon tree is separated.  So, pseudocode to get things from the core Cbench tree and from the addon tree looks like:
+ * assuming a Cbench core source tree and properly defined CBENCHOME, CBENCHTEST, COMPILERCOLLECTION, and MPIHOME
+ * cd $CBENCHOME
+   * make
+   * make install
+   * make itests
+ * get Cbench addon tree located at /path/to/addondir
+   * export CBENCHADDON=/path/to/addondir
+   * cd $CBENCHADDON
+   * make
+   * make install
+   * make itests
+ * cd $CBENCHTEST
+   * use the testing tree including capabilities built and installed from the addon tree
+
+
+The Cbench Openapps tree '''does NOT''' utilize the CBENCHADDON hook.  The Openapps tree is integrated directly into the core Cbench source tree (this means stuff in directories like ''perllib/*'' and ''templates'') with the exception of makefiles, input decks, etc.
+ 	  	 

@@ -1,0 +1,34 @@
+# bandwidth_sqmr job template
+# LLNL Sequoia message rate benchmark
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/sqmr
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/sqmr
+
+
+# the NCA and NBA nomenclature comes from the Sequoia benchmark examples
+NCA=NUM_PPN_HERE
+NBA=$(((NUM_PROCS_HERE-$NCA)/$NCA))
+
+# sqmr is picky about things, so sanity check them
+REQNP=$((($NBA+1)*$NCA))
+if [ $REQNP -ne NUM_PROCS_HERE ]; then
+	cbench_echo "CBENCH NOTICE: sqmr will not allow the computed parameters for this job"
+	exit
+fi
+if [ NUM_PROCS_HERE -eq 1 ]; then
+	cbench_echo "CBENCH NOTICE: sqmr requires more than 1 process"
+	exit
+fi
+
+PARAMS="--num_cores=$NCA --num_nbors=$NBA"
+
+# if running on a single node, need to drop some of the parameters
+if [ NUM_NODES_HERE -eq 1 ]; then
+	PARAMS=""
+fi
+
+CMD="JOBLAUNCH_CMD_HERE CBENCHTEST_BIN_HERE/sqmr --num_iters=10000 $PARAMS"
+
+cbench_run_cmd $CMD

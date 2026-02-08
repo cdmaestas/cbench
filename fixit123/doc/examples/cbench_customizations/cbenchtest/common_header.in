@@ -1,0 +1,4 @@
+# NOTE: bash syntax is used here
+
+export VIADEV_INITIAL_PREPOST_DEPTH=4
+

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#
+# This program is part of the VA Cerberus Test Control System.
+# Unless otherwise noted, Copyright (c) 1999,2000 VA Linux Systems, 
+# All Rights Reserved.
+# You may distribute this program under the terms of the GNU General
+# Public License, Version 2, or, at your option, any later version.
+#
+
+function destroy_state {
+        d=`ls -d log/newburn.tcf*`
+	i=1
+	while [ -d log/newburn.old.$i ] ; do i=$[$i + 1] ; done
+        dx="log/newburn.old.$i"
+        if [ -d "$d" ] ; then
+                mv $d $dx
+                if [ $? != 0 ] ; then echo Can not save burn state ; return 2 ; fi
+                cp newburn.tcf newburn.params newburn2.tcf newburn2.params $dx >>/dev/null 2>&1
+        fi
+	rm -f newburn.tcf newburn.params newburn2.tcf newburn2.params >>/dev/null 2>&1
+}
+
+destroy_state
+exit $?
+

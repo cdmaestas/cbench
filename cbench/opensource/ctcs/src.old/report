@@ -1,0 +1,91 @@
+#!/usr/bin/perl -w
+#
+#  Amazing that we'll use the Practical Extraction and Report Language
+#  for actual reporting... ;)
+
+use lib 'lib/perl';
+use hashstore;
+use timecalc;
+
+my $directory;
+my $source;
+
+
+##########
+# Functions
+##########
+
+sub get_failtime {
+	my $logfile = shift;
+	open LOGFILE, $logfile;
+	while (<LOGFILE>) {
+		if (/FAILED.*after (\S*)/) {
+			close LOGFILE;
+			return $1;
+		}
+	}
+}
+
+##########
+# Main Body
+##########
+
+
+if (@ARGV) {
+	$source = shift;
+} else {
+	$source = "newburn.tcf";
+}
+
+$directory = `ls -d ./log/$source.log.*`;
+
+$directory =~ s/\n//g;
+
+if ( ! -d $directory ) {
+	die ("Can't find test directory");
+}
+
+print "Getting results for:  $source\n";
+print "Using directory: $directory\n";
+chdir ($directory);
+
+my %state;
+my %results;
+my $key;
+
+if (!load_hash(\%state,"timer_state")) {
+	warn "Couldn't find timer_state";
+}
+if (!load_hash(\%results,"test_results")) {
+	warn "Couldn't find test_results.";
+}
+
+print "\nDate: " . `date`;
+
+print "Test Run Time:  " . sectotime($state{gtime}) ."\n";
+print "\n";
+
+
+my $fail;
+my $attempt;
+my $succeed;
+my $time;
+my $ftime;
+my @failed;
+
+my $format="%-16s %7s %7s %7s %12s %12s\n";
+
+printf($format,"TestID","Attempt","Succeed","Fail","FTime","TotalTime"); 
+
+foreach $key (keys (%results)) {
+	$fail = @{$results{$key}}[0];
+        $attempt = @{$results{$key}}[2];
+        $succeed = @{$results{$key}}[1];
+        $time = sectotime(@{$results{$key}}[3]);
+        if ($fail) {
+		$ftime = get_failtime($key);
+                printf($format,$key,$attempt,$succeed,$fail,$ftime,$time);
+        } else {
+                printf($format,$key,$attempt,$succeed,$fail,"-",$time);
+        }
+}

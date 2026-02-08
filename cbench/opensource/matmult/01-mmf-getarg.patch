@@ -1,0 +1,23 @@
+--- MATMULT.orig/matmult/mmf.f	2008-06-30 12:34:04.000000000 -0600
++++ MATMULT/matmul/mmf.f	2006-01-02 11:27:58.000000000 -0700
+@@ -338,15 +338,15 @@
+       istdo = 6
+       istdi = 5
+       write(istdo,1000) NMAX, MMAX, LMAX
+-      call getarg (1, arg)
++      call get_command_argument (1, arg)
+       read (arg, *) nproc
+-      call getarg (2, arg)
++      call get_command_argument (2, arg)
+       read (arg, *) nreps
+-      call getarg (3, arg)
++      call get_command_argument (3, arg)
+       read (arg, *) n
+-      call getarg (4, arg)
++      call get_command_argument (4, arg)
+       read (arg, *) m
+-      call getarg (5, arg)
++      call get_command_argument (5, arg)
+       read (arg, *) l
+
+       if( nproc.lt.1 .or. nproc.gt.64 ) then

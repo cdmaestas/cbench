@@ -1,0 +1,108 @@
+From: Naegle, John H
+Sent: Wednesday, October 27, 2004 8:42 AM
+To: Ogden, Jeffry Brandon
+Subject: FW: Cross-sectional bandwidth testing on Feynman with
+Infiniband and Rogue with Myrinet & GigE
+
+Jeff,
+Here is my code and a lengthy write-up I did on the results for my initial testing. Let me know when your ready to play! Thanks, John
+
+
+
+-----Original Message-----
+From: Naegle, John H 
+Sent: Tuesday, June 15, 2004 10:38 AM
+To: Doerfler, Douglas W
+Subject: FW: Cross-sectional bandwidth testing on Feynman with Infiniband and Rogue with Myrinet & GigE
+
+
+Doug,
+Here are some of the notes I have written up on my cross-sectional bandwidth testing.  You will want to start on the email at the bottom of this one for the background, if your interested. Thanks, John
+
+-----Original Message-----
+From: Naegle, John H 
+Sent: Monday, June 14, 2004 9:49 AM
+To: Naegle, John H; Gossage, Steven A; Hu, Tan Chang; Martinez, Luis G; Kellogg, Brian R; Eichert, Diana; Wertz, Jason S; Schutt, James A; Monk, Stephen; Clauser, Milton; Barnaby, Marty L; Bohnsack, Matthew Paul
+Cc: Zepper, John D
+Subject: Cross-sectional bandwidth testing on Feynman with Infiniband and Rogue with Myrinet & GigE
+
+
+All,
+OK, the results are in....   Infiniband is definitely static routing as well.  No big surprise there!!
+
+The attached spreadsheet "Compare Rogue myrinet vs Fynman infinband.xls" has 128 node runs from both Rogue using Myrinet and Feynman using Infiniband.  Again, these are my initial captures and Excel musings, sift through at your own peril!
+
+See the email below for background on the test setup and Myrinet results.
+
+Infiniband Results:
+The theoretical maximum of Infinband is just under 1GByte/s.  My tests for single, uncongested throughput was only 670MB/s.  So there is some issue there we need to look at some more.  
+
+When running multiple pairs, the congestion appeared with a few as 4 pairs of nodes.  The 2 shared paths performance was 484MB/s, the 3 shared paths was 323MB/s, the 4 shared paths was 277MB/s, and the 5 shared paths was 197MB/s.  All of these fit closely to a ~968MB/s single session peak sustainable performance.  
+
+Comparing Infinband and Myrinet performance:
+The spread sheet shows histograms of the 64 nodes comparison test between rogue with Myrinet and Feynman with Infiniband.  The histograms indicate that Infiniband has less overlapped paths than Myrinet, but not by much.  Maybe they have larger switching components?  Anyone know what the size of the Infiniband internal switching cores are?  The Myrinet equipment uses 16 port cores, I believe.  The average performance of Myrinet is not 4 times the Myrinet due to my peak performance of the non congested paths of 670MB/s rather than the theoretical ~970MB/s.
+
+So both Myrinet and Infinband are demonstrating the severe penalty of static routes even in Fat Tree implementations where uncongested routes could be found with more intelligent routing techniques.  The problem is that these more intelligent techniques have been worked on for years with very little success.  Dynamic routing in this environment is an extremely difficult problem.  On the other hand, Myrinet is claiming they are just about to release (within a couple of months) their latest MX code which will improve the average performance to within 90% of the peak.  I'm a little skeptical, but they are saying all the right things to indicate they understand the problem and have a viable theoretical solution.  The proof will be in their implementation.  It won't take long to test it once we get their code installed.  The problem here will be testing the long term stability of the routing algorithm as well as its performance.  
+
+Gigabit Ethernet Results:
+The GigE results are as we expected.  The base performance was ~105 MB/s.  Scaling all the way to 64 nodes showed no more than a 10% degradation in some of the paths.  We did not capture the results, but Matt and I were together when we ran the tests so Mat will swear to my lies!  This shows why the large Ethernet switches are more expensive than the Myrinet and Infiniband switches.... The Ethernet switches are architected to be truly non-blocking for all of the ports, rather than relying on intelligence in the NIC routing.  The lower performance and higher latency (which we did NOT test) makes it difficult to compare though.  The average aggregate throughput for the blocking Myrinet on the 128 nodes test was ~8GB/s.  The user perceived may be even less if the processes was waiting for the slowest transfer of data to complete.  That number could be as low as 3.3GB/s.  The Ethernet would be ~6.4GB with little statistical variance.  If the cluster went beyond the ~400 ports you can put in a non-blocking GigE switch today, you would be back in the interconnect problem.  More thorough analysis is obviously need to do a competent comparison.
+
+Matt just suggested we try this on the Quadrics connected Red Squall system.  More to come.....
+
+Thanks,
+John
+
+
+
+-----Original Message-----
+From: Naegle, John H 
+Sent: Monday, June 07, 2004 11:13 AM
+To: Naegle, John H; Gossage, Steven A; Hu, Tan Chang; Martinez, Luis G; Kellogg, Brian R; Eichert, Diana; Klaus, Ed; Wertz, Jason S; Schutt, James A; Monk, Stephen; Clauser, Milton; Barnaby, Marty L
+Subject: Cross-sectional bandwidth testing on Feynman
+
+
+All,
+I have an “ugly” but functional version of our cross-sectional bandwidth test working.  So far I have been able to test it on the Myrinet connected compute nodes on Feynman.  The short story is that the results are as we predicted for static routes.  
+
+Here is the long story:
+
+Test Code:
+Basic Operation:
+My benchmark code (called “rotate”) implements the test we worked out a few Thursdays ago.  Given a set of nodes 1…N, it simultaneously transmits a stream of date from node 1 to node N/2, from node 2 to node N/2+1, and so forth through node N/2-1 to node N.  All of the performance numbers from each pair are collected and printed out.  Then it shifts the connectivity to node 1 to node N/2+1, node 2 to node N/2+2, and so forth to node N/2-1 to node N/2.  This is basically a right rotate of the connectivity matrix.  All of the pairwise results are collected again and printed out.  This continues until the shift goes through all N/2 options.  The resulting printout can be easily copied to a spreadsheet for analysis.  
+
+More Details:
+The code uses MPI calls to transfer the data.  I used the basic blocking MPI_Send, MPI_Ssend, and MPI_Recv calls.  There was no performance difference between MPI_Send and MPI_Ssend, so I stuck with the former.  
+
+The code synchronizes all of the processes to make sure they start very close to the same time.  After a clock is started, a buffer of size “n” doubles (8 Bytes each) is transmitted “nloop” times for each pair.  Upon completion, the clock is stopped and the average throughput is calculated for each pair.  This process is repeated “NUMBER_OF_TESTS” times.  Currently, I report the single best result for each pair.  Initial testing showed very little variance in the performance between the tests.  
+
+ Node 0 then collects all of the reported performance times from the pairs and prints the results in comma delineated format.  The receiving nodes are rotated to the right by 1, and the test process is repeated.  This continues for N/2 shifts so that all rotated combinations are tested.
+
+To ensure that we don’t get invalid results due to multiple processors on the same node (and therefore the same interconnect interface), I used the following commands to reserve the nodes and initiate the code:
+
+qsub –I –l nodes=48:ppn=2:compute –l walltime=30:00
+
+This gives 48 compute nodes with 2 processors each for 30:00 minutes.
+
+Mpiexec –pernode –np=48 rotate
+
+This executes “rotate” on 1 processor of each of the 48 nodes.  This ensures that the performance tests are only using one processor per node and also that no other jobs are using the other processor.
+
+Results:
+Parameters:
+After running several “warmup” tests, it appeared that “NUMBER_OF_TESTS” did not make any difference.  I stuck with 3.  “nloop” did not make much difference as long as it was above ~3.  I used 10.  The performance did vary drastically with “n”.  It seemed to be stable and high around the 1MByte range, so I used 1048576.  This means each MPI_Send actually sent 8 MB since a double is 8 Bytes in this compiler.  
+
+I performed tests using 8, 16, 28, 48, and 64 nodes.  See the attached spreadsheet for some of these results.  I only used the compute nodes that were connected with Myrinet since the Infiniband nodes were being upgraded.  The maximum theoretical throughput of Myrinet is ~250Mbytes/s.  The best I saw was 241MB/s, which is close enough for government work!
+
+My Interpretation:
+The results appear to be just what we expected for static routes on Myrinet.  On small node count runs, we see some overlap and degradation.  Since the overlap appears to come in at least groups of 2, I believe we are seeing the symptoms of overlapping static routes.  On successive runs, the same performance numbers for the same positions in the connectivity matrix were reported.  The matrix in the spreadsheet labeled “Compare of 2 runs with same qsub 28” is a simple diff of the result matrices for a 28 node run.  Notice the insignificantly small numbers.  The next matrix compares the top left quadrant of the 28 and 16 nodes runs.  These will have completely different pair-wise matching paths, and the differences indicate completely different results, as expected.
+
+As I moved to larger node runs, the overlaps become more significant.  Some of the throughputs drop as low as 44 MB/s.  The existing simplistic data movement applications simply split the data evenly among a set of data moving pairs.  In this mode, the actual wall-clock time to move a file is determined by the slowest pair.  So the apparent throughput would be N times 44 MB/s where N is the number of data moving pairs.  In our case, we are building towards 50 pairs.  That would be 2.2 GB/s!  Even with the 4 times faster Infiniband, that is still 8.8 GB/s.  
+
+There was only one issue that I could not explain.  When I tried to move data between two processors on the same node, I could not get more than ~333MB/s for large transfers.  Since this is completely within a single board (no Myrinet), you would expect the numbers to be much higher.  Since this is still above the Myrinet 250MB/s limit, I don’t think this is an issue for the results above.  It will be a big issue when we move to Infiniband and expect to see 1GB/s per stream.  For very small transfers, I did see numbers in the 700MB/s range, but I don’t trust those.
+
+Obviously this is very early stuff, but I wanted everyone to take a look at this and pick it apart so we have a good test we all understand and agree on for our ongoing work.  So let me know what you think about the tests, results, and interpretations. 
+
+Thanks,
+John
+ 
+

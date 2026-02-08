@@ -1,0 +1,7 @@
+#PBS -l nodes=236:ppn=2:compute -l walltime=1:00:00
+
+echo 236:2ppn w/ -np 472
+date
+mpiexec -np 472 /scratch/jbogden/mpi_hello > output.$PBS_JOBID
+fgrep -v Hello output.$PBS_JOBID
+

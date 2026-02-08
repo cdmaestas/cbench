@@ -1,0 +1,85 @@
+= Basic HOWTO on testing Lustre filesystems with Cbench ''IO'' testset =
+
+[wiki:doc/CbenchDocumentation Back to Cbench Documentation]
+
+== Setting up for testing ==
+
+Assume a clean Cbench 1.2.X source tree located in ''/path/to/cbench''.  The Cbench Testing
+Tree is the tree in which all Cbench testing activity takes place.  Lets say we want
+to load test a Lustre filesystem mounted at /scratch1.  We'll locate the Cbench testing
+tree in ''/scratch1/joeuser/cbench-test''.
+
+ * Setup key Cbench variables
+   * we will use Gnu compilers with an Openmpi installed in /opt/openmpi-1.2.8
+{{{
+export CBENCHOME=/path/to/cbench
+export CBENCHTEST=/scratch1/joeuser/cbench-test
+export COMPILERCOLLECTION=gcc
+export MPIHOME=/opt/openmpi-1.2.8
+}}}
+   * I often copy doc/examples/cbench.sh to ''dotme'', and then edit ''dotme'' with the
+Cbench varialbes for a particular setup
+ * make just the IO related binaries
+{{{
+% make iotest
+}}}
+   * this should be the result
+{{{
+% ls $CBENCHOME/bin
+hwtests  IOR.mpiio  IOR.posix  iozone
+}}}
+ * setup the cluster.def file correctly for your cluster which lives in $CBENCHOME
+   * cluster.def should be commented helpfully to guide you
+   * (see [wiki:doc/HOWTO-RunTestHowTo_1.1#Configurecluster.def cluster.def] for more guidance)
+ * install the Cbench testing tree
+{{{
+% make installtests
+}}}
+ * chdir to the '''IO''' testset
+{{{
+% cd $CBENCHTEST/io
+}}}
+ * generate the required scripts and files for the IO testset jobs we want to run
+   * assume we want to run 2 mpi processes per node (2ppn) ONLY (otherwise drop the --match
+parameter)
+   * using the --ident parameter (specifies a test identifier) we are identifying/grouping all the 
+scripts and job output files under the name ''lustretst1''
+{{{
+% ./io_gen_jobs.pl --ident lustretst1 --match 2ppn
+}}}
+
+At this point you should be all ready to run tests on the /scratch1 filesystem.
+
+== Running tests in firehose mode ==
+In this mode we have Cbench submit every io testing batch script we just generated, possibly
+multiple times depending on how long we want to keep the queue full.
+
+{{{
+% ./io_start_jobs.pl --batch --ident lustretst1 --repeat 5
+}}}
+
+== Running tests in a controlled mode ramping the load incrementally ==
+In this mode we use the ''throttledbatch'' mode of io_start_jobs.pl to ramp the load on 
+the filesystem incrementally by controlling how many jobs are running.  So, we'll arbitrarily
+pick jobs that run on 32 nodes as our testing unit and start with a single Cbench io
+job running at any given time.
+
+{{{
+% ./io_start_jobs.pl --throttledbatch 1 --ident lustretst1 --nodes 32 --repeat 20
+}}}
+Cbench will poll the batch scheduler and keep one job running/queued at any given time. The
+polling interval can be adjusted with --polldelay.
+
+Once we like the look of a single job load on /scratch1, we'll do say four jobs. So, ctrl-c
+the io_start_jobs.pl script which will run until all jobs are submitted (so --repeat is important
+in keeping it running a long time).  Then
+{{{
+% ./io_start_jobs.pl --throttledbatch 4 --ident lustretst1 --nodes 32 --repeat 20
+}}}
+Now Cbench will keep four jobs running/queued as needed.
+
+So, just keep killing the script and upping the --throttledbatch count to ramp the load on
+the filesystem.
+
+
+ 	  	 

@@ -1,0 +1,32 @@
+#!/usr/bin/perl -w
+$drive = $ARGV[0];
+sleep 720;
+$error=0;
+$port=11;
+while ( $port != 0 ){
+  $out = system "smartctl -q errorsonly -d 3ware,$port -H /dev/$drive";
+  if  ( $out != 1024 && $out != 0 ){
+    #print `smartctl -q errorsonly -a -d 3ware,$port /dev/$drive`;
+    print "\nSMART health status Failure : On card behind $drive on port $port\n";
+    print "Note a 3ware block device responds to requests for all drives on the controller!!!\n";
+    $error=1;
+  }
+  $out = system "smartctl -q errorsonly -d 3ware,$port -l selftest  /dev/$drive";
+  if  ( $out != 1024 && $out != 0 ){
+    #print `smartctl -q errorsonly -a -d 3ware,$port /dev/$drive`;
+    print "\nSMART health status Failure : On card behind $drive on port $port\n";
+    print "Note a 3ware block device responds to requests for all drives on the controller!!!\n";
+    $error=1;
+  }
+
+#There are too many non fatal errors that get flagged by this test.
+  #$out = system "smartctl -q errorsonly -d 3ware,$port -l error  /dev/$drive";
+  #if  ( $out != 1024 && $out != 0 ){
+    #print `smartctl -q errorsonly -a -d 3ware,$port /dev/$drive`;
+    #print "\nSMART health status Failure : On card behind $drive on port $port\n";
+    #print "Note a 3ware block device responds to requests for all drives on the controller!!!\n";
+    #$error=1;
+  #}
+  $port--;
+}
+exit $error

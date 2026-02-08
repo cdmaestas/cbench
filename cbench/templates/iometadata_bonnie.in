@@ -1,0 +1,40 @@
+# iometadata_bonnie job template
+# uses the bonnie++ benchmark to test io metadata performance
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/bonnie++
+
+cbench_check_for_bin CBENCHTEST_BIN_HERE/bonnie++
+
+cbench_runin_tempdir
+
+bonnie="CBENCHTEST_BIN_HERE/bonnie++"
+opts="-d ."
+
+# when running as root, bonnie++ will complain. so you need to
+# give it the -u option with a userid that has read/write permissions
+# to the temporary job directory created with cbench_runin_tempdir()
+#opts="$opts -u 947"
+#chown -R 947.947 .
+
+# this is pretty lame right now as it only works on a single 4 core node.
+if [ NUM_NODES_HERE -ne 1 ]; then
+        cbench_echo "CBENCH NOTICE: bonnie++ only runs on 1 node currently"
+        exit
+fi
+
+
+CMD="$bonnie $opts -p3"
+cbench_run_cmd $CMD
+sync
+
+CMD="$bonnie $opts -y "
+cbench_run_cmd $CMD &
+CMD="$bonnie $opts -y "
+cbench_run_cmd $CMD &
+CMD="$bonnie $opts -y "
+cbench_run_cmd $CMD &
+
+wait
+sync

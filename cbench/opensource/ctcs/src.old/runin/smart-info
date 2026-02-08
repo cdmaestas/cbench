@@ -1,0 +1,27 @@
+#!/usr/bin/perl -w
+
+# Check for smart features on drive.
+
+$disk= $ARGV[0];
+$smarts =`smartctl -i /dev/$disk`;
+
+if ($smarts =~ "supports SMART and is Enabled" ||$smarts =~ "SMART support is: Enabled"){
+  print $disk ;
+  exit 0;
+}else {
+  if ( $smarts =~ "supports SMART and is Disabled" || $smarts =~"SMART support is: Available") {
+    print "Smart support existson $disk, but is disabled.\n";
+    system "smartctl -s on /dev/$disk";
+    $smarts =`smartctl -i /dev/$disk`;
+    if ($smarts =~ "supports SMART and is Enabled" ||$smarts =~ "SMART support is: Enabled"){
+      print $disk ;
+      exit 0;
+    } else {
+      print "Smart support not enabled on $disk \n";
+      exit 1;
+    }
+  }else {
+    print "No smart support on $disk? \n";
+    exit 1;
+  }
+}

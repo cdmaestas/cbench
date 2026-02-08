@@ -1,0 +1,9 @@
+MPI_HOME    = /usr/local/mpi
+MPI_INCLUDE = $(MPI_HOME)
+LIB_PATH    =
+LIBS        = -lmpi -lm
+CC          = cc 
+OPTFLAGS    = 
+CLINKER     = cc 
+LDFLAGS     =
+CPPFLAGS    = -DnoCHECK

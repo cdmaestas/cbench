@@ -1,0 +1,248 @@
+#!/bin/bash
+#set -x
+# vim: syntax=sh tabstop=4
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+# check for what profile script gives us
+if [ -z $FIXIT123_HOME ]; then
+    echo "FAILURE  FIXIT123_HOME variable not defined!"
+    exit 1
+fi
+
+if [ -z $1 ]; then
+	echo $0 NODE
+	exit 1
+fi
+
+# source common step123 stuff
+. $FIXIT123_HOME/libexec/common_step123
+
+BINDIR=$FIXIT123_HOME/bin
+TEMP=`mktemp`
+TEMP2=`mktemp`
+
+if [ ! -z $2 ]; then
+	/bin/rm -f $TEMP2
+    TEMP2=$2
+    CACHED_SHOWRES=1
+fi
+
+NODE=$1
+NODERESLIST=`mktemp`
+
+check_node_pulse() {
+	ping -c 1 $NODE > /dev/null
+	NOPULSE=$?
+	if [ $NOPULSE -eq 0 ]; then
+		pdsh -u 10 -w $NODE /usr/bin/uptime > $TEMP 
+		grep "load average:" $TEMP > /dev/null
+		NOPULSE=$?
+	fi
+}
+
+# check if step3b has been run on this node
+check_if_step3b() {
+	STEP3B_OR_INTEGRATION=0
+	TEMP_STEP3=`mktemp`
+	$BINDIR/query_breakfix_data --node $NODE --step3 > $TEMP_STEP3
+	grep "STEP3B PASSED" $TEMP_STEP3 > /dev/null 
+	if [ $? -eq 0 ]; then
+		STEP3B_OR_INTEGRATION=1
+	fi
+}
+
+get_pbsmoab_data()
+{
+
+    pbsnodes -a $NODE > $TEMP
+    grep -A1 -P "^$NODE" $TEMP | grep down > /dev/null
+    DOWN=$?
+    grep -A1 -P "^$NODE" $TEMP | grep offline > /dev/null
+    OFFLINE=$?
+    grep -A1 -P "^$NODE" $TEMP | grep free > /dev/null
+    FREE=$?
+    grep -A1 -P "^$NODE" $TEMP | grep job-exclusive > /dev/null
+    JOB=$?
+
+	if [ "$1" == 'force' ]; then
+    	showres -n > $TEMP2
+		CACHED_SHOWRES=1
+	fi
+	if [ -z $CACHED_SHOWRES ]; then
+    	showres -n > $TEMP2
+    fi
+
+	check_node_in_step2 $NODE $TEMP2
+    STEP2RES=$?
+	check_node_in_step1 $NODE $TEMP2
+    STEP1RES=$?
+	check_node_in_step3 $NODE $TEMP2
+    STEP3RES=$?
+
+    grep -P "$NODE\s+Job.*Running\s+" $TEMP2 > /dev/null
+    USERJOB=$?
+
+	grep -P "$NODE\s+" $TEMP2 > $NODERESLIST
+}
+
+TRYAGAIN=0
+
+#
+# check if node is alive, ping and ssh
+#
+check_node_pulse
+if [ $NOPULSE -ne 0 ] ;then
+	echo "$NODE is down, has no pulse for ping or ssh!"
+	exit 1
+fi
+
+
+get_pbsmoab_data
+
+if [ $USERJOB -eq 0 ]; then
+	echo "$NODE is running a job and will be ignored for this submission!"
+	exit 1
+fi
+
+# check state of node in step3
+check_if_step3b
+
+# if the node is clearly reserved for step1 or step2, abort
+if [ $STEP1RES -eq 0 -o $STEP2RES -eq 0 ]; then
+	echo "$1 is reserved for Step 1 or Step 2...nothing to do"
+	exit 1
+fi
+
+# check to see if the node has a step3 reservation but is also
+# stacked with other reservations
+if [ -z $FIXIT123_STEP3_NODELIST_FILE ]; then
+	if [ `wc -l $NODERESLIST | cut -f1 -d' '` != '1' ]; then
+		TEMP3=`mktemp`
+		TEMP4=`mktemp`
+		grep -v STEP3 $NODERESLIST | perl -ne '/\-(\d+).*\s+INFINITE/ and print' > $TEMP3
+		cat $TEMP3 | grep -v -P $FIXIT123_RESERVATION_IGNORE_REGEX > $TEMP4
+		if [ `wc -l $TEMP4 | cut -f1 -d' '` != '0' ]; then
+			echo "$1 has stacked reservations and will be ignored!"
+			#/bin/rm -f $TEMP3 $TEMP4
+			exit 1
+		fi
+		#/bin/rm -f $TEMP3 $TEMP4
+	fi
+fi
+
+enable_interconnect_port $1
+
+if [ $DOWN -eq 0 ]; then
+	# the node is down according to Torque
+
+	ping -c 1 $1 > /dev/null
+	if [ $? -eq 0 ]; then
+		echo "$1 is DOWN.. attempting pbs_mom restart"
+		pdsh -u 30 -w $1 "/etc/init.d/pbs_mom restart" 2>&1 > $TEMP
+		sleep 5
+		pdsh -u 15 -w $1 "/apps/torque/sbin/momctl -C" 2>&1 > $TEMP
+		sleep 5
+		$FIXIT123_ONLINE_CMD $1
+        TRYAGAIN=1
+	else
+		echo $1 appears to be DEAD
+		exit 1
+	fi
+fi
+
+if [ $OFFLINE -eq 0 -a $DOWN -eq 1 ]; then
+	# node is offline but NOT down
+	echo "$1 TRYING TO ONLINE"
+	$FIXIT123_ONLINE_CMD $1
+    TRYAGAIN=1
+fi
+
+if [ $STEP3RES -eq 1 -a $DOWN -eq 1 -a $OFFLINE -eq 1 ]; then
+	echo "$1 NO STEP3 RESERVATION...but online"
+	exit 1
+fi
+
+if [ $STEP3B_OR_INTEGRATION -eq 1 ]; then
+	echo "$NODE is READY for STEP3B and/or STEP3B PASSED, READY for REINTEGRATION!"
+	exit 1
+fi
+
+if [ $TRYAGAIN -eq 0 -a $STEP3RES -eq 0 -a $FREE -eq 0 ]; then
+	echo "$1 is READY FOR STEP3A"
+	exit 0
+fi
+
+if [ $STEP3RES -eq 0 -a $JOB -eq 0 ]; then
+	echo "$1 is job-exclusive but no Moab job reservation"
+	exit 1
+fi
+
+#if [ $DOWN -eq 0 ]; then
+	# the Mellanox stack way
+	#pdsh -u 15 -w $1 "vstat | grep port_state | head -1" 2>&1 > $TEMP
+	#grep "ACTIVE" $TEMP > /dev/null
+	# the OFED stack way
+#	pdsh -u 15 -w $1 "/usr/bin/ibstat | grep State: | head -1" 2>&1 > $TEMP
+#	grep "Active" $TEMP > /dev/null
+#	if [ $? -eq 1 ]; then
+#		echo "$1 IB port not PORT_ACTIVE...trying to bring up...be patient"
+#		for i in 1 2 3 4 5 6; do
+#			sleep 20
+#			pdsh -u 15 -w $1 "/usr/bin/ibstat | grep State: | head -1" 2>&1 > $TEMP
+#			grep "Active" $TEMP > /dev/null
+#			if [ $? -eq 0 ]; then
+#				pdsh -u 30 -w $1 "/etc/init.d/pbs_mom restart" 2>&1 > $TEMP
+#				sleep 5
+#				pdsh -u 15 -w $1 "/apps/torque/sbin/momctl -C" 2>&1 > $TEMP
+#				sleep 5
+#				pbsnodes -c -N n $1
+#				break
+#			fi
+#		done
+#	fi
+#fi
+
+get_pbsmoab_data force
+
+if [ $OFFLINE -eq 1 -a $DOWN -eq 1 -a $STEP3RES -eq 0 -a $FREE -eq 0 ]; then
+	echo "$1 is READY FOR STEP3A"
+    exit 0
+fi 
+
+if [ $OFFLINE -eq 1 -a $DOWN -eq 1 -a $STEP3RES -eq 1 ]; then
+	echo "$1 NO STEP3 RESERVATION...but online"
+    exit 0
+fi 
+
+if [ $STEP3RES -eq 0 -a $OFFLINE -eq 0 ]; then
+	echo "$1 is offline still"
+	exit 1
+fi
+
+if [ $STEP3RES -eq 0 -a $OFFLINE -eq 1 -a $JOB -eq 0 ]; then
+	echo "$1 is job-exclusive but no Moab job reservation"
+	exit 1
+fi
+
+echo "$1 is NOT READY for step3a testing"
+exit 1

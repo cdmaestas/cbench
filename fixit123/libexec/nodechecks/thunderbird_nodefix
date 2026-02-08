@@ -1,0 +1,172 @@
+#!/bin/bash
+#set -ex
+###############################################################################
+#    Copyright (2005) Sandia Corporation.  Under the terms of Contract
+#    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+#    certain rights in this software
+#
+#    This file is part of Cbench.
+#
+#    Cbench is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    Cbench is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with Cbench; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+###############################################################################
+
+
+echo -n "Today's date is: "
+date +%D
+
+if [ -z $FIXIT123_HOME ]; then
+	echo FIXIT123 environment variables not found!
+	exit 1
+fi
+
+. $FIXIT123_HOME/libexec/nodechecks/ib_functions
+. $FIXIT123_HOME/libexec/nodechecks/panfs_functions
+. $FIXIT123_HOME/libexec/nodechecks/lustrefs_functions
+. $FIXIT123_HOME/libexec/nodechecks/os_functions
+. $FIXIT123_HOME/libexec/nodechecks/dell_functions
+
+if [ -f /etc/sysconfig/cap ]; then
+	. /etc/sysconfig/cap
+else
+	echo Please define the role of this node
+	exit 1
+fi
+
+DELL_SRV_MODEL='pe1850'
+WANT_REBOOT=0
+DOFIXIT=1
+
+# DELL omsa checks
+omsa_check_src_dir /usr/src/dell
+echo
+if [ $? -eq 0 ]; then
+    DELL_OMSA_SRC_OK=1
+    /usr/src/dell/linux/supportscripts/srvadmin-services.sh start > /dev/null 2>&1
+    /sbin/service ipmi start
+else
+    echo "DELL OMSA SRC NOT FOUND in /usr/src/dell!"
+    exit 1
+fi
+
+omsa_check_install_dir /var/local
+if [ $? -ne 0 ]; then
+	# arg1 = http server, arg2 = http dir, 
+	# arg3 = install dir, arg4 = omsa_src_pkg_name
+	CONTRIBDIR=/linux/contrib
+	#DELLOMSW_SRC=OMI-SrvAdmin-Dell-Web-LX-450-32-335_A00.tar.gz
+	#DELLOMSW_SRC=OMI-50-MN-LX_A01.tar.gz
+	DELLOMSW_SRC=OM_5.1_ManNode_LIN_A00.tar.gz
+	DELLOMSW_DIR=${CONTRIBDIR}/SOURCES
+	omsa_update $CAPBOSS ${DELLOMSW_DIR} /var/local ${DELLOMSW_SRC}
+fi
+
+omsa_check_bmc_version 1.72
+if [ $? -ne 0 ]; then
+		omsa_update_firmware bmc 1.72
+fi
+omsa_check_bp_version 1.00
+if [ $? -ne 0 ]; then
+	/sbin/service ipmi stop
+    omsa_update_firmware bp 1.00
+fi
+omsa_check_for_bmc_static_ip
+if [ $? -ne 0 ]; then
+	omsa_update_bmc_to_static_ip
+fi
+omsa_check_bios_baud_rate 19200
+if [ $? -ne 0 ]; then
+	omsa_update_bios_baud_rate
+#	omsa_update_bios_config /apps/breakfix-testing/SCRIPTS/dell omsa-bios.script biosconf/cmoscfg biosconf/bios.dat
+fi
+
+omsa_check_bios_version A06
+if [ $? -ne 0 ]; then
+	omsa_update_firmware bios A06
+	exit 0
+fi
+
+omsa_check_disk_firmware_version
+
+if [ $CAPROLE = "worker" ]; then
+	# check if on srn
+	/sbin/ifconfig | grep 134.253 > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		omsa_check_for_scsi_conversion
+		if [ $? -ne 0 ]; then
+			conv2scsi
+		fi
+	fi
+
+	check_kernel_version 2.6.9-42.0.2.EL_lustre.1.4.7.3smp
+	check_dir_sanity /var
+	check_dir_sanity /var/spool/pbs
+	check_dir_sanity /tmp
+	check_sysctl
+# if we check it, we should fix it if it fails! -cdm
+#	check_nfs_mount_count 2
+#	check_for_mount /home
+#	check_for_mount /projects
+#	if [ $? -ne 0 ]; then
+#		echo
+#		check_panfs_software 2.3.7 panfs-2.6.9-42.0.2.EL_lustre.1.4.7.3-mp-2.3.7-194456.5
+    check_panfs_software 2.3.8.a panfs-2.6.9-42.0.2.EL_lustre.1.4.7.3-mp-2.3.8.a-202058.20
+	if [ $? -ne 0 ]; then
+		echo
+		umount /scratchp3
+		umount /gscratch3
+		update_panfs_rpm /projects/global/src/panasas/2.3.8.a/x86_64/panfs-2.6.9-42.0.2.EL_lustre.1.4.7.3-mp.rpm
+	fi
+
+	check_lustrefs_software lustre-1.4.10 lustre-1.4.10-2.6.9_42.0.2.EL_lustre.1.4.7.3smp_200704120937
+	if [ $? -ne 0 ]; then
+		echo
+		update_lustrefs_rpm /projects/global/src/lustre/1.4.10/tbird/lustre-1.4.10-2.6.9_42.0.2.EL_lustre.1.4.7.3smp_200704120937.x86_64.rpm
+	fi
+	check_lustrefs_software lustre-modules-1.4.10 lustre-modules-1.4.10-2.6.9_42.0.2.EL_lustre.1.4.7.3smp_200704120937
+	if [ $? -ne 0 ]; then
+		echo
+		update_lustrefs_rpm /projects/global/src/lustre/1.4.10/tbird/lustre-modules-1.4.10-2.6.9_42.0.2.EL_lustre.1.4.7.3smp_200704120937.x86_64.rpm
+	fi
+
+	check_for_mount /gscratch1
+	if [ $? -ne 0 ]; then
+		echo
+		mount /gscratch1
+	fi
+	check_for_mount /gscratch3
+	if [ $? -ne 0 ]; then
+		echo
+		mount /gscratch3
+	fi
+
+	check_ib_stack
+	check_ib_port_speed 4X
+	check_ib_firmware_versions v5.2.000 3.2.0.136
+	if [ $? -ne 0 ]; then
+		update_ib_firmware /projects/global/FIRMWARE/CISCO-MT25208/fw-lioncub-memzero-a0-5.2.000.bin
+	fi
+
+elif [ $CAPROLE != "worker" ]; then
+	check_kernel_version 2.6.9-42.0.2.ELsmp
+	check_nfs_mount_count 2
+fi
+
+echo
+
+if [ $DELL_OMSA_SRC_OK -eq 1 ]; then
+	/usr/src/dell/linux/supportscripts/srvadmin-services.sh stop > /dev/null 2>&1
+	/sbin/service snmpd stop
+	/sbin/service ipmi stop
+fi
