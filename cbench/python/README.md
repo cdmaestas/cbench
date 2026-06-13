@@ -13,44 +13,29 @@ pip install -e ".[dev]"   # includes pytest
 
 ```
 cbench/
-├── config.py        # ClusterConfig dataclass + load_config()
-├── launchers.py     # MPI launch command builders (openmpi, mpiexec, slurm, alps, yod)
-├── schedulers.py    # Batch scheduler adapters (slurm, torque, pbspro, lsf, moab)
-├── templates.py     # Template assembly + TOKEN_HERE → Jinja2 substitution
-├── db.py            # SQLite results store (ResultsDB, ParseResult)
-├── parsers/
-│   ├── base.py      # BenchmarkParser ABC + REGISTRY
-│   ├── xhpl.py      # HPL/Linpack
-│   ├── hpcc.py      # HPCC Suite
-│   ├── imb.py       # Intel MPI Benchmarks
-│   ├── npb.py       # NAS Parallel Benchmarks
-│   ├── ior.py       # IOR I/O benchmark
-│   ├── osu.py       # OSU MPI benchmarks
-│   ├── amg.py       # AMG multigrid
-│   ├── beff.py      # b_eff bandwidth
-│   ├── bonnie.py    # Bonnie++ I/O
-│   ├── com.py       # COM point-to-point
-│   ├── fileop.py    # fileop metadata
-│   ├── graph500.py  # Graph500
-│   ├── hpccg.py     # HPCCG
-│   ├── irs.py       # IRS radiation solver
-│   ├── lammps.py    # LAMMPS MD
-│   ├── laten.py     # MPI latency
-│   ├── mdtest.py    # mdtest metadata I/O
-│   ├── miranda.py   # Miranda
-│   ├── mpibench.py  # mpiBench collectives
-│   ├── mpigraph.py  # mpiGraph all-pairs
-│   ├── phdmesh.py   # phdMesh
-│   ├── rotate.py    # ring bandwidth
-│   ├── rotlat.py    # ring latency
-│   ├── routecheck.py# MPI routing validation
-│   ├── sppm.py      # sPPM hydro
-│   ├── sqmr.py      # SQMR message rate
-│   ├── stress.py    # all-to-all stress
-│   ├── sweep3d.py   # SWEEP3D transport
-│   └── trilinos.py  # Trilinos Epetra
+├── config.py           # ClusterConfig dataclass + load_config()
+├── launchers.py        # MPI launch command builders (openmpi, mpiexec, slurm, alps, yod)
+├── schedulers.py       # Batch scheduler adapters (slurm, torque, pbspro, lsf, moab)
+├── templates.py        # Template assembly + TOKEN_HERE → Jinja2 substitution; RUN_SIZES list
+├── db.py               # SQLite results store (ResultsDB, ParseResult)
+├── utils.py            # Pure-math sizing helpers (filter_run_sizes, find_pq, compute_n, ...)
+├── parsers/            # 28 MPI benchmark output parsers
+│   ├── base.py         # BenchmarkParser ABC + REGISTRY (auto-registered via __init_subclass__)
+│   └── *.py            # xhpl, hpcc, imb, npb, ior, osu, amg, beff, bonnie, com, fileop,
+│                       # graph500, hpccg, irs, lammps, laten, mdtest, miranda, mpibench,
+│                       # mpigraph, phdmesh, rotate, rotlat, routecheck, sppm, sqmr, stress,
+│                       # sweep3d, trilinos
+├── parse_filters/      # Error-detection filters applied during cbench parse
+│   ├── __init__.py     # build_filter_set(), apply_filters()
+│   └── *.py            # openmpi, slurm, torque, mvapich, mpiexec, cray, misc
+├── hw_tests/           # 13 single-node hw_test parsers used by cbench nodehwtest
+│   ├── __init__.py     # HwTest ABC + REGISTRY + get_hw_test()
+│   └── *.py            # cpuinfo, meminfo, streams, stream2, stress_cpu, stress_disk,
+│                       # iozone, hpcc, npb, xhpl, nodeperf, memtester, dmidecode
 └── cli/
-    └── main.py      # click CLI: gen-jobs | start-jobs | parse | query
+    ├── main.py         # Top-level click group; wires in all subgroups
+    ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
+    └── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
 ```
 
 ## Adding a new parser
@@ -100,4 +85,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-86 tests covering config loading, all 28 parsers, the SQLite store, and template substitution.
+160 tests covering config loading, all 28 MPI parsers, parse filters, nodehwtest hw_test parsers, the SQLite store, template substitution, and sizing utilities.
