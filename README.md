@@ -100,6 +100,42 @@ cbench query --cluster mycluster --status PASSED --since 2025-01-01
 cbench query --testset bandwidth --output json
 ```
 
+### Node hardware testing
+
+```bash
+# Create a test identifier for a set of nodes
+cbench nodehwtest gen-jobs --nodelist n[1-10] --ident run1
+
+# Submit one batch job per node (or run via pdsh)
+cbench nodehwtest start-jobs --ident run1 --nodebatch
+cbench nodehwtest start-jobs --ident run1 --remote
+
+# Parse node_hw_test output files and report statistical outliers
+cbench nodehwtest parse --ident run1 --characterize --save-targets baseline
+cbench nodehwtest parse --ident run1 --load-targets baseline
+```
+
+Output files are named `<node>.node_hw_test.run<NNNN>` in `$CBENCHTEST/nodehwtest/<ident>/`.
+
+### Sizing utilities
+
+```bash
+# Run sizes filtered by various criteria
+cbench utils run-sizes --maxprocs 1024 --pof2
+cbench utils run-sizes --maxprocs 512  --square
+cbench utils run-sizes --maxprocs 2048 --mult 256
+cbench utils run-sizes --maxprocs 100  --addr 5    # arithmetic sequence: 5,10,15,...
+
+# Find HPL grid decompositions for N MPI ranks
+cbench utils find-pq --nprocs 512 --decent-only
+
+# Compute HPL problem size N from memory and utilization
+cbench utils find-n --nprocs 512 --ppn 16 --memory 64000 --util 0.5,0.6,0.7
+
+# Find valid NPB processor counts (power-of-2 and perfect-square)
+cbench utils npb-procs --nprocs 500
+```
+
 ---
 
 ## Supported benchmarks
