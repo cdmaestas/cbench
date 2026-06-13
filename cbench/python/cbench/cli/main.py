@@ -19,6 +19,8 @@ from cbench.config import ClusterConfig, load_config
 from cbench import launchers, schedulers, templates
 from cbench.db import ParseResult, ResultsDB
 from cbench.parsers import REGISTRY, get_parser
+from cbench.parse_filters import build_filter_set, apply_filters, AVAILABLE as FILTER_MODULES
+from cbench.cli.nodehwtest import nodehwtest_group
 
 console = Console()
 
@@ -39,6 +41,9 @@ def _cfg(config: Optional[str]) -> ClusterConfig:
 @click.version_option(package_name="cbench")
 def cli() -> None:
     """Cbench HPC benchmarking framework — Python toolchain."""
+
+
+cli.add_command(nodehwtest_group)
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +266,11 @@ def start_jobs(
 @click.option("--config", default=None)
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 @click.option("--no-db", is_flag=True, help="Skip writing to SQLite")
+@click.option(
+    "--customparse",
+    default=None,
+    help="Comma-separated parse filter modules to apply (e.g. openmpi,slurm,misc).",
+)
 def parse_cmd(
     testset: str,
     ident: str,
@@ -268,11 +278,20 @@ def parse_cmd(
     config: Optional[str],
     cbenchtest: Optional[str],
     no_db: bool,
+    customparse: Optional[str],
 ) -> None:
     """Parse benchmark output files and store results."""
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     ident_dir = Path(cbenchtest) / testset / ident
+
+    # Build parse filter set from --customparse or cluster config
+    filter_names: list[str] = []
+    if customparse:
+        filter_names = [n.strip() for n in customparse.split(",") if n.strip()]
+    elif cfg.parse_filter_include:
+        filter_names = [n for n in cfg.parse_filter_include if n in FILTER_MODULES]
+    active_filters = build_filter_set(filter_names) if filter_names else {}
 
     if not ident_dir.exists():
         console.print(f"[red]Directory not found: {ident_dir}[/red]")
@@ -314,22 +333,36 @@ def parse_cmd(
         stderr_files = list(job_dir.glob("*.e*"))
         stderr = stderr_files[0].read_text(errors="replace") if stderr_files else ""
 
+        # Run parse filters on combined output first
+        filter_errors: list[str] = []
+        if active_filters:
+            filter_errors = apply_filters(active_filters, stdout + "\n" + stderr)
+
         parser = get_parser(benchmark)
         if parser is None:
+            status_detail = "; ".join(filter_errors) if filter_errors else None
             result = ParseResult(
                 cluster=cfg.cluster_name, testset=testset, ident=ident,
                 jobname=jobname, benchmark=benchmark,
                 numprocs=numprocs, ppn=ppn_val, numnodes=numnodes,
-                status="NO_PARSER",
+                status="NO_PARSER" if not filter_errors else "FILTER_ERROR",
+                status_detail=status_detail,
             )
         else:
             parsed = parser.parse(stdout, stderr)
+            # Filter errors override a PASSED result
+            if filter_errors and parsed.status == "PASSED":
+                status = "FILTER_ERROR"
+                status_detail = "; ".join(filter_errors)
+            else:
+                status = parsed.status
+                status_detail = parsed.status_detail
             result = ParseResult(
                 cluster=cfg.cluster_name, testset=testset, ident=ident,
                 jobname=jobname, benchmark=benchmark,
                 numprocs=numprocs, ppn=ppn_val, numnodes=numnodes,
-                status=parsed.status,
-                status_detail=parsed.status_detail,
+                status=status,
+                status_detail=status_detail,
                 metrics=parsed.metrics,
                 metric_units=parser.metric_units(),
             )
