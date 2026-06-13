@@ -4,7 +4,7 @@
 
 Cbench is a framework for building, running, and parsing HPC benchmarks across Linux parallel compute clusters. It automates the full lifecycle: generating job scripts, submitting them to a batch scheduler, and parsing the resulting output into structured results.
 
-Originally developed at Sandia National Laboratories (v1.3.0, 2013). This repository adds a modern Python toolchain alongside the original Perl scripts.
+Originally developed at Sandia National Laboratories (v1.3.0, 2013). Version 2.0.0 adds a modern Python toolchain alongside the original Perl scripts.
 
 ---
 

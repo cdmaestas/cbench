@@ -32,7 +32,7 @@ use Term::ANSIColor qw(:constants color colored);
 # Cbench code because it could be a Subversion checkout, but this is the
 # closest release in the lineage. This better match what is in the VERSION
 # file or someone borked the release. 
-$cbench_version = "1.2.2";
+$cbench_version = "2.0.0";
 
 # where to find schedutils' taskset
 $TASKSET = "/usr/bin/taskset";
