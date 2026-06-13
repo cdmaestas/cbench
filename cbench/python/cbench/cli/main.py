@@ -21,6 +21,7 @@ from cbench.db import ParseResult, ResultsDB
 from cbench.parsers import REGISTRY, get_parser
 from cbench.parse_filters import build_filter_set, apply_filters, AVAILABLE as FILTER_MODULES
 from cbench.cli.nodehwtest import nodehwtest_group
+from cbench.cli.utils_cmd import utils_group
 
 console = Console()
 
@@ -44,6 +45,7 @@ def cli() -> None:
 
 
 cli.add_command(nodehwtest_group)
+cli.add_command(utils_group)
 
 
 # ---------------------------------------------------------------------------
