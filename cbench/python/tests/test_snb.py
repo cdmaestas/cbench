@@ -391,3 +391,104 @@ def test_snb_report_all_metrics(tmp_path):
     assert "Cachebench" in result.output
     assert "FIO" in result.output
     assert "HPCC" in result.output
+
+
+# ---------------------------------------------------------------------------
+# query command
+# ---------------------------------------------------------------------------
+
+def test_query_csv(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    db.store(DBResult(
+        cluster="test", testset="bandwidth", ident="run1", jobname="osubw-2ppn-16",
+        benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+        metrics={"bw": 9500.0}, metric_units={"bw": "MB/s"},
+    ))
+
+    result = runner.invoke(cli, [
+        "query", "--output", "csv", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "benchmark" in result.output  # header row
+    assert "osubw" in result.output
+
+
+def test_query_aggregate(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    for bw in [9000.0, 10000.0, 11000.0]:
+        db.store(DBResult(
+            cluster="test", testset="bandwidth", ident="run1", jobname=f"job-{bw}",
+            benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+            metrics={"bw": bw}, metric_units={"bw": "MB/s"},
+        ))
+
+    result = runner.invoke(cli, [
+        "query", "--aggregate", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Mean" in result.output or "mean" in result.output
+
+
+def test_query_aggregate_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    import json
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    for bw in [9000.0, 11000.0]:
+        db.store(DBResult(
+            cluster="test", testset="bandwidth", ident="run1", jobname=f"job-{bw}",
+            benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+            metrics={"bw": bw}, metric_units={"bw": "MB/s"},
+        ))
+
+    result = runner.invoke(cli, [
+        "query", "--aggregate", "--output", "json", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert len(data) == 1
+    assert data[0]["benchmark"] == "osubw"
+    assert data[0]["metric"] == "bw"
+    assert abs(data[0]["mean"] - 10000.0) < 1.0
+    assert data[0]["count"] == 2
+
+
+def test_query_until_filter(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    db.store(DBResult(
+        cluster="test", testset="bandwidth", ident="run1", jobname="job1",
+        benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+        metrics={"bw": 9500.0},
+    ))
+
+    # until a past date should return nothing
+    result = runner.invoke(cli, [
+        "query", "--until", "2020-01-01", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0
+    assert "0 result" in result.output
+
+
+def test_query_aggregate_csv(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    db.store(DBResult(
+        cluster="test", testset="bandwidth", ident="run1", jobname="job1",
+        benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+        metrics={"bw": 9500.0},
+    ))
+
+    result = runner.invoke(cli, [
+        "query", "--aggregate", "--output", "csv", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "benchmark" in result.output
+    assert "mean" in result.output
+    assert "osubw" in result.output
