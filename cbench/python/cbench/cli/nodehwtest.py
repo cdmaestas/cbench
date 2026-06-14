@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import shlex
 import statistics
 import subprocess
 from pathlib import Path
@@ -121,7 +122,8 @@ def _dispatch(
         return
     try:
         data = hw.parse(buf)
-    except Exception:
+    except Exception as exc:
+        console.print(f"[yellow]Warning: hw_test parser '{module}' failed: {exc}[/yellow]")
         return
     for k, v in data.items():
         if isinstance(v, str):
@@ -284,15 +286,21 @@ def start_jobs(
 
     console.print(f"Starting nodehwtest jobs for identifier '{ident}' on {len(nodes)} nodes")
 
-    node_hw_test_cmd = f"{cbenchtest}/nodehwtest/node_hw_test --ident {ident}"
+    node_hw_test_parts = [
+        f"{cbenchtest}/nodehwtest/node_hw_test",
+        "--ident", shlex.quote(ident),
+    ]
     if match:
-        node_hw_test_cmd += f" --match '{match}'"
+        node_hw_test_parts += ["--match", shlex.quote(match)]
     if exclude:
-        node_hw_test_cmd += f" --exclude '{exclude}'"
+        node_hw_test_parts += ["--exclude", shlex.quote(exclude)]
     if test_class:
-        node_hw_test_cmd += f" --class '{test_class}'"
+        node_hw_test_parts += ["--class", shlex.quote(test_class)]
+    node_hw_test_cmd = " ".join(node_hw_test_parts)
 
     if preamble:
+        # preamble is user-supplied shell code; quote the hw_test invocation
+        # but leave preamble verbatim as it is intentional shell logic
         node_hw_test_cmd = f"{preamble} ; {node_hw_test_cmd}"
 
     submitted = 0
@@ -305,11 +313,13 @@ def start_jobs(
             script_path = ident_dir / f"nhwt-{node}.{cfg.batch_method}"
             if not dry_run:
                 script_path.write_text(script)
-                cmd = f"{cfg.batch_cmd or _default_batch_cmd(cfg)} {script_path}"
+                batch_exe = cfg.batch_cmd or _default_batch_cmd(cfg)
+                cmd_parts = shlex.split(batch_exe)
                 if batchargs:
-                    cmd = f"{cfg.batch_cmd or _default_batch_cmd(cfg)} {batchargs} {script_path}"
+                    cmd_parts += shlex.split(batchargs)
+                cmd_parts.append(str(script_path))
                 try:
-                    subprocess.run(cmd, shell=True, check=False)
+                    subprocess.run(cmd_parts, shell=False, check=False)
                 except Exception as e:
                     console.print(f"[yellow]Warning: could not submit {node}: {e}[/yellow]")
             else:
@@ -320,10 +330,14 @@ def start_jobs(
         console.print(f"[green]{action} {submitted} nodehwtest batch jobs[/green]")
 
     elif remote:
-        # Run via pdsh
-        node_str = ",".join(sorted(nodes))
-        env_prefix = f"export CBENCHOME={cbenchome}; export CBENCHTEST={cbenchtest};"
-        cmd = f"pdsh -w {node_str} '{env_prefix} {node_hw_test_cmd}'"
+        # Run via pdsh — each node name is shell-quoted; env vars are quoted too
+        node_str = ",".join(shlex.quote(n) for n in sorted(nodes))
+        env_prefix = (
+            f"export CBENCHOME={shlex.quote(cbenchome)}; "
+            f"export CBENCHTEST={shlex.quote(cbenchtest)};"
+        )
+        remote_cmd = shlex.quote(f"{env_prefix} {node_hw_test_cmd}")
+        cmd = f"pdsh -w {node_str} {remote_cmd}"
         if dry_run:
             console.print(f"[dim]Would run: {cmd}[/dim]")
         else:
@@ -539,14 +553,16 @@ def parse_cmd(
             )
 
         if save_targets:
-            tfile = ident_dir / save_targets if "/" not in save_targets else Path(save_targets)
+            tfile = (ident_dir / save_targets).resolve()
+            if not str(tfile).startswith(str(ident_dir.resolve())):
+                raise click.UsageError(f"--save-targets path escapes the ident directory: {tfile}")
             _save_targets(tfile, targets, len(nodehash), total_iterations)
             console.print(f"[cyan]Saved target values to {tfile}[/cyan]")
     else:
         tfile_name = load_targets or "target_hw_values"
-        tfile = (
-            ident_dir / tfile_name if "/" not in tfile_name else Path(tfile_name)
-        )
+        tfile = (ident_dir / tfile_name).resolve()
+        if not str(tfile).startswith(str(ident_dir.resolve())):
+            raise click.UsageError(f"--load-targets path escapes the ident directory: {tfile}")
         targets = _load_targets(tfile)
         if targets:
             console.print(f"[cyan]Loaded target values from {tfile}[/cyan]")
