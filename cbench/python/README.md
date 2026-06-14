@@ -19,12 +19,12 @@ cbench/
 ├── templates.py        # Template assembly + TOKEN_HERE → Jinja2 substitution; RUN_SIZES list
 ├── db.py               # SQLite results store (ResultsDB, ParseResult)
 ├── utils.py            # Pure-math sizing helpers (filter_run_sizes, find_pq, compute_n, ...)
-├── parsers/            # 31 MPI benchmark output parsers
+├── parsers/            # 32 MPI benchmark output parsers
 │   ├── base.py         # BenchmarkParser ABC + REGISTRY (auto-registered via __init_subclass__)
 │   └── *.py            # xhpl, hpcc, imb, npb, ior, osu, amg, beff, bonnie, com, fileop,
 │                       # graph500, hpccg, irs, lammps, laten, mdtest, miranda, mpibench,
 │                       # mpigraph, phdmesh, rotate, rotlat, routecheck, sppm, sqmr, stress,
-│                       # sweep3d, trilinos, io500, mlperf, elbencho
+│                       # sweep3d, trilinos, io500, mlperf, elbencho, gpfsperf
 ├── parse_filters/      # Error-detection filters applied during cbench parse
 │   ├── __init__.py     # build_filter_set(), apply_filters()
 │   └── *.py            # openmpi, slurm, torque, mvapich, mpiexec, cray, misc
@@ -90,4 +90,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-288 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
+312 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
