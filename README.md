@@ -236,6 +236,7 @@ Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
 | NAS Parallel Benchmarks | `npb` | Mop/s |
 | Intel MPI Benchmarks | `imb` | latency µs, bandwidth MB/s |
 | IOR | `ior`, `io`, `iosanity` | write/read MB/s |
+| IO500 | `io500` | score, bandwidth GiB/s, IOPS kIOPS |
 | OSU MPI | `osu`, `mpioverhead` | bandwidth MB/s, latency µs |
 | AMG | `amg` | solver FOM |
 | b_eff | `beff` | bidir bandwidth MB/s |
