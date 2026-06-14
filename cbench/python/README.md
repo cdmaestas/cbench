@@ -86,7 +86,7 @@ Query from Python:
 from cbench.db import ResultsDB
 
 db = ResultsDB("/path/to/cbench_results.db")
-rows = db.query(benchmark="xhpl", status="PASSED", since="2025-01-01")
+rows = db.query(benchmark="xhpl", status="PASSED", since="2025-01-01", until="2025-12-31")
 print(db.export_json(cluster="mycluster"))
 ```
 
@@ -96,4 +96,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-422 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
+431 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, build, and rm-failed.
