@@ -80,6 +80,20 @@ cbench start-jobs --testset bandwidth --ident run1 --throttledbatch 20  # keep 2
 cbench start-jobs --testset bandwidth --ident run1 --interactive
 ```
 
+To run without a batch scheduler (e.g. on a single workstation), set `batch_method: local`
+in `cluster.yaml`. Generated scripts will be plain `.sh` files and `start-jobs` runs them
+directly with `bash`, one at a time:
+
+```bash
+# cluster.yaml
+batch_method: local
+max_nodes: 1
+procs_per_node: 8
+
+cbench gen-jobs  --testset bandwidth --ident run1   # writes .sh scripts
+cbench start-jobs --testset bandwidth --ident run1 --batch  # runs each with bash
+```
+
 ### Parse results
 
 ```bash
