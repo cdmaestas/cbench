@@ -1,0 +1,35 @@
+cluster_name: test  # override with CBENCHCLUSTER env var
+max_nodes: 1
+procs_per_node: 8
+max_procs: 8  # max_nodes * procs_per_node
+max_ppn_procs:
+  "1": 1
+  "2": 2
+  "4": 4
+  "8": 8
+memory_per_node_mb: 2048
+memory_per_processor_mb: 256  # memory_per_node_mb / procs_per_node
+default_walltime: "04:00:00"
+walltime_method: 0   # 0=constant, 1=stepped by walltime_steptime
+walltime_steptime: 10  # minutes per step (method 1 only)
+extra_job_nodes: 0
+memory_util_factors: [0.25, 0.80, 0.85]
+joblaunch_method: openmpi  # openmpi | mpiexec | slurm | yod | alps
+joblaunch_cmd: ""
+joblaunch_extraargs: ""
+batch_method: slurm  # slurm | torque | pbspro | lsf | moab | loadleveler | cletorque
+batch_cmd: ""
+batch_extraargs: ""
+remotecmd_method: pdsh
+remotecmd_extraargs: "-f 700"
+parse_filter_include:
+  - openmpi
+  - slurm
+  - mpiexec
+  - torque
+  - mvapich
+  - misc
+nodehwtest_xhpl_ppn: 1
+nodehwtest_npb_longjobs: false
+nodehwtest_stress_minutes: 120
+nodehwtest_local_filesystems: []
