@@ -45,6 +45,7 @@ WTIME  = wtime.c
 class NpbBuilder(BenchmarkBuilder):
     name = "npb"
     description = "NAS Parallel Benchmarks MPI suite (BT, CG, EP, FT, IS, LU, MG, SP)"
+    source_url = _TARBALL_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         top = wget_tarball(_TARBALL_URL, srcdir / "npb", force=force, dry_run=dry_run)

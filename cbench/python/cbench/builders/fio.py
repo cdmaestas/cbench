@@ -1,30 +1,32 @@
-"""Builder for mpiGraph (LLNL all-pairs MPI bandwidth benchmark)."""
+"""Builder for fio (Flexible I/O Tester)."""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from cbench.builders import BenchmarkBuilder, BuildConfig
 from cbench.builders._util import run, require, git_clone, install_bins
 
-_GIT_URL = "https://github.com/LLNL/mpiGraph.git"
+_GIT_URL = "https://github.com/axboe/fio.git"
 
 
-class MpiGraphBuilder(BenchmarkBuilder):
-    name = "mpigraph"
-    description = "mpiGraph LLNL all-pairs MPI send/recv bandwidth benchmark"
+class FioBuilder(BenchmarkBuilder):
+    name = "fio"
+    description = "fio Flexible I/O Tester — configurable storage benchmark"
     source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
-        dest = srcdir / "mpiGraph"
+        dest = srcdir / "fio"
         git_clone(_GIT_URL, dest, force=force, dry_run=dry_run)
         return dest
 
     def build(self, src: Path, prefix: Path, cfg: BuildConfig, *, dry_run: bool = False) -> list[str]:
-        env = dict(os.environ, MPICC=cfg.mpicc, CC=cfg.mpicc, CFLAGS=cfg.cflags)
+        import os
+        env = dict(os.environ, CC=cfg.cc, CFLAGS=cfg.cflags)
+        run(["./configure", f"--prefix={prefix}"], cwd=src, dry_run=dry_run, env=env)
         run(["make", "-j", str(cfg.jobs)], cwd=src, dry_run=dry_run, env=env)
-        return install_bins(src, prefix / "bin", ["mpiGraph"], dry_run=dry_run)
+        run(["make", "install"], cwd=src, dry_run=dry_run)
+        return install_bins(prefix / "bin", prefix / "bin", ["fio"], dry_run=dry_run)
 
     def check_requires(self) -> list[str]:
-        return require("mpicc", "make", "git")
+        return require("cc", "make", "git")

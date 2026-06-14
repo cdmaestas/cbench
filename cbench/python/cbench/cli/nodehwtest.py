@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.table import Table
 
 from cbench.config import load_config
+from cbench.db import ParseResult as DBResult, ResultsDB
 from cbench.hw_tests import REGISTRY, get_hw_test
 
 console = Console()
@@ -428,6 +429,7 @@ def _build_batch_script(cfg, node: str, jobname: str, nodecmd: str, ident: str, 
 @click.option("--no-errors", is_flag=True, help="Skip outlier reporting")
 @click.option("--iteration-analyze", is_flag=True, help="Report per-node iteration counts")
 @click.option("--output", default="table", type=click.Choice(["table", "json"]))
+@click.option("--store", is_flag=True, help="Store parsed results to cbench_results.db")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 @click.option("--config", default=None)
 def parse_cmd(
@@ -442,6 +444,7 @@ def parse_cmd(
     no_errors: bool,
     iteration_analyze: bool,
     output: str,
+    store: bool,
     cbenchtest: Optional[str],
     config: Optional[str],
 ) -> None:
@@ -633,6 +636,33 @@ def parse_cmd(
             mean = statistics.mean(vals)
             console.print(f"\n[green]Iteration analysis:[/green]")
             console.print(f"  Mean: {mean:.2f}  Min: {min(vals)}  Max: {max(vals)}")
+
+    # -- store to DB --
+    if store and nodehash:
+        db_path = Path(cbenchtest) / "cbench_results.db"
+        db = ResultsDB(db_path)
+        stored_count = 0
+        for node, metrics in nodehash.items():
+            flat: dict[str, float] = {
+                k: statistics.mean(vals) for k, vals in metrics.items() if vals
+            }
+            if not flat:
+                continue
+            result = DBResult(
+                cluster=cfg.cluster_name,
+                testset="nodehwtest",
+                ident=ident,
+                jobname=node,
+                benchmark="nodehwtest",
+                numprocs=1,
+                ppn=1,
+                numnodes=1,
+                status="PASSED",
+                metrics=flat,
+            )
+            db.store(result)
+            stored_count += 1
+        console.print(f"[green]Stored {stored_count} node(s) to {db_path}[/green]")
 
     # summary
     console.print(

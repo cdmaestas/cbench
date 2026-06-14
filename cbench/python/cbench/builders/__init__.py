@@ -39,6 +39,7 @@ class BenchmarkBuilder:
 
     name: str = ""
     description: str = ""
+    source_url: str = ""  # canonical download URL or git repo — used by build cache
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -70,6 +71,22 @@ class BenchmarkBuilder:
         """Return list of missing system prerequisites (empty = all present)."""
         return []
 
+    def update_source(self, srcdir: Path, *, dry_run: bool = False) -> bool:
+        """Pull upstream changes in the existing source checkout.
+
+        Returns True if the source changed (rebuild needed), False otherwise.
+        Default: tries `git pull` in ``srcdir/<name>``; works for builders that
+        use :func:`git_clone`. Tarball-based builders (e.g. ``stream``) always
+        return False because there is no upstream version-check; use
+        ``cbench build run <name> --force`` to unconditionally re-fetch them.
+        """
+        from cbench.builders._util import git_pull
+        # Builders using git_clone put source in srcdir/<name>
+        src = srcdir / self.name
+        if src.is_dir():
+            return git_pull(src, dry_run=dry_run)
+        return False
+
 
 def get_builder(name: str) -> "BenchmarkBuilder | None":
     cls = REGISTRY.get(name)
@@ -80,5 +97,5 @@ def get_builder(name: str) -> "BenchmarkBuilder | None":
 from cbench.builders import (  # noqa: F401 E402
     stream, imb, osu, ior, hpl, npb,
     hpcc, amg, hpccg, mpibench, mpigraph, bonnie, graph500,
-    iozone,
+    iozone, fio,
 )

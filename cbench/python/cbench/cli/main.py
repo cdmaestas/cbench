@@ -26,6 +26,7 @@ from cbench.cli.utils_cmd import utils_group
 from cbench.cli.diag import diag_cmd
 from cbench.cli.snb import snb_group
 from cbench.cli.build import build_group
+from cbench.cli.serve import serve_cmd
 
 console = Console()
 
@@ -64,7 +65,7 @@ def _cfg(config: Optional[str]) -> ClusterConfig:
 # ---------------------------------------------------------------------------
 
 @click.group()
-@click.version_option(package_name="cbench")
+@click.version_option(package_name="cbench", prog_name="cbench")
 def cli() -> None:
     """Cbench HPC benchmarking framework — Python toolchain."""
 
@@ -74,6 +75,7 @@ cli.add_command(utils_group)
 cli.add_command(diag_cmd)
 cli.add_command(snb_group)
 cli.add_command(build_group)
+cli.add_command(serve_cmd)
 
 
 # ---------------------------------------------------------------------------
@@ -652,8 +654,14 @@ def rm_failed(
 @click.option("--ident", default=None)
 @click.option("--status", default=None)
 @click.option("--since", default=None, help="ISO date string, e.g. 2025-01-01")
+@click.option("--until", default=None, help="ISO date string upper bound, e.g. 2025-12-31")
 @click.option("--limit", default=100, type=int)
-@click.option("--output", default="table", type=click.Choice(["table", "json"]))
+@click.option("--output", default="table",
+              type=click.Choice(["table", "json", "csv", "prometheus"]))
+@click.option("--aggregate", is_flag=True, help="Show mean/min/max per metric grouped by benchmark")
+@click.option("--trend", is_flag=True,
+              help="Show metric values across idents over time (requires --benchmark and --metric)")
+@click.option("--metric", default=None, help="Metric name for --trend")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 def query_cmd(
     benchmark: Optional[str],
@@ -662,11 +670,19 @@ def query_cmd(
     ident: Optional[str],
     status: Optional[str],
     since: Optional[str],
+    until: Optional[str],
     limit: int,
     output: str,
+    aggregate: bool,
+    trend: bool,
+    metric: Optional[str],
     cbenchtest: Optional[str],
 ) -> None:
     """Query stored benchmark results from the SQLite database."""
+    import csv as csv_mod
+    import io
+    import statistics as stats
+
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     db_path = _db_path(cbenchtest)
     if not db_path.exists():
@@ -674,6 +690,57 @@ def query_cmd(
         raise SystemExit(1)
 
     db = ResultsDB(db_path)
+
+    # -- trend mode --
+    if trend:
+        if not benchmark or not metric:
+            console.print("[red]--trend requires --benchmark and --metric[/red]")
+            raise SystemExit(1)
+        trend_rows = db.trend(
+            benchmark=benchmark,
+            metric=metric,
+            cluster=cluster,
+            testset=testset,
+            since=since,
+            until=until,
+            limit=limit,
+        )
+        if output == "json":
+            click.echo(json.dumps(trend_rows, indent=2))
+            return
+        if output == "csv":
+            buf = io.StringIO()
+            writer = csv_mod.writer(buf)
+            writer.writerow(["ident", "parsed_at", "value", "units", "count"])
+            for r in trend_rows:
+                writer.writerow([r["ident"], (r["parsed_at"] or "")[:19],
+                                  f"{r['value']:.6g}", r["units"], r["count"]])
+            click.echo(buf.getvalue(), nl=False)
+            return
+        # table
+        t = Table(title=f"Trend: {benchmark} / {metric}", show_lines=False)
+        t.add_column("Ident", style="cyan")
+        t.add_column("Parsed At", style="dim")
+        t.add_column("Value", justify="right")
+        t.add_column("Units", style="dim")
+        t.add_column("Δ%", justify="right")
+        t.add_column("N", justify="right")
+        prev_val = None
+        for r in trend_rows:
+            val = r["value"]
+            if prev_val is not None and prev_val != 0:
+                delta = (val - prev_val) / abs(prev_val) * 100
+                delta_str = f"[green]+{delta:.1f}%[/green]" if delta >= 0 else f"[red]{delta:.1f}%[/red]"
+            else:
+                delta_str = "—"
+            t.add_row(
+                r["ident"], (r["parsed_at"] or "")[:19],
+                f"{val:.4g}", r["units"], delta_str, str(r["count"]),
+            )
+            prev_val = val
+        console.print(t)
+        return
+
     rows = db.query(
         benchmark=benchmark,
         cluster=cluster,
@@ -681,11 +748,116 @@ def query_cmd(
         ident=ident,
         status=status,
         since=since,
+        until=until,
         limit=limit,
     )
 
+    # -- prometheus output --
+    if output == "prometheus":
+        from datetime import datetime as _dt
+        lines = [
+            "# HELP cbench_metric_value Cbench benchmark metric value",
+            "# TYPE cbench_metric_value gauge",
+        ]
+        for row in rows:
+            ts_ms = ""
+            if row["parsed_at"]:
+                try:
+                    dt = _dt.fromisoformat(row["parsed_at"].replace("Z", "+00:00"))
+                    ts_ms = str(int(dt.timestamp() * 1000))
+                except ValueError:
+                    pass
+            for m_name, mv in row.get("metrics", {}).items():
+                labels = ",".join([
+                    f'benchmark="{row["benchmark"]}"',
+                    f'cluster="{row["cluster"]}"',
+                    f'testset="{row["testset"]}"',
+                    f'ident="{row["ident"]}"',
+                    f'metric="{m_name}"',
+                ])
+                line = f"cbench_metric_value{{{labels}}} {mv['value']}"
+                if ts_ms:
+                    line += f" {ts_ms}"
+                lines.append(line)
+        click.echo("\n".join(lines))
+        return
+
+    if aggregate:
+        # Group metric values by (benchmark, metric)
+        agg: dict[tuple[str, str], list[float]] = {}
+        agg_units: dict[tuple[str, str], str] = {}
+        for row in rows:
+            bm = row["benchmark"]
+            for metric, mv in row.get("metrics", {}).items():
+                key = (bm, metric)
+                agg.setdefault(key, []).append(mv["value"])
+                agg_units[key] = mv.get("units", "")
+
+        if output == "json":
+            result = []
+            for (bm, metric), vals in sorted(agg.items()):
+                result.append({
+                    "benchmark": bm, "metric": metric,
+                    "mean": stats.mean(vals), "min": min(vals), "max": max(vals),
+                    "count": len(vals), "units": agg_units[(bm, metric)],
+                })
+            click.echo(json.dumps(result, indent=2))
+            return
+
+        if output == "csv":
+            buf = io.StringIO()
+            writer = csv_mod.writer(buf)
+            writer.writerow(["benchmark", "metric", "mean", "min", "max", "count", "units"])
+            for (bm, metric), vals in sorted(agg.items()):
+                writer.writerow([bm, metric,
+                                  f"{stats.mean(vals):.6g}", f"{min(vals):.6g}", f"{max(vals):.6g}",
+                                  len(vals), agg_units[(bm, metric)]])
+            click.echo(buf.getvalue(), nl=False)
+            return
+
+        t = Table(title="Cbench Aggregated Results", show_lines=False)
+        t.add_column("Benchmark", style="cyan")
+        t.add_column("Metric")
+        t.add_column("Mean", justify="right")
+        t.add_column("Min", justify="right")
+        t.add_column("Max", justify="right")
+        t.add_column("N", justify="right")
+        t.add_column("Units", style="dim")
+        for (bm, metric), vals in sorted(agg.items()):
+            t.add_row(
+                bm, metric,
+                f"{stats.mean(vals):.4g}", f"{min(vals):.4g}", f"{max(vals):.4g}",
+                str(len(vals)), agg_units[(bm, metric)],
+            )
+        console.print(t)
+        return
+
     if output == "json":
         click.echo(json.dumps(rows, indent=2))
+        return
+
+    if output == "csv":
+        buf = io.StringIO()
+        writer = csv_mod.writer(buf)
+        writer.writerow(["id", "cluster", "testset", "ident", "jobname",
+                          "benchmark", "numprocs", "status", "metric", "value", "units", "parsed_at"])
+        for row in rows:
+            metrics = row.get("metrics", {})
+            if metrics:
+                for metric, mv in metrics.items():
+                    writer.writerow([
+                        row["id"], row["cluster"], row["testset"], row["ident"],
+                        row["jobname"], row["benchmark"], row["numprocs"],
+                        row["status"], metric, mv["value"], mv.get("units", ""),
+                        (row["parsed_at"] or "")[:19],
+                    ])
+            else:
+                writer.writerow([
+                    row["id"], row["cluster"], row["testset"], row["ident"],
+                    row["jobname"], row["benchmark"], row["numprocs"],
+                    row["status"], "", "", "", (row["parsed_at"] or "")[:19],
+                ])
+        click.echo(buf.getvalue(), nl=False)
         return
 
     t = Table(title="Cbench Results", show_lines=False)

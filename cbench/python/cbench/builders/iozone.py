@@ -14,13 +14,14 @@ from pathlib import Path
 from cbench.builders import BenchmarkBuilder, BuildConfig
 from cbench.builders._util import console, run, require, wget_tarball, install_bins
 
-_TARBALL_URL = "http://www.iozone.org/src/current/iozone3_506.tar"
+_TARBALL_URL = "https://www.iozone.org/src/current/iozone3_506.tar"
 _DEFAULT_TARGET = "linux-AMD64"
 
 
 class IozoneBuilder(BenchmarkBuilder):
     name = "iozone"
     description = "IOzone filesystem benchmark (sequential, random, mmap I/O)"
+    source_url = _TARBALL_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         top = wget_tarball(_TARBALL_URL, srcdir / "iozone", force=force, dry_run=dry_run)

@@ -43,7 +43,7 @@ The Python toolchain (`cbench/python/`) is a pip-installable package that replac
 ### Requirements
 
 - Python 3.9+
-- `click`, `pyyaml`, `rich`, `jinja2` (installed automatically)
+- `click`, `pyyaml`, `rich`, `jinja2`, `jsonschema` (installed automatically)
 
 ### Install
 
@@ -78,11 +78,26 @@ cbench build run npb --extra class=C
 # Build everything
 cbench build all --mpicc mpicc --jobs 8 --blas-lib "-lopenblas"
 
+# Build everything using 4 parallel workers
+cbench build all --mpicc mpicc --jobs 8 --parallel 4
+
 # Preview without downloading or compiling
 cbench build run ior --dry-run
+
+# Show build status (cached / not cached) for all builders
+cbench build list --prefix $CBENCHTEST
+
+# Pull upstream changes for git-cloned sources and rebuild only if updated
+cbench build update
+cbench build update imb   # update a single benchmark
 ```
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`.
+> **Note:** `cbench build update` only updates git-cloned sources (most builders).
+> Tarball-based builders (`stream`) have no upstream version-check and always report
+> "source unchanged". Use `cbench build run <name> --force` to unconditionally
+> re-download and rebuild a tarball source.
+
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`.
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
 
@@ -171,6 +186,16 @@ Results are written to:
 cbench query --benchmark xhpl
 cbench query --cluster mycluster --status PASSED --since 2025-01-01
 cbench query --testset bandwidth --output json
+
+# Date range filter
+cbench query --since 2025-01-01 --until 2025-06-30
+
+# CSV export (one row per metric per run — easy to pipe into spreadsheets)
+cbench query --testset bandwidth --output csv > results.csv
+
+# Aggregate: mean/min/max per metric grouped by benchmark
+cbench query --testset bandwidth --aggregate
+cbench query --aggregate --output json
 ```
 
 ### Node hardware testing
@@ -186,6 +211,9 @@ cbench nodehwtest start-jobs --ident run1 --remote
 # Parse node_hw_test output files and report statistical outliers
 cbench nodehwtest parse --ident run1 --characterize --save-targets baseline
 cbench nodehwtest parse --ident run1 --load-targets baseline
+
+# Store parsed metrics to the SQLite DB (queryable via cbench query --testset nodehwtest)
+cbench nodehwtest parse --ident run1 --store
 ```
 
 Output files are named `<node>.node_hw_test.run<NNNN>` in `$CBENCHTEST/nodehwtest/<ident>/`.
@@ -233,8 +261,11 @@ Available filter modules: `openmpi`, `slurm`, `torque`, `mvapich`, `mpiexec`, `c
 ### Single-node benchmarking
 
 ```bash
-# Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb)
+# Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb, fio, hpcc)
 cbench snb run --ident run1 --destdir /scratch/snb
+
+# Run and store results directly to the SQLite DB
+cbench snb run --ident run1 --destdir /scratch/snb --store
 
 # Run a subset of tests
 cbench snb run --ident run1 --tests "stream|dgemm" --numcores 32
@@ -245,9 +276,47 @@ cbench snb run --ident run1 --dry-run
 # Display a results summary table from saved output files
 cbench snb report --ident run1 --destdir /scratch/snb
 cbench snb report --ident run1 --node n042   # report for a specific node
+
+# JSON output (suitable for scripts and monitoring)
+cbench snb report --ident run1 --output json
+
+# Store results from existing output files into the SQLite DB
+cbench snb store --ident run1 --destdir /scratch/snb --node n042
+
+# Compare two runs and flag regressions (reads from DB)
+cbench snb compare --ident run2 --baseline run1 --node n042
+cbench snb compare --ident run2 --baseline run1 --threshold 10.0
+
+# Dispatch an SNB run to a remote node via ssh/pdsh (shared filesystem required)
+cbench snb run --ident run1 --destdir /scratch/snb --remote n042
+cbench snb run --ident run1 --destdir /scratch/snb --remote n042 --remote-cbench /opt/cbench/bin/cbench
 ```
 
 Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
+Results are stored in `$CBENCHTEST/cbench_results.db` (same DB as `cbench parse`).
+
+### Web dashboard
+
+```bash
+# Install the optional web extra
+pip install "cbench[web]"
+
+# Start the dashboard (defaults to http://127.0.0.1:8080/)
+cbench serve
+
+# Expose to the network
+cbench serve --host 0.0.0.0 --port 9090
+
+# Air-gapped clusters: avoid CDN requests
+cbench serve --no-cdn
+
+# Air-gapped with local Bootstrap + Chart.js assets
+cbench serve --no-cdn --assets-dir /path/to/assets/
+# (assets dir must contain bootstrap.min.css and chart.umd.min.js)
+```
+
+Endpoints: `/` HTML dashboard, `/api/results` `/api/summary` `/api/trend` JSON API,
+`/metrics` Prometheus text exposition format.
 
 ---
 
@@ -263,6 +332,7 @@ Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
 | IO500 | `io500` | score, bandwidth GiB/s, IOPS kIOPS |
 | elbencho | `elbencho` | throughput MiB/s, IOPS, latency µs per phase |
 | gpfsperf | `gpfsperf` | throughput MB/s, IOPS, avg latency ms |
+| fio | `fio` | read/write IOPS, BW MiB/s, lat avg/p99 µs |
 | MLPerf Training | `mlperf`, `mlperf-training` | time_to_train s, accuracy, epochs |
 | MLPerf Inference | `mlperf`, `mlperf-inference` | samples/s, latency p90/mean/p99 ns |
 | OSU MPI | `osu`, `mpioverhead` | bandwidth MB/s, latency µs |

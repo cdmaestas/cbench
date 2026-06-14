@@ -14,6 +14,7 @@ _GIT_URL = "https://github.com/Mantevo/HPCCG.git"
 class HpccgBuilder(BenchmarkBuilder):
     name = "hpccg"
     description = "HPCCG Mantevo miniapp — conjugate gradient on unstructured grid"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "HPCCG"

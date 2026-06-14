@@ -14,6 +14,7 @@ _GIT_URL = "https://github.com/LLNL/AMG.git"
 class AmgBuilder(BenchmarkBuilder):
     name = "amg"
     description = "AMG algebraic multigrid benchmark (LLNL)"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "AMG"
