@@ -185,8 +185,12 @@ def run_cmd(
     numcores = numcores or _detect_cores()
     ident = ident or f"{cfg.cluster_name}1"
 
-    destdir_p = Path(destdir)
-    ident_dir = destdir_p / ident
+    destdir_p = Path(destdir).resolve()
+    ident_dir = (destdir_p / ident).resolve()
+    if not str(ident_dir).startswith(str(destdir_p)):
+        raise click.UsageError(
+            f"Path traversal detected: ident '{ident}' escapes destdir"
+        )
     ident_dir.mkdir(parents=True, exist_ok=True)
 
     cbenchome = os.environ.get("CBENCHOME", ".")
@@ -226,7 +230,7 @@ def run_cmd(
             if stream_bins:
                 run("true", "streams", overwrite=True)
                 for b in stream_bins:
-                    run(str(b), "streams")
+                    _runcmd([str(b)], out("streams"), overwrite=False, dry_run=dry_run, log_fh=log)
             else:
                 _logmsg(log, f"WARNING: no stream-* binaries found in {binpath_p}")
 
@@ -237,7 +241,7 @@ def run_cmd(
             _logmsg(log, "Starting CACHEBENCH testing")
             cb = binpath_p / "cachebench"
             if cb.exists():
-                run(f"{cb} --lmbench", "cachebench", overwrite=True)
+                _runcmd([str(cb), "--lmbench"], out("cachebench"), overwrite=True, dry_run=dry_run, log_fh=log)
             else:
                 _logmsg(log, f"WARNING: cachebench not found at {cb}")
 
@@ -373,9 +377,16 @@ def report_cmd(
 
     cfg = load_config(config)
     hostname = node or _hostname()
+    # Sanitize hostname: reject path separators to prevent traversal in file names
+    if "/" in hostname or "\\" in hostname or hostname.startswith(".."):
+        raise click.UsageError(f"Invalid --node value: '{hostname}'")
     ident = ident or f"{cfg.cluster_name}1"
-    destdir_p = Path(destdir)
-    ident_dir = destdir_p / ident
+    destdir_p = Path(destdir).resolve()
+    ident_dir = (destdir_p / ident).resolve()
+    if not str(ident_dir).startswith(str(destdir_p)):
+        raise click.UsageError(
+            f"Path traversal detected: ident '{ident}' escapes destdir"
+        )
 
     if not ident_dir.exists():
         console.print(f"[red]Directory not found: {ident_dir}[/red]")

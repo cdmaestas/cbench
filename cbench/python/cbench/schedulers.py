@@ -128,7 +128,8 @@ def lsf_extension(cfg: "ClusterConfig") -> str:
 # ---------------------------------------------------------------------------
 
 def local_submit_cmd(script: str, cfg: "ClusterConfig") -> str:
-    return f"bash {script}"
+    import shlex
+    return f"bash {shlex.quote(script)}"
 
 
 def local_nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:

@@ -38,7 +38,13 @@ def _testset_path(cbenchtest: str) -> Path:
 
 
 def _ident_path(cbenchtest: str, ident: str) -> Path:
-    return _testset_path(cbenchtest) / ident
+    base = _testset_path(cbenchtest)
+    resolved = (base / ident).resolve()
+    if not str(resolved).startswith(str(base.resolve())):
+        raise click.UsageError(
+            f"Path traversal detected: ident '{ident}' escapes nodehwtest directory"
+        )
+    return resolved
 
 
 def _parse_run_file(path: Path) -> tuple[dict[str, list[float]], dict[str, str], list[float]]:
@@ -287,7 +293,7 @@ def start_jobs(
     console.print(f"Starting nodehwtest jobs for identifier '{ident}' on {len(nodes)} nodes")
 
     node_hw_test_parts = [
-        f"{cbenchtest}/nodehwtest/node_hw_test",
+        shlex.quote(f"{cbenchtest}/nodehwtest/node_hw_test"),
         "--ident", shlex.quote(ident),
     ]
     if match:
@@ -398,8 +404,8 @@ def _build_batch_script(cfg, node: str, jobname: str, nodecmd: str, ident: str, 
         ]
     lines += [
         "",
-        f"export CBENCHTEST={cbenchtest}",
-        f"export CBENCHOME={cbenchtest}",
+        f"export CBENCHTEST={shlex.quote(cbenchtest)}",
+        f"export CBENCHOME={shlex.quote(cbenchtest)}",
         "",
         nodecmd,
     ]

@@ -114,7 +114,12 @@ def diag_cmd(
 
     if testset:
         ident = ident or f"{cfg.cluster_name}1"
-        ident_dir = Path(cbenchtest) / testset / ident
+        base = Path(cbenchtest).resolve()
+        ident_dir = (base / testset / ident).resolve()
+        if not str(ident_dir).startswith(str(base)):
+            raise click.UsageError(
+                f"Path traversal detected: testset/ident escapes CBENCHTEST"
+            )
         if not ident_dir.exists():
             console.print(f"[red]Directory not found: {ident_dir}[/red]")
             raise SystemExit(1)
