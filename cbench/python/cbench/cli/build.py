@@ -416,3 +416,96 @@ def build_all(prefix, srcdir, parallel: int, **kwargs) -> None:
 
     if not all(results.values()):
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# build update
+# ---------------------------------------------------------------------------
+
+def _run_update(
+    name: str,
+    prefix: Path,
+    srcdir: Path,
+    cfg,
+    *,
+    dry_run: bool,
+    lock: "BuildLock | None" = None,
+) -> bool:
+    """Pull upstream changes for one benchmark and rebuild if the source changed.
+
+    Returns True on success (no change or updated + rebuilt).
+    """
+    from cbench.builders import get_builder
+
+    builder = get_builder(name)
+    if builder is None:
+        console.print(f"[red]Unknown benchmark:[/red] {name}")
+        return False
+
+    console.rule(f"[bold cyan]{name}[/bold cyan] — {builder.description}")
+
+    missing = builder.check_requires()
+    if missing:
+        console.print(
+            f"[red]Missing prerequisites for {name}:[/red] {', '.join(missing)}\n"
+            f"Install them and retry."
+        )
+        return False
+
+    try:
+        changed = builder.update_source(srcdir, dry_run=dry_run)
+    except Exception as exc:
+        console.print(f"[red]Update failed for {name}:[/red] {exc}")
+        return False
+
+    if not changed:
+        console.print(f"  [dim]{name}: source unchanged — skipping rebuild[/dim]")
+        return True
+
+    console.print(f"  [cyan]{name}: source updated — rebuilding[/cyan]")
+    try:
+        src = srcdir / name
+        if not src.is_dir():
+            console.print(f"[red]Source directory not found:[/red] {src}")
+            return False
+        installed = builder.build(src, prefix, cfg, dry_run=dry_run)
+        if installed and lock and not dry_run:
+            lock.record(name, builder.source_url, cfg, installed)
+        console.print(f"[green]{name}: rebuilt successfully[/green]")
+        return True
+    except RuntimeError as exc:
+        console.print(f"[red]Build failed:[/red] {exc}")
+        return False
+    except Exception as exc:
+        console.print(f"[red]Unexpected error:[/red] {exc}")
+        return False
+
+
+@build_group.command("update")
+@click.argument("benchmark", required=False, default=None)
+@_build_options
+def build_update(benchmark: Optional[str], prefix, srcdir, dry_run: bool, **kwargs) -> None:
+    """Pull upstream changes for git-cloned benchmarks and rebuild if updated.
+
+    Without an argument, updates all known benchmarks.
+    Unlike --force, this only rebuilds when the source actually changed.
+    """
+    from cbench.builders import REGISTRY
+
+    cfg = _make_cfg(kwargs)
+    prefix_p, srcdir_p = _resolve_dirs(prefix, srcdir)
+    lock = BuildLock(prefix_p) if not dry_run else None
+
+    names = [benchmark] if benchmark else sorted(REGISTRY)
+    results: dict[str, bool] = {}
+    for name in names:
+        results[name] = _run_update(name, prefix_p, srcdir_p, cfg,
+                                    dry_run=dry_run, lock=lock)
+
+    console.rule("[bold]Update Summary[/bold]")
+    for name, ok in sorted(results.items()):
+        status = "[green]OK[/green]" if ok else "[red]FAILED[/red]"
+        console.print(f"  {status}  {name}")
+
+    if not all(results.values()):
+        sys.exit(1)

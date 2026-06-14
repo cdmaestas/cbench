@@ -365,11 +365,59 @@ def snb_group() -> None:
 # snb run
 # ---------------------------------------------------------------------------
 
+def _build_remote_cmd(
+    cfg,
+    *,
+    remote_node: str,
+    ident: str,
+    destdir: str,
+    numcores: int,
+    tests: str,
+    binpath: Optional[str],
+    mpi_cmd: str,
+    dry_run: bool,
+    store: bool,
+    config: Optional[str],
+) -> list[str]:
+    """Return the argv list to dispatch `cbench snb run` to a remote node."""
+    import shlex as _shlex
+
+    inner = [
+        "cbench", "snb", "run",
+        "--ident", ident,
+        "--destdir", destdir,
+        "--node", remote_node,
+        "--numcores", str(numcores),
+        "--tests", tests,
+        "--mpi-cmd", mpi_cmd,
+    ]
+    if binpath:
+        inner += ["--binpath", binpath]
+    if config:
+        inner += ["--config", config]
+    if dry_run:
+        inner.append("--dry-run")
+    if store:
+        inner.append("--store")
+
+    inner_str = " ".join(_shlex.quote(a) for a in inner)
+    extra = cfg.remotecmd_extraargs or ""
+
+    if cfg.remotecmd_method == "ssh":
+        cmd = ["ssh"] + (_shlex.split(extra) if extra else []) + [remote_node, inner_str]
+    else:
+        # pdsh
+        cmd = ["pdsh"] + (_shlex.split(extra) if extra else []) + ["-w", remote_node, inner_str]
+    return cmd
+
+
 @snb_group.command("run")
 @click.option("--ident", default=None, help="Test identifier (default: <cluster>1)")
 @click.option("--destdir", default=".", show_default=True, type=click.Path(),
               help="Directory for output files")
 @click.option("--node", default=None, help="Override hostname")
+@click.option("--remote", default=None, metavar="NODE",
+              help="Dispatch run to a remote node via ssh/pdsh (shared filesystem required)")
 @click.option("--numcores", default=None, type=int,
               help="CPU core count (default: auto-detected)")
 @click.option("--tests",
@@ -387,6 +435,7 @@ def run_cmd(
     ident: Optional[str],
     destdir: str,
     node: Optional[str],
+    remote: Optional[str],
     numcores: Optional[int],
     tests: str,
     binpath: Optional[str],
@@ -400,6 +449,35 @@ def run_cmd(
     from cbench.utils import is_power_of_two
 
     cfg = load_config(config)
+
+    if remote:
+        # Validate the remote node name before using it in a command
+        if "/" in remote or "\\" in remote or remote.startswith("..") or " " in remote:
+            raise click.UsageError(f"Invalid --remote value: '{remote}'")
+        numcores = numcores or _detect_cores()
+        ident = ident or f"{cfg.cluster_name}1"
+        cmd = _build_remote_cmd(
+            cfg,
+            remote_node=remote,
+            ident=ident,
+            destdir=str(Path(destdir).resolve()),
+            numcores=numcores,
+            tests=tests,
+            binpath=binpath,
+            mpi_cmd=mpi_cmd,
+            dry_run=dry_run,
+            store=store,
+            config=config,
+        )
+        import shlex as _shlex
+        display = " ".join(_shlex.quote(a) for a in cmd)
+        console.print(f"[bold]Dispatching to {remote} via {cfg.remotecmd_method}:[/bold] {display}")
+        if not dry_run:
+            result = subprocess.run(cmd)
+            if result.returncode != 0:
+                raise SystemExit(result.returncode)
+        return
+
     hostname = node or _hostname()
     if "/" in hostname or "\\" in hostname or hostname.startswith(".."):
         raise click.UsageError(f"Invalid --node value: '{hostname}'")

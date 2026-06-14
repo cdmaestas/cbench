@@ -48,6 +48,33 @@ def git_clone(url: str, dest: Path, *, force: bool, dry_run: bool) -> None:
     run(["git", "clone", "--depth=1", url, str(dest)], cwd=dest.parent, dry_run=dry_run)
 
 
+def git_pull(dest: Path, *, dry_run: bool) -> bool:
+    """Run `git pull` in *dest* and return True if HEAD changed.
+
+    Returns False if *dest* is not a git repo or if --dry-run.
+    """
+    if dry_run:
+        console.print(f"  [dim]DRYRUN: git pull in {dest}[/dim]")
+        return False
+    git_dir = dest / ".git"
+    if not git_dir.exists():
+        return False
+    before = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=dest, capture_output=True, text=True
+    ).stdout.strip()
+    console.print(f"  [cyan]git pull[/cyan] in {dest}")
+    subprocess.run(["git", "pull", "--ff-only"], cwd=dest, check=False)
+    after = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=dest, capture_output=True, text=True
+    ).stdout.strip()
+    changed = before != after
+    if changed:
+        console.print(f"  [green]Updated:[/green] {before[:8]} → {after[:8]}")
+    else:
+        console.print("  [dim]Already up to date.[/dim]")
+    return changed
+
+
 def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Path:
     """Download a tarball to *dest_dir* and extract it.
 

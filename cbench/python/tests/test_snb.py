@@ -708,6 +708,77 @@ def test_build_check_present_binary(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# --remote dispatch
+# ---------------------------------------------------------------------------
+
+def test_snb_run_remote_dry_run(tmp_path):
+    """--remote with --dry-run prints the dispatch command without executing."""
+    result = runner.invoke(cli, [
+        "snb", "run",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--remote", "n001",
+        "--dry-run",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "n001" in result.output
+    assert "cbench snb run" in result.output
+
+
+def test_snb_run_remote_rejects_bad_node(tmp_path):
+    """--remote must reject node names containing path separators or spaces."""
+    for bad in ["../evil", "n001 n002", "n001/evil"]:
+        result = runner.invoke(cli, [
+            "snb", "run",
+            "--ident", "run1",
+            "--destdir", str(tmp_path),
+            "--remote", bad,
+            "--dry-run",
+        ])
+        assert result.exit_code != 0, f"Expected failure for --remote '{bad}'"
+        assert "Invalid" in result.output
+
+
+def test_snb_run_remote_builds_ssh_cmd(tmp_path, monkeypatch):
+    """When remotecmd_method=ssh, dispatch uses ssh."""
+    import yaml
+    cfg_path = tmp_path / "cluster.yaml"
+    cfg_path.write_text(yaml.dump({"cluster_name": "test", "remotecmd_method": "ssh",
+                                    "remotecmd_extraargs": ""}))
+    result = runner.invoke(cli, [
+        "snb", "run",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--remote", "n002",
+        "--dry-run",
+        "--config", str(cfg_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "ssh" in result.output
+    assert "n002" in result.output
+
+
+def test_snb_run_remote_builds_pdsh_cmd(tmp_path):
+    """When remotecmd_method=pdsh (default), dispatch uses pdsh."""
+    import yaml
+    cfg_path = tmp_path / "cluster.yaml"
+    cfg_path.write_text(yaml.dump({"cluster_name": "test", "remotecmd_method": "pdsh",
+                                    "remotecmd_extraargs": "-f 700"}))
+    result = runner.invoke(cli, [
+        "snb", "run",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--remote", "n003",
+        "--dry-run",
+        "--config", str(cfg_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "pdsh" in result.output
+    assert "n003" in result.output
+    assert "-f" in result.output or "700" in result.output
+
+
+# ---------------------------------------------------------------------------
 # serve command (Flask not installed in test env → graceful error)
 # ---------------------------------------------------------------------------
 
@@ -722,3 +793,44 @@ def test_serve_no_flask(tmp_path, monkeypatch):
     # Should fail with a helpful message, not a traceback
     assert "Traceback" not in (result.output or "")
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# air-gapped dashboard (--no-cdn)
+# ---------------------------------------------------------------------------
+
+def test_build_html_cdn_uses_cdn_urls():
+    """Default HTML includes CDN links."""
+    from cbench.cli.serve import _build_html
+    html = _build_html(no_cdn=False, assets_dir=None)
+    assert "cdn.jsdelivr.net" in html
+
+
+def test_build_html_no_cdn_no_assets_uses_minimal_css():
+    """--no-cdn without assets falls back to minimal inline CSS."""
+    from cbench.cli.serve import _build_html
+    html = _build_html(no_cdn=True, assets_dir=None)
+    assert "cdn.jsdelivr.net" not in html
+    assert "<style>" in html
+    assert "air-gapped" in html or "no-cdn-notice" in html
+
+
+def test_build_html_no_cdn_with_assets_uses_local_paths(tmp_path):
+    """--no-cdn with assets dir serving the files uses /static/ URLs."""
+    from cbench.cli.serve import _build_html
+    (tmp_path / "bootstrap.min.css").write_text("/* bootstrap */")
+    (tmp_path / "chart.umd.min.js").write_text("/* chartjs */")
+    html = _build_html(no_cdn=True, assets_dir=tmp_path)
+    assert "cdn.jsdelivr.net" not in html
+    assert "/static/bootstrap.min.css" in html
+    assert "/static/chart.umd.min.js" in html
+
+
+def test_build_html_no_cdn_missing_one_asset_uses_minimal(tmp_path):
+    """If only one asset is present, fall back to minimal CSS (not partial CDN)."""
+    from cbench.cli.serve import _build_html
+    (tmp_path / "bootstrap.min.css").write_text("/* bootstrap */")
+    # chart.umd.min.js intentionally absent
+    html = _build_html(no_cdn=True, assets_dir=tmp_path)
+    assert "cdn.jsdelivr.net" not in html
+    assert "/static/chart.umd.min.js" not in html
