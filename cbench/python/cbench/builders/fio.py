@@ -13,6 +13,7 @@ _GIT_URL = "https://github.com/axboe/fio.git"
 class FioBuilder(BenchmarkBuilder):
     name = "fio"
     description = "fio Flexible I/O Tester — configurable storage benchmark"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "fio"

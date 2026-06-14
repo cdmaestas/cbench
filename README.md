@@ -80,6 +80,9 @@ cbench build all --mpicc mpicc --jobs 8 --blas-lib "-lopenblas"
 
 # Preview without downloading or compiling
 cbench build run ior --dry-run
+
+# Show build status (cached / not cached) for all builders
+cbench build list --prefix $CBENCHTEST
 ```
 
 Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`.

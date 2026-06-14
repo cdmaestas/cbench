@@ -13,6 +13,7 @@ _GIT_URL = "https://github.com/hpc/ior.git"
 class IorBuilder(BenchmarkBuilder):
     name = "ior"
     description = "IOR parallel I/O benchmark + mdtest metadata benchmark"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "ior"

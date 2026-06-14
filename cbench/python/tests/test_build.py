@@ -190,3 +190,110 @@ def test_install_bins_dry_run(tmp_path):
     # dry_run: returns list but does not create the destination dir
     assert "bin_a" in installed
     assert not (tmp_path / "bin" / "bin_a").exists()
+
+
+# ---------------------------------------------------------------------------
+# BuildLock
+# ---------------------------------------------------------------------------
+
+def test_build_lock_initially_empty(tmp_path):
+    from cbench.cli.build import BuildLock
+    lock = BuildLock(tmp_path)
+    assert not lock._data
+
+
+def test_build_lock_record_and_hit(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    cfg = BuildConfig()
+    lock = BuildLock(tmp_path)
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    (prefix_bin / "mybin").write_text("x")
+
+    lock.record("stream", "https://example.com/stream.c", cfg, ["mybin"])
+
+    lock2 = BuildLock(tmp_path)  # reload from disk
+    assert lock2.is_cached("stream", "https://example.com/stream.c", cfg, prefix_bin)
+
+
+def test_build_lock_miss_wrong_url(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    cfg = BuildConfig()
+    lock = BuildLock(tmp_path)
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    (prefix_bin / "mybin").write_text("x")
+
+    lock.record("stream", "https://example.com/stream.c", cfg, ["mybin"])
+    assert not lock.is_cached("stream", "https://other.com/stream.c", cfg, prefix_bin)
+
+
+def test_build_lock_miss_changed_config(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    cfg1 = BuildConfig(mpicc="mpicc")
+    cfg2 = BuildConfig(mpicc="mpiicc")
+    lock = BuildLock(tmp_path)
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    (prefix_bin / "mybin").write_text("x")
+
+    lock.record("imb", "https://github.com/intel/mpi-benchmarks.git", cfg1, ["mybin"])
+    assert not lock.is_cached("imb", "https://github.com/intel/mpi-benchmarks.git", cfg2, prefix_bin)
+
+
+def test_build_lock_miss_missing_binary(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    cfg = BuildConfig()
+    lock = BuildLock(tmp_path)
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+
+    lock.record("stream", "https://example.com/stream.c", cfg, ["mybin"])
+    # mybin does not exist on disk
+    assert not lock.is_cached("stream", "https://example.com/stream.c", cfg, prefix_bin)
+
+
+def test_build_lock_remove(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    cfg = BuildConfig()
+    lock = BuildLock(tmp_path)
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    (prefix_bin / "mybin").write_text("x")
+
+    lock.record("stream", "https://example.com/stream.c", cfg, ["mybin"])
+    lock.remove("stream")
+    assert "stream" not in lock._data
+
+
+def test_build_lock_persists_across_instances(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    cfg = BuildConfig()
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    (prefix_bin / "b1").write_text("x")
+    (prefix_bin / "b2").write_text("x")
+
+    BuildLock(tmp_path).record("ior", "https://github.com/hpc/ior.git", cfg, ["b1", "b2"])
+
+    lock2 = BuildLock(tmp_path)
+    assert lock2.is_cached("ior", "https://github.com/hpc/ior.git", cfg, prefix_bin)
+
+
+def test_builder_has_source_url():
+    from cbench.builders import REGISTRY
+    for name, cls in REGISTRY.items():
+        assert cls.source_url, f"Builder '{name}' missing source_url"
+
+
+def test_build_list_shows_cache_column(tmp_path):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["build", "list", "--prefix", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "Cached" in result.output
