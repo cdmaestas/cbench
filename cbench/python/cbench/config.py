@@ -21,7 +21,7 @@ _SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "cluster_name": {"type": "string", "minLength": 1},
+        "cluster_name": {"type": "string", "minLength": 1, "pattern": r"^[A-Za-z0-9_\-]+$"},
         "max_nodes": {"type": "integer", "minimum": 1},
         "procs_per_node": {"type": "integer", "minimum": 1},
         "max_procs": {"type": "integer", "minimum": 1},

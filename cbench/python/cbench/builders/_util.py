@@ -76,6 +76,15 @@ def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Pat
     with tarfile.open(tarball) as tf:
         top = Path(tf.getnames()[0].split("/")[0])
         console.print(f"  [cyan]tar x[/cyan] {tarball.name}")
+        # Validate every member stays inside dest_dir (prevents zip-slip)
+        dest_resolved = dest_dir.resolve()
+        for member in tf.getmembers():
+            member_path = (dest_dir / member.name).resolve()
+            if not str(member_path).startswith(str(dest_resolved)):
+                raise RuntimeError(
+                    f"Refusing to extract tarball: member {member.name!r} "
+                    f"escapes destination directory"
+                )
         tf.extractall(dest_dir)
 
     return dest_dir / top

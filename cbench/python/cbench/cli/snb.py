@@ -309,6 +309,8 @@ def run_cmd(
 
     cfg = load_config(config)
     hostname = node or _hostname()
+    if "/" in hostname or "\\" in hostname or hostname.startswith(".."):
+        raise click.UsageError(f"Invalid --node value: '{hostname}'")
     numcores = numcores or _detect_cores()
     ident = ident or f"{cfg.cluster_name}1"
 
