@@ -20,6 +20,7 @@ cbench = "cbench.cli.main:cli"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov"]
+web = ["flask>=2.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]

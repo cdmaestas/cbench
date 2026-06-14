@@ -183,6 +183,64 @@ class ResultsDB:
                 }
         return list(runs.values())
 
+    def trend(
+        self,
+        *,
+        benchmark: str,
+        metric: str,
+        cluster: Optional[str] = None,
+        testset: Optional[str] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Return per-ident average values for one metric, ordered chronologically.
+
+        Each element: {ident, parsed_at, value, units, count}
+        """
+        where = ["r.benchmark = ?", "m.metric = ?"]
+        params: list = [benchmark, metric]
+        if cluster:
+            where.append("r.cluster = ?")
+            params.append(cluster)
+        if testset:
+            where.append("r.testset = ?")
+            params.append(testset)
+        if since:
+            where.append("r.parsed_at >= ?")
+            params.append(since)
+        if until:
+            where.append("r.parsed_at <= ?")
+            params.append(until)
+
+        where_clause = "WHERE " + " AND ".join(where)
+
+        with self._conn() as con:
+            rows = con.execute(
+                f"""
+                SELECT r.ident, MIN(r.parsed_at) AS parsed_at,
+                       AVG(m.value) AS value, m.units, COUNT(*) AS count
+                FROM runs r
+                JOIN metrics m ON m.run_id = r.id
+                {where_clause}
+                GROUP BY r.ident
+                ORDER BY MIN(r.parsed_at) ASC
+                LIMIT ?
+                """,
+                params + [limit],
+            ).fetchall()
+
+        return [
+            {
+                "ident": row["ident"],
+                "parsed_at": row["parsed_at"],
+                "value": row["value"],
+                "units": row["units"],
+                "count": row["count"],
+            }
+            for row in rows
+        ]
+
     def export_json(self, **query_kwargs) -> str:
         return json.dumps(self.query(**query_kwargs), indent=2)
 

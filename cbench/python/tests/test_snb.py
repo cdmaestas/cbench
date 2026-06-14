@@ -492,3 +492,147 @@ def test_query_aggregate_csv(tmp_path, monkeypatch):
     assert "benchmark" in result.output
     assert "mean" in result.output
     assert "osubw" in result.output
+
+
+# ---------------------------------------------------------------------------
+# query --trend
+# ---------------------------------------------------------------------------
+
+def test_query_trend_table(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    for i, bw in enumerate([9000.0, 10000.0, 11000.0]):
+        db.store(DBResult(
+            cluster="test", testset="bw", ident=f"run{i}", jobname=f"job{i}",
+            benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+            metrics={"bw": bw}, metric_units={"bw": "MB/s"},
+        ))
+
+    result = runner.invoke(cli, [
+        "query", "--trend", "--benchmark", "osubw", "--metric", "bw",
+        "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "run0" in result.output
+    assert "run2" in result.output
+
+
+def test_query_trend_json(tmp_path, monkeypatch):
+    import json as _json
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    for i, bw in enumerate([9000.0, 11000.0]):
+        db.store(DBResult(
+            cluster="test", testset="bw", ident=f"run{i}", jobname=f"job{i}",
+            benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+            metrics={"bw": bw},
+        ))
+
+    result = runner.invoke(cli, [
+        "query", "--trend", "--benchmark", "osubw", "--metric", "bw",
+        "--output", "json", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    data = _json.loads(result.output)
+    assert len(data) == 2
+    assert "ident" in data[0]
+    assert "value" in data[0]
+
+
+def test_query_trend_requires_benchmark_and_metric(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    db.store(DBResult(
+        cluster="test", testset="bw", ident="run1", jobname="job1",
+        benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+        metrics={"bw": 9000.0},
+    ))
+    result = runner.invoke(cli, [
+        "query", "--trend", "--benchmark", "osubw",
+        "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code != 0
+
+
+def test_query_prometheus_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+    db.store(DBResult(
+        cluster="mycluster", testset="bandwidth", ident="run1", jobname="job1",
+        benchmark="osubw", numprocs=16, ppn=2, numnodes=8, status="PASSED",
+        metrics={"bw": 9500.0}, metric_units={"bw": "MB/s"},
+    ))
+    result = runner.invoke(cli, [
+        "query", "--output", "prometheus", "--cbenchtest", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "# HELP cbench_metric_value" in result.output
+    assert "# TYPE cbench_metric_value gauge" in result.output
+    assert 'benchmark="osubw"' in result.output
+    assert "9500.0" in result.output
+
+
+# ---------------------------------------------------------------------------
+# build check
+# ---------------------------------------------------------------------------
+
+def test_build_check_no_cache(tmp_path):
+    result = runner.invoke(cli, [
+        "build", "check", "--prefix", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "not built" in result.output
+
+
+def test_build_check_missing_binary(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+    lock = BuildLock(tmp_path)
+    lock.record("stream", "https://example.com/stream.c", BuildConfig(), ["missing_bin"])
+
+    result = runner.invoke(cli, [
+        "build", "check", "--prefix", str(tmp_path),
+    ])
+    assert result.exit_code != 0
+    assert "MISSING" in result.output
+
+
+def test_build_check_present_binary(tmp_path):
+    from cbench.cli.build import BuildLock
+    from cbench.builders import BuildConfig
+
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    bin_path = prefix_bin / "myecho"
+    bin_path.write_text("#!/bin/sh\necho 'myecho v1.0'\n")
+    bin_path.chmod(0o755)
+
+    lock = BuildLock(tmp_path)
+    lock.record("stream", "https://example.com/stream.c", BuildConfig(), ["myecho"])
+
+    result = runner.invoke(cli, [
+        "build", "check", "--prefix", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "OK" in result.output
+
+
+# ---------------------------------------------------------------------------
+# serve command (Flask not installed in test env → graceful error)
+# ---------------------------------------------------------------------------
+
+def test_serve_no_flask(tmp_path, monkeypatch):
+    """serve command raises ClickException if Flask is not installed."""
+    import sys
+    # Hide flask from imports
+    monkeypatch.setitem(sys.modules, "flask", None)
+    result = runner.invoke(cli, [
+        "serve", "--port", "19999", "--cbenchtest", str(tmp_path),
+    ])
+    # Should fail with a helpful message, not a traceback
+    assert "Traceback" not in (result.output or "")
+    assert result.exit_code != 0

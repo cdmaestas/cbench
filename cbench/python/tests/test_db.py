@@ -90,3 +90,37 @@ def test_filter_by_since_and_until(db):
     db.store(_make_result(jobname="job1"))
     rows = db.query(since="2020-01-01", until="2099-12-31")
     assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# trend()
+# ---------------------------------------------------------------------------
+
+def test_trend_returns_ordered_series(db):
+    for i, bw in enumerate([9000.0, 10000.0, 11000.0]):
+        db.store(_make_result(
+            ident=f"run{i}", jobname=f"job{i}",
+            metrics={"unidir_bw": bw}, metric_units={"unidir_bw": "MB/s"},
+        ))
+    rows = db.trend(benchmark="osubw", metric="unidir_bw")
+    assert len(rows) == 3
+    # ordered chronologically — values should ascend
+    assert rows[0]["value"] < rows[-1]["value"]
+    assert rows[0]["units"] == "MB/s"
+    assert rows[0]["count"] == 1
+
+
+def test_trend_averages_multiple_runs_per_ident(db):
+    for bw in [8000.0, 12000.0]:
+        db.store(_make_result(ident="run1", jobname=f"job-{bw}",
+                              metrics={"unidir_bw": bw}))
+    rows = db.trend(benchmark="osubw", metric="unidir_bw")
+    assert len(rows) == 1
+    assert abs(rows[0]["value"] - 10000.0) < 1.0
+    assert rows[0]["count"] == 2
+
+
+def test_trend_empty_when_no_match(db):
+    db.store(_make_result())
+    rows = db.trend(benchmark="osubw", metric="nonexistent_metric")
+    assert rows == []
