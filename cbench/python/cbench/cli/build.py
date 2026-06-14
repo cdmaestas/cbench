@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -280,6 +281,73 @@ def _run_one(
     except Exception as exc:
         console.print(f"[red]Unexpected error:[/red] {exc}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# build check
+# ---------------------------------------------------------------------------
+
+@build_group.command("check")
+@click.argument("benchmark", required=False, default=None)
+@click.option("--prefix", default=None, help="Install prefix to search for binaries")
+@click.option("--timeout", default=10, show_default=True, type=int,
+              help="Seconds to wait per binary invocation")
+def build_check(benchmark: Optional[str], prefix: Optional[str], timeout: int) -> None:
+    """Verify installed benchmark binaries are present and runnable."""
+    from cbench.builders import REGISTRY
+
+    prefix_p = Path(prefix or _default_prefix())
+    lock = BuildLock(prefix_p)
+    prefix_bin = prefix_p / "bin"
+
+    names = [benchmark] if benchmark else sorted(REGISTRY)
+
+    tbl = Table(show_header=True, box=None, padding=(0, 2))
+    tbl.add_column("Name", style="bold cyan")
+    tbl.add_column("Binary")
+    tbl.add_column("Status", justify="center")
+    tbl.add_column("Detail", style="dim")
+
+    any_fail = False
+    for name in names:
+        entry = lock._data.get(name)
+        if not entry:
+            tbl.add_row(name, "—", "[yellow]not built[/yellow]", "no cache entry")
+            continue
+        binaries = entry.get("binaries", [])
+        if not binaries:
+            tbl.add_row(name, "—", "[yellow]not built[/yellow]", "no binaries recorded")
+            continue
+        for binary in binaries:
+            bin_path = prefix_bin / binary
+            if not bin_path.exists():
+                tbl.add_row(name, binary, "[red]MISSING[/red]", str(bin_path))
+                any_fail = True
+                continue
+            try:
+                proc = subprocess.run(
+                    [str(bin_path), "--version"],
+                    capture_output=True,
+                    timeout=timeout,
+                )
+                # Negative returncode means killed by signal (e.g. SIGSEGV=-11)
+                if proc.returncode < 0:
+                    tbl.add_row(name, binary, "[red]CRASHED[/red]",
+                                f"signal {-proc.returncode}")
+                    any_fail = True
+                else:
+                    out = (proc.stdout or proc.stderr or b"").decode(errors="replace")
+                    detail = out.strip().splitlines()[0][:80] if out.strip() else f"exit {proc.returncode}"
+                    tbl.add_row(name, binary, "[green]OK[/green]", detail)
+            except subprocess.TimeoutExpired:
+                tbl.add_row(name, binary, "[green]OK[/green]", "running (no --version)")
+            except OSError as exc:
+                tbl.add_row(name, binary, "[red]ERROR[/red]", str(exc))
+                any_fail = True
+
+    console.print(tbl)
+    if any_fail:
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
