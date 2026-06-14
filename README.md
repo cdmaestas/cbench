@@ -87,6 +87,19 @@ cbench parse --testset bandwidth --ident run1
 cbench parse --testset bandwidth --ident run1 --output json
 ```
 
+### Remove failed jobs
+
+```bash
+# Preview which ERROR job directories would be removed
+cbench rm-failed --testset bandwidth --ident run1
+
+# Actually delete them
+cbench rm-failed --testset bandwidth --ident run1 --force
+
+# Restrict to a subset of jobs
+cbench rm-failed --testset bandwidth --ident run1 --match "xhpl" --force
+```
+
 Results are written to:
 - Terminal: colored pass/fail table
 - `$CBENCHTEST/<testset>/<ident>/results.json`

@@ -89,4 +89,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-225 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, and snb.
+231 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
