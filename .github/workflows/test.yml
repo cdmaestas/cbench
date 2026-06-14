@@ -28,6 +28,13 @@ jobs:
       - name: Install package and dev dependencies
         run: pip install -e "cbench/python[dev]"
 
-      - name: Run tests
+      - name: Run tests with coverage
         working-directory: cbench/python
-        run: python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short --cov=cbench --cov-report=term-missing --cov-fail-under=80
+
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: cbench/python/.coverage

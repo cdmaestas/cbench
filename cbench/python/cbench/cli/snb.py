@@ -121,6 +121,87 @@ def _parse_dgemm_out(outfile: Path) -> dict[int, float]:
     return {mem: mean(vals) for mem, vals in data.items()}
 
 
+def _generate_hpl_dat(cfg, numcores: int) -> str:
+    """Return HPL.dat content sized to ~50% of node memory with a P×Q grid."""
+    import math
+    mem_mb = cfg.memory_per_node_mb
+    n = int(math.sqrt(0.5 * mem_mb * 1024 * 1024 / 8))
+    n = max((n // 256) * 256, 256)
+    p, q = 1, numcores
+    for pp in range(1, numcores + 1):
+        qq = numcores // pp
+        if pp * qq == numcores and pp <= qq:
+            p, q = pp, qq
+    return (
+        "HPLinpack benchmark input file\n"
+        "Innovative Computing Laboratory, University of Tennessee\n"
+        "HPL.out  output file name (if any)\n"
+        "6        device out (6=stdout,7=stderr,file)\n"
+        "1        # of problems sizes (N)\n"
+        f"{n}       Ns\n"
+        "1        # of NBs\n"
+        "192      NBs\n"
+        "0        PMAP process mapping (0=Row-,1=Column-major)\n"
+        "1        # of process grids (P x Q)\n"
+        f"{p}        Ps\n"
+        f"{q}        Qs\n"
+        "16.0     threshold\n"
+        "1        # of panel fact\n"
+        "2        PFACTs (0=left, 1=Crout, 2=Right)\n"
+        "1        # of recursive stopping criterium\n"
+        "4        NBMINs (>= 1)\n"
+        "1        # of panels in recursion\n"
+        "2        NDIVs\n"
+        "1        # of recursive panel fact.\n"
+        "1        RFACTs (0=left, 1=Crout, 2=Right)\n"
+        "1        # of broadcast\n"
+        "1        BCASTs (0=1rg,1=1rM,2=2rg,3=2rM,4=Lng,5=LnM)\n"
+        "1        # of lookahead depth\n"
+        "1        DEPTHs (>=0)\n"
+        "2        SWAP (0=bin-exch,1=long,2=mix)\n"
+        "64       swapping threshold\n"
+        "0        L1 in (0=transposed,1=no-transposed) form\n"
+        "0        U  in (0=transposed,1=no-transposed) form\n"
+        "1        Equilibration (0=no,1=yes)\n"
+        "8        memory alignment in double (> 0)\n"
+        "##### This line (no. 32) is ignored (it serves as a separator). ######\n"
+        "0                               Number of additional problem sizes for PTRANS\n"
+        "1200 10000 30000                values of N\n"
+        "0                               number of additional blocking sizes for PTRANS\n"
+        "40 9 8 13 13 20 16 32 64        values of NB\n"
+    )
+
+
+def _parse_linpack_out(outfile: Path) -> dict[str, float]:
+    """Return xhpl metrics from an SNB linpack output file."""
+    if not outfile.exists():
+        return {}
+    from cbench.parsers.xhpl import XhplParser
+    result = XhplParser().parse(outfile.read_text(errors="replace"))
+    return result.metrics if result.status == "PASSED" else {}
+
+
+def _parse_npb_out(outfile: Path) -> dict[str, float]:
+    """Return {<suite>_mops: val} from a concatenated NPB output file."""
+    if not outfile.exists():
+        return {}
+    from cbench.parsers.npb import NpbParser
+    text = outfile.read_text(errors="replace")
+    # Split at each benchmark header; each section starts with "NAS Parallel Benchmarks"
+    parts = re.split(r"(?=.*NAS Parallel Benchmarks)", text, flags=re.MULTILINE)
+    metrics: dict[str, float] = {}
+    parser = NpbParser()
+    for part in parts:
+        if "NAS Parallel Benchmarks" not in part:
+            continue
+        m = re.search(r"NAS Parallel Benchmarks[^-]*-\s*(\w+)\s+Benchmark", part)
+        suite = m.group(1).lower() if m else "npb"
+        result = parser.parse(part)
+        if result.status == "PASSED" and "mops" in result.metrics:
+            metrics[f"{suite}_mops"] = result.metrics["mops"]
+    return metrics
+
+
 def _parse_fio_out(outfile: Path) -> dict[str, float]:
     """Return fio metrics dict from an snb fio output file."""
     if not outfile.exists():
@@ -230,6 +311,17 @@ def _collect_snb_metrics(
     from cbench.parsers.hpcc import HpccParser
     hpcc_units = HpccParser().metric_units()
     _make("snb_hpcc", hpcc, {k: hpcc_units.get(k, "") for k in hpcc})
+
+    # linpack (xhpl)
+    from cbench.parsers.xhpl import XhplParser
+    linpack = _parse_linpack_out(outfile("linpack"))
+    xhpl_units = XhplParser().metric_units()
+    _make("snb_linpack", linpack, {k: xhpl_units.get(k, "") for k in linpack})
+
+    # npb
+    from cbench.parsers.npb import NpbParser
+    npb = _parse_npb_out(outfile("npb"))
+    _make("snb_npb", npb, {k: "Mop/s" for k in npb})
 
     return results
 
@@ -429,55 +521,63 @@ def run_cmd(
                 _logmsg(log, f"WARNING: stream-mpi not found at {stream_mpi}")
 
         # ------------------------------------------------------------------
-        # linpack — delegate to cbench gen-jobs / start-jobs
+        # linpack — direct xhpl invocation with auto-generated HPL.dat
         # ------------------------------------------------------------------
         if re.search(r"linpack", tests):
-            _logmsg(log, "Starting Linpack testing")
-            identbase = f"snb_{ident}"
-            cbenchtest = os.environ.get("CBENCHTEST", ".")
-            for threads in range(1, numcores + 1):
-                count = numcores // threads
-                for procs in range(1, count + 1):
-                    if procs > 1 and not is_power_of_two(procs):
-                        continue
-                    if threads > 1 and not is_power_of_two(threads):
-                        continue
-                    sub_ident = f"{identbase}_{threads}threads"
-                    gen_cmd = [
-                        "cbench", "gen-jobs", "--testset", "linpack",
-                        "--ident", sub_ident,
-                        "--maxprocs", str(procs), "--ppn", str(procs),
-                        "--cbenchtest", cbenchtest,
-                    ]
-                    start_cmd = [
-                        "cbench", "start-jobs", "--testset", "linpack",
-                        "--ident", sub_ident,
-                        "--interactive", "--match", f"{procs}ppn",
-                        "--cbenchtest", cbenchtest,
-                    ]
-                    run(gen_cmd, "linpack")
-                    run(start_cmd, "linpack")
+            _logmsg(log, "Starting Linpack (xhpl) testing")
+            xhpl_candidates = [binpath_p / "xhpl", binpath_p.parent / "xhpl"]
+            xhpl_bin = next((p for p in xhpl_candidates if p.exists()), None)
+            if not xhpl_bin:
+                import shutil as _shutil
+                found = _shutil.which("xhpl")
+                xhpl_bin = Path(found) if found else None
+            if xhpl_bin:
+                hpl_content = _generate_hpl_dat(cfg, numcores)
+                linpack_dir = ident_dir / "linpack_run"
+                if not dry_run:
+                    linpack_dir.mkdir(exist_ok=True)
+                    (linpack_dir / "HPL.dat").write_text(hpl_content)
+                else:
+                    _logmsg(log, f"DRYRUN: would write HPL.dat to {linpack_dir}")
+                _runcmd(
+                    [str(xhpl_bin)],
+                    out("linpack"), overwrite=True, dry_run=dry_run, log_fh=log,
+                    cwd=linpack_dir,
+                )
+            else:
+                _logmsg(log, "WARNING: xhpl binary not found on PATH or in binpath, skipping linpack")
 
         # ------------------------------------------------------------------
-        # npb — delegate to cbench gen-jobs / start-jobs
+        # npb — direct invocation of NPB suite binaries
         # ------------------------------------------------------------------
         if re.search(r"npb", tests):
             _logmsg(log, "Starting NAS Parallel Benchmark testing")
-            identbase = f"snb_{ident}"
-            cbenchtest = os.environ.get("CBENCHTEST", ".")
-            run("true", "npb", overwrite=True)
-            run(
-                ["cbench", "gen-jobs", "--testset", "npb",
-                 "--ident", identbase, "--maxprocs", str(numcores),
-                 "--cbenchtest", cbenchtest],
-                "npb",
-            )
-            run(
-                ["cbench", "start-jobs", "--testset", "npb",
-                 "--ident", identbase, "--interactive",
-                 "--maxprocs", str(numcores), "--cbenchtest", cbenchtest],
-                "npb",
-            )
+            # Preferred suites: EP (CPU FP), CG (memory + sparse comm)
+            npb_suites = ["EP", "CG"]
+            npb_classes = ["B", "A", "C"]
+            first_npb = True
+            found_any_npb = False
+            for suite in npb_suites:
+                npb_bin = None
+                for cls in npb_classes:
+                    binary_name = f"{suite}.{cls}.x"
+                    candidates = [binpath_p / binary_name, binpath_p.parent / binary_name]
+                    npb_bin = next((p for p in candidates if p.exists()), None)
+                    if not npb_bin:
+                        import shutil as _shutil
+                        found = _shutil.which(binary_name)
+                        npb_bin = Path(found) if found else None
+                    if npb_bin:
+                        break
+                if npb_bin:
+                    found_any_npb = True
+                    _runcmd(
+                        [mpi_cmd, "-np", str(numcores), str(npb_bin)],
+                        out("npb"), overwrite=first_npb, dry_run=dry_run, log_fh=log,
+                    )
+                    first_npb = False
+            if not found_any_npb:
+                _logmsg(log, "WARNING: no NPB binaries found (EP.B.x etc.), skipping npb")
 
         # ------------------------------------------------------------------
         # fio — flexible I/O benchmark (sequential and random 4K)
@@ -547,57 +647,7 @@ def run_cmd(
                 found = shutil.which("hpcc")
                 hpcc_bin = Path(found) if found else None
             if hpcc_bin:
-                import math
-                # Generate a minimal HPL.dat sized to ~50% of available memory
-                mem_mb = cfg.memory_per_node_mb
-                # N ≈ sqrt(0.5 * mem_bytes / 8)
-                n = int(math.sqrt(0.5 * mem_mb * 1024 * 1024 / 8))
-                n = (n // 256) * 256  # round down to multiple of 256
-                n = max(n, 256)
-                # Find a P×Q grid close to square with P≤Q
-                p, q = 1, numcores
-                for pp in range(1, numcores + 1):
-                    qq = numcores // pp
-                    if pp * qq == numcores and pp <= qq:
-                        p, q = pp, qq
-                hpl_dat = (
-                    "HPLinpack benchmark input file\n"
-                    "Innovative Computing Laboratory, University of Tennessee\n"
-                    "HPL.out  output file name (if any)\n"
-                    "6        device out (6=stdout,7=stderr,file)\n"
-                    "1        # of problems sizes (N)\n"
-                    f"{n}       Ns\n"
-                    "1        # of NBs\n"
-                    "192      NBs\n"
-                    "0        PMAP process mapping (0=Row-,1=Column-major)\n"
-                    "1        # of process grids (P x Q)\n"
-                    f"{p}        Ps\n"
-                    f"{q}        Qs\n"
-                    "16.0     threshold\n"
-                    "1        # of panel fact\n"
-                    "2        PFACTs (0=left, 1=Crout, 2=Right)\n"
-                    "1        # of recursive stopping criterium\n"
-                    "4        NBMINs (>= 1)\n"
-                    "1        # of panels in recursion\n"
-                    "2        NDIVs\n"
-                    "1        # of recursive panel fact.\n"
-                    "1        RFACTs (0=left, 1=Crout, 2=Right)\n"
-                    "1        # of broadcast\n"
-                    "1        BCASTs (0=1rg,1=1rM,2=2rg,3=2rM,4=Lng,5=LnM)\n"
-                    "1        # of lookahead depth\n"
-                    "1        DEPTHs (>=0)\n"
-                    "2        SWAP (0=bin-exch,1=long,2=mix)\n"
-                    "64       swapping threshold\n"
-                    "0        L1 in (0=transposed,1=no-transposed) form\n"
-                    "0        U  in (0=transposed,1=no-transposed) form\n"
-                    "1        Equilibration (0=no,1=yes)\n"
-                    "8        memory alignment in double (> 0)\n"
-                    "##### This line (no. 32) is ignored (it serves as a separator). ######\n"
-                    "0                               Number of additional problem sizes for PTRANS\n"
-                    "1200 10000 30000                values of N\n"
-                    "0                               number of additional blocking sizes for PTRANS\n"
-                    "40 9 8 13 13 20 16 32 64        values of NB\n"
-                )
+                hpl_dat = _generate_hpl_dat(cfg, numcores)
                 hpcc_dir = ident_dir / "hpcc_run"
                 if not dry_run:
                     hpcc_dir.mkdir(exist_ok=True)
@@ -788,6 +838,35 @@ def report_cmd(
         tbl.add_column("Value", justify="right")
         for key, val in sorted(hpcc_metrics.items()):
             tbl.add_row(key, f"{val:.4g}")
+        console.print(tbl)
+
+    # ------------------------------------------------------------------
+    # Linpack
+    # ------------------------------------------------------------------
+    linpack_metrics = _parse_linpack_out(out("linpack"))
+    if linpack_metrics:
+        any_results = True
+        console.rule("[bold]Linpack (xhpl) Results")
+        tbl = Table(box=None, padding=(0, 2))
+        tbl.add_column("Metric")
+        tbl.add_column("Value", justify="right")
+        for key, val in sorted(linpack_metrics.items()):
+            tbl.add_row(key, f"{val:.4g}")
+        console.print(tbl)
+
+    # ------------------------------------------------------------------
+    # NPB
+    # ------------------------------------------------------------------
+    npb_metrics = _parse_npb_out(out("npb"))
+    if npb_metrics:
+        any_results = True
+        console.rule("[bold]NAS Parallel Benchmark Results")
+        tbl = Table(box=None, padding=(0, 2))
+        tbl.add_column("Suite")
+        tbl.add_column("Mop/s", justify="right")
+        for key, val in sorted(npb_metrics.items()):
+            suite = key.replace("_mops", "").upper()
+            tbl.add_row(suite, f"{val:.1f}")
         console.print(tbl)
 
     if not any_results:
