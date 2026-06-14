@@ -23,6 +23,7 @@ from cbench.parse_filters import build_filter_set, apply_filters, AVAILABLE as F
 from cbench.cli.nodehwtest import nodehwtest_group
 from cbench.cli.utils_cmd import utils_group
 from cbench.cli.diag import diag_cmd
+from cbench.cli.snb import snb_group
 
 console = Console()
 
@@ -48,6 +49,7 @@ def cli() -> None:
 cli.add_command(nodehwtest_group)
 cli.add_command(utils_group)
 cli.add_command(diag_cmd)
+cli.add_command(snb_group)
 
 
 # ---------------------------------------------------------------------------
