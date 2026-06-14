@@ -82,7 +82,7 @@ cbench build all --mpicc mpicc --jobs 8 --blas-lib "-lopenblas"
 cbench build run ior --dry-run
 ```
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `npb` (NAS Parallel Benchmarks).
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++).
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
 
