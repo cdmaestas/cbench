@@ -24,7 +24,7 @@ cbench/
 │   └── *.py            # xhpl, hpcc, imb, npb, ior, osu, amg, beff, bonnie, com, fileop,
 │                       # graph500, hpccg, irs, lammps, laten, mdtest, miranda, mpibench,
 │                       # mpigraph, phdmesh, rotate, rotlat, routecheck, sppm, sqmr, stress,
-│                       # sweep3d, trilinos, io500, mlperf, elbencho, gpfsperf
+│                       # sweep3d, trilinos, io500, mlperf, elbencho, gpfsperf, fio
 ├── parse_filters/      # Error-detection filters applied during cbench parse
 │   ├── __init__.py     # build_filter_set(), apply_filters()
 │   └── *.py            # openmpi, slurm, torque, mvapich, mpiexec, cray, misc
@@ -38,7 +38,7 @@ cbench/
 │   ├── __init__.py     # BenchmarkBuilder ABC + REGISTRY + BuildConfig
 │   ├── _util.py        # Shared helpers: git_clone, wget_tarball, run, install_bins
 │   └── *.py            # stream, imb, osu, ior, hpl, npb,
-│                       # hpcc, amg, hpccg, mpibench, mpigraph, graph500, bonnie, iozone
+│                       # hpcc, amg, hpccg, mpibench, mpigraph, graph500, bonnie, iozone, fio
 └── cli/
     ├── main.py         # Top-level click group; wires in all subgroups
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
@@ -86,7 +86,7 @@ Query from Python:
 from cbench.db import ResultsDB
 
 db = ResultsDB("/path/to/cbench_results.db")
-rows = db.query(benchmark="xhpl", status="PASSED", since="2025-01-01")
+rows = db.query(benchmark="xhpl", status="PASSED", since="2025-01-01", until="2025-12-31")
 print(db.export_json(cluster="mycluster"))
 ```
 
@@ -96,4 +96,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-368 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
+431 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, build, and rm-failed.

@@ -59,6 +59,7 @@ RANLIB       = echo
 class HpccBuilder(BenchmarkBuilder):
     name = "hpcc"
     description = "HPC Challenge benchmark suite (HPL, STREAM, DGEMM, FFT, RandomAccess, b_eff)"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "hpcc"

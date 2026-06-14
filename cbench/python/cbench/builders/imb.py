@@ -23,6 +23,7 @@ _BINARIES = [
 class ImbBuilder(BenchmarkBuilder):
     name = "imb"
     description = "Intel MPI Benchmarks — latency, bandwidth, collective"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "mpi-benchmarks"
