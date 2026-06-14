@@ -38,9 +38,23 @@ from cbench.hw_tests import (  # noqa: E402, F401
     hpcc,
     npb,
     xhpl,
+    xhpl2,
     nodeperf,
     memtester,
     dmidecode,
+    cachebench,
+    ctcs_memtst,
+    fpck,
+    ibport,
+    idle,
+    matmult,
+    mpqc,
+    numa_gpu,
+    numa_mem,
+    omdiag,
+    psnap,
+    stride,
+    topspin,
 )
 
 
