@@ -87,6 +87,28 @@ cbench parse --testset bandwidth --ident run1
 cbench parse --testset bandwidth --ident run1 --output json
 ```
 
+### Generate a skeleton job script
+
+```bash
+# Write setvars-1ppn-1.slurm + setvars-1ppn-1.sh to the current directory
+cbench make-skel
+
+# Choose a different skeleton template (skeleton_hello.in)
+cbench make-skel --skelname hello --ppn 4 --numprocs 16
+
+# Preview without writing
+cbench make-skel --skelname setvars --dry-run
+
+# Write to a specific directory
+cbench make-skel --skelname setvars --outdir /path/to/newbench/
+```
+
+Available skeletons are the `skeleton_*.in` files in `$CBENCHOME/templates/`
+(`hello`, `setvars`, `snb`). All `TOKEN_HERE` substitutions are expanded exactly
+as they would be in a real `cbench gen-jobs` run.
+
+---
+
 ### Remove failed jobs
 
 ```bash

@@ -433,6 +433,93 @@ def _summarize(results: list[dict]) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# make-skel
+# ---------------------------------------------------------------------------
+
+@cli.command("make-skel")
+@click.option("--skelname", default="setvars", show_default=True,
+              help="Skeleton template name (matches skeleton_<name>.in in templates/)")
+@click.option("--ppn", default=1, show_default=True, type=int,
+              help="Processes per node for substitution")
+@click.option("--numprocs", "--procs", default=1, show_default=True, type=int,
+              help="Number of processes for substitution")
+@click.option("--ident", default=None,
+              help="Run identifier substituted into the script (default: <cluster>1)")
+@click.option("--outdir", default=".", show_default=True, type=click.Path(),
+              help="Directory to write generated scripts into")
+@click.option("--dry-run", is_flag=True, help="Print scripts without writing")
+@click.option("--config", default=None)
+@click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
+def make_skel(
+    skelname: str,
+    ppn: int,
+    numprocs: int,
+    ident: Optional[str],
+    outdir: str,
+    dry_run: bool,
+    config: Optional[str],
+    cbenchtest: Optional[str],
+) -> None:
+    """Generate skeleton batch and interactive job scripts from a template.
+
+    Available skeleton templates are listed in $CBENCHOME/templates/skeleton_*.in.
+    Defaults to 'setvars' which expands every common Cbench substitution token.
+    """
+    cfg = _cfg(config)
+    cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
+    ident = ident or f"{cfg.cluster_name}1"
+    numnodes = max(1, math.ceil(numprocs / ppn))
+    walltime = cfg.default_walltime
+    launch_cmd = launchers.build_launch_cmd(numprocs, ppn, numnodes, cfg)
+    outdir_p = Path(outdir)
+
+    jobname = f"{skelname}-{ppn}ppn-{numprocs}"
+    written: list[str] = []
+
+    for rtype in ("batch", "interactive"):
+        try:
+            raw = templates.build_job_template("skeleton", skelname, rtype, cfg)
+        except FileNotFoundError:
+            console.print(f"[yellow]No skeleton_{skelname}.in template found — "
+                          f"check $CBENCHOME/templates/[/yellow]")
+            raise SystemExit(1)
+
+        script = templates.substitute(
+            raw,
+            numprocs=numprocs,
+            ppn=ppn,
+            numnodes=numnodes,
+            walltime=walltime,
+            jobname=jobname,
+            benchmark=skelname,
+            testset="skeleton",
+            ident=ident,
+            run_type=rtype,
+            launch_cmd=launch_cmd,
+            cfg=cfg,
+            cbenchtest=cbenchtest,
+        )
+
+        ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
+        filename = f"{jobname}{ext}"
+
+        if dry_run:
+            console.rule(filename)
+            console.print(script)
+        else:
+            outdir_p.mkdir(parents=True, exist_ok=True)
+            dest = outdir_p / filename
+            dest.write_text(script)
+            if rtype == "interactive":
+                dest.chmod(dest.stat().st_mode | 0o755)
+            written.append(filename)
+
+    if not dry_run:
+        for f in written:
+            console.print(f"[green]Wrote:[/green] {outdir_p / f}")
+
+
+# ---------------------------------------------------------------------------
 # rm-failed
 # ---------------------------------------------------------------------------
 
