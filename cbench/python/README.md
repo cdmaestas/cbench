@@ -34,12 +34,18 @@ cbench/
 │                       # iozone, hpcc, npb, xhpl, xhpl2, nodeperf, memtester, dmidecode,
 │                       # cachebench, ctcs_memtst, fpck, ibport, idle, matmult, mpqc,
 │                       # numa_gpu, numa_mem, omdiag, psnap, stride, topspin
+├── builders/           # Benchmark build framework
+│   ├── __init__.py     # BenchmarkBuilder ABC + REGISTRY + BuildConfig
+│   ├── _util.py        # Shared helpers: git_clone, wget_tarball, run, install_bins
+│   └── *.py            # stream, imb, osu, ior, hpl, npb,
+│                       # hpcc, amg, hpccg, mpibench, mpigraph, graph500, bonnie, iozone
 └── cli/
     ├── main.py         # Top-level click group; wires in all subgroups
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
     ├── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
     ├── diag.py         # cbench diag: apply parse filters, aggregate error counts
     ├── snb.py          # cbench snb: single-node benchmark run and report
+    ├── build.py        # cbench build: list | run <name> | all
     └── main.py         # also houses: make-skel, rm-failed (single-command tools)
 ```
 
@@ -90,4 +96,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-312 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
+368 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.

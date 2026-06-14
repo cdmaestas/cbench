@@ -62,6 +62,30 @@ export CBENCHOME=/path/to/cbench/cbench
 export CBENCHTEST=/path/to/your/test/tree
 ```
 
+### Build benchmark software
+
+```bash
+# List available builders
+cbench build list
+
+# Build a single benchmark (downloads source, compiles, installs to $CBENCHTEST/bin/)
+cbench build run stream
+cbench build run imb --mpicc mpicc
+cbench build run ior --jobs 8
+cbench build run hpl --blas-lib "-lopenblas"
+cbench build run npb --extra class=C
+
+# Build everything
+cbench build all --mpicc mpicc --jobs 8 --blas-lib "-lopenblas"
+
+# Preview without downloading or compiling
+cbench build run ior --dry-run
+```
+
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`.
+
+Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
+
 ### Generate job scripts
 
 ```bash
