@@ -250,7 +250,7 @@ Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
 
 ## Supported schedulers and launchers
 
-**Batch schedulers:** SLURM, Torque/PBS, PBS Pro, LSF, Moab, LoadLeveler, Cray CLE Torque
+**Batch schedulers:** SLURM, Torque/PBS, PBS Pro, LSF, Moab, Cray CLE Torque, local (no scheduler — runs scripts directly with `bash`)
 
 **MPI launchers:** OpenMPI (`orterun`), mpiexec, SLURM (`srun`), yod, ALPS (`aprun`)
 
@@ -302,7 +302,7 @@ CI runs automatically on Python 3.9–3.12 for every push touching `cbench/pytho
 | `walltime_method` | `0` | `0`=constant, `1`=stepped by run size |
 | `walltime_steptime` | `10` | Minutes added per run-size step (method 1) |
 | `joblaunch_method` | `openmpi` | MPI launcher: `openmpi`, `mpiexec`, `slurm`, `alps`, `yod` |
-| `batch_method` | `slurm` | Scheduler: `slurm`, `torque`, `pbspro`, `lsf`, `moab` |
+| `batch_method` | `slurm` | Scheduler: `slurm`, `torque`, `pbspro`, `lsf`, `moab`, `local` |
 | `memory_util_factors` | `[0.25, 0.80, 0.85]` | Memory utilization fractions (Linpack) |
 | `parse_filter_include` | see yaml | Error-detection filter modules to load |
 

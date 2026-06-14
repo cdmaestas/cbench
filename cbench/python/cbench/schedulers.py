@@ -124,6 +124,26 @@ def lsf_extension(cfg: "ClusterConfig") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Local (no scheduler — run scripts directly with bash)
+# ---------------------------------------------------------------------------
+
+def local_submit_cmd(script: str, cfg: "ClusterConfig") -> str:
+    return f"bash {script}"
+
+
+def local_nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:
+    return ""
+
+
+def local_query(regex: str, cfg: "ClusterConfig") -> dict:
+    return {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
+
+
+def local_extension(cfg: "ClusterConfig") -> str:
+    return ".sh"
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -163,6 +183,12 @@ _SCHEDULERS: dict[str, dict] = {
         "nodespec": torque_nodespec,
         "query": torque_query,
         "extension": torque_extension,
+    },
+    "local": {
+        "submit": local_submit_cmd,
+        "nodespec": local_nodespec,
+        "query": local_query,
+        "extension": local_extension,
     },
 }
 
