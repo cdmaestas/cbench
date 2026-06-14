@@ -43,7 +43,7 @@ The Python toolchain (`cbench/python/`) is a pip-installable package that replac
 ### Requirements
 
 - Python 3.9+
-- `click`, `pyyaml`, `rich`, `jinja2` (installed automatically)
+- `click`, `pyyaml`, `rich`, `jinja2`, `jsonschema` (installed automatically)
 
 ### Install
 
