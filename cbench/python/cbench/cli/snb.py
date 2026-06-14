@@ -51,6 +51,7 @@ def _runcmd(
     overwrite: bool = False,
     dry_run: bool = False,
     log_fh=None,
+    cwd: "Optional[Path]" = None,
 ) -> None:
     """Run a command (string for trusted shell cmds, list for user-derived args).
 
@@ -67,7 +68,7 @@ def _runcmd(
     mode = "w" if overwrite else "a"
     with open(outfile, mode) as fh:
         use_shell = isinstance(cmd, str)
-        subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT)
+        subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd)
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +372,7 @@ def run_cmd(
         # ------------------------------------------------------------------
         # fio — flexible I/O benchmark (sequential and random 4K)
         # ------------------------------------------------------------------
-        if re.search(r"fio", tests):
+        if re.search(r"\bfio\b", tests):
             _logmsg(log, "Starting FIO storage I/O testing")
             fio_bin = binpath_p.parent / "fio"
             if not fio_bin.exists():
@@ -390,7 +391,7 @@ def run_cmd(
                         "--name=seq_rw", "--rw=rw", "--bs=1m",
                         "--size=1g", "--numjobs=1", "--iodepth=8",
                         "--ioengine=libaio", "--direct=1",
-                        f"--directory={fio_dir}",
+                        "--directory", str(fio_dir),
                         "--output-format=normal",
                     ],
                     out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
@@ -402,7 +403,7 @@ def run_cmd(
                         "--name=rand_rw", "--rw=randrw", "--bs=4k",
                         "--size=1g", "--numjobs=4", "--iodepth=32",
                         "--ioengine=libaio", "--direct=1",
-                        f"--directory={fio_dir}",
+                        "--directory", str(fio_dir),
                         "--output-format=normal",
                     ],
                     out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
@@ -424,7 +425,7 @@ def run_cmd(
         # ------------------------------------------------------------------
         # hpcc — HPC Challenge (HPL + STREAM + DGEMM + FFT + RandomAccess)
         # ------------------------------------------------------------------
-        if re.search(r"hpcc", tests):
+        if re.search(r"\bhpcc\b", tests):
             _logmsg(log, "Starting HPCC (HPC Challenge) testing")
             hpcc_candidates = [
                 binpath_p / "hpcc",
@@ -437,7 +438,6 @@ def run_cmd(
                 hpcc_bin = Path(found) if found else None
             if hpcc_bin:
                 import math
-                import tempfile
                 # Generate a minimal HPL.dat sized to ~50% of available memory
                 mem_mb = cfg.memory_per_node_mb
                 # N ≈ sqrt(0.5 * mem_bytes / 8)
@@ -497,6 +497,7 @@ def run_cmd(
                 _runcmd(
                     [str(hpcc_bin)],
                     out("hpcc"), overwrite=True, dry_run=dry_run, log_fh=log,
+                    cwd=hpcc_dir,
                 )
                 # Also capture hpccoutf.txt if produced
                 hpcc_out_f = hpcc_dir / "hpccoutf.txt"
