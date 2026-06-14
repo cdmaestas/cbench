@@ -118,6 +118,24 @@ def _parse_dgemm_out(outfile: Path) -> dict[int, float]:
     return {mem: mean(vals) for mem, vals in data.items()}
 
 
+def _parse_fio_out(outfile: Path) -> dict[str, float]:
+    """Return fio metrics dict from an snb fio output file."""
+    if not outfile.exists():
+        return {}
+    from cbench.parsers.fio import FioParser
+    result = FioParser().parse(outfile.read_text(errors="replace"))
+    return result.metrics if result.status == "PASSED" else {}
+
+
+def _parse_hpcc_out(outfile: Path) -> dict[str, float]:
+    """Return selected HPCC metrics from an snb hpcc output file."""
+    if not outfile.exists():
+        return {}
+    from cbench.parsers.hpcc import HpccParser
+    result = HpccParser().parse(outfile.read_text(errors="replace"))
+    return result.metrics if result.status == "PASSED" else {}
+
+
 def _parse_mpistreams_out(outfile: Path) -> dict[int, dict[str, float]]:
     """Return {nprocs: {operation: MB/s}} from mpistreams output file."""
     if not outfile.exists():
@@ -156,7 +174,7 @@ def snb_group() -> None:
 @click.option("--numcores", default=None, type=int,
               help="CPU core count (default: auto-detected)")
 @click.option("--tests",
-              default="stream|cachebench|dgemm|mpistreams|linpack|npb",
+              default="stream|cachebench|dgemm|mpistreams|linpack|npb|fio|hpcc",
               show_default=True,
               help="Pipe-separated regex of tests to run")
 @click.option("--binpath", default=None, envvar="CBENCH_BINPATH",
@@ -350,6 +368,145 @@ def run_cmd(
                 "npb",
             )
 
+        # ------------------------------------------------------------------
+        # fio — flexible I/O benchmark (sequential and random 4K)
+        # ------------------------------------------------------------------
+        if re.search(r"fio", tests):
+            _logmsg(log, "Starting FIO storage I/O testing")
+            fio_bin = binpath_p.parent / "fio"
+            if not fio_bin.exists():
+                import shutil
+                fio_found = shutil.which("fio")
+                fio_bin = Path(fio_found) if fio_found else None
+            if fio_bin:
+                fio_dir = ident_dir / "fio_tmp"
+                if not dry_run:
+                    fio_dir.mkdir(exist_ok=True)
+                run("true", "fio", overwrite=True)
+                # Sequential 1 MiB block read/write
+                _runcmd(
+                    [
+                        str(fio_bin),
+                        "--name=seq_rw", "--rw=rw", "--bs=1m",
+                        "--size=1g", "--numjobs=1", "--iodepth=8",
+                        "--ioengine=libaio", "--direct=1",
+                        f"--directory={fio_dir}",
+                        "--output-format=normal",
+                    ],
+                    out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
+                )
+                # Random 4 KiB block read/write
+                _runcmd(
+                    [
+                        str(fio_bin),
+                        "--name=rand_rw", "--rw=randrw", "--bs=4k",
+                        "--size=1g", "--numjobs=4", "--iodepth=32",
+                        "--ioengine=libaio", "--direct=1",
+                        f"--directory={fio_dir}",
+                        "--output-format=normal",
+                    ],
+                    out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
+                )
+                # Clean up temp files
+                if not dry_run:
+                    for tmp in fio_dir.glob("*"):
+                        try:
+                            tmp.unlink()
+                        except OSError:
+                            pass
+                    try:
+                        fio_dir.rmdir()
+                    except OSError:
+                        pass
+            else:
+                _logmsg(log, "WARNING: fio not found on PATH or in binpath")
+
+        # ------------------------------------------------------------------
+        # hpcc — HPC Challenge (HPL + STREAM + DGEMM + FFT + RandomAccess)
+        # ------------------------------------------------------------------
+        if re.search(r"hpcc", tests):
+            _logmsg(log, "Starting HPCC (HPC Challenge) testing")
+            hpcc_candidates = [
+                binpath_p / "hpcc",
+                binpath_p.parent / "hpcc",
+            ]
+            hpcc_bin = next((p for p in hpcc_candidates if p.exists()), None)
+            if not hpcc_bin:
+                import shutil
+                found = shutil.which("hpcc")
+                hpcc_bin = Path(found) if found else None
+            if hpcc_bin:
+                import math
+                import tempfile
+                # Generate a minimal HPL.dat sized to ~50% of available memory
+                mem_mb = cfg.memory_per_node_mb
+                # N ≈ sqrt(0.5 * mem_bytes / 8)
+                n = int(math.sqrt(0.5 * mem_mb * 1024 * 1024 / 8))
+                n = (n // 256) * 256  # round down to multiple of 256
+                n = max(n, 256)
+                # Find a P×Q grid close to square with P≤Q
+                p, q = 1, numcores
+                for pp in range(1, numcores + 1):
+                    qq = numcores // pp
+                    if pp * qq == numcores and pp <= qq:
+                        p, q = pp, qq
+                hpl_dat = (
+                    "HPLinpack benchmark input file\n"
+                    "Innovative Computing Laboratory, University of Tennessee\n"
+                    "HPL.out  output file name (if any)\n"
+                    "6        device out (6=stdout,7=stderr,file)\n"
+                    "1        # of problems sizes (N)\n"
+                    f"{n}       Ns\n"
+                    "1        # of NBs\n"
+                    "192      NBs\n"
+                    "0        PMAP process mapping (0=Row-,1=Column-major)\n"
+                    "1        # of process grids (P x Q)\n"
+                    f"{p}        Ps\n"
+                    f"{q}        Qs\n"
+                    "16.0     threshold\n"
+                    "1        # of panel fact\n"
+                    "2        PFACTs (0=left, 1=Crout, 2=Right)\n"
+                    "1        # of recursive stopping criterium\n"
+                    "4        NBMINs (>= 1)\n"
+                    "1        # of panels in recursion\n"
+                    "2        NDIVs\n"
+                    "1        # of recursive panel fact.\n"
+                    "1        RFACTs (0=left, 1=Crout, 2=Right)\n"
+                    "1        # of broadcast\n"
+                    "1        BCASTs (0=1rg,1=1rM,2=2rg,3=2rM,4=Lng,5=LnM)\n"
+                    "1        # of lookahead depth\n"
+                    "1        DEPTHs (>=0)\n"
+                    "2        SWAP (0=bin-exch,1=long,2=mix)\n"
+                    "64       swapping threshold\n"
+                    "0        L1 in (0=transposed,1=no-transposed) form\n"
+                    "0        U  in (0=transposed,1=no-transposed) form\n"
+                    "1        Equilibration (0=no,1=yes)\n"
+                    "8        memory alignment in double (> 0)\n"
+                    "##### This line (no. 32) is ignored (it serves as a separator). ######\n"
+                    "0                               Number of additional problem sizes for PTRANS\n"
+                    "1200 10000 30000                values of N\n"
+                    "0                               number of additional blocking sizes for PTRANS\n"
+                    "40 9 8 13 13 20 16 32 64        values of NB\n"
+                )
+                hpcc_dir = ident_dir / "hpcc_run"
+                if not dry_run:
+                    hpcc_dir.mkdir(exist_ok=True)
+                    (hpcc_dir / "HPL.dat").write_text(hpl_dat)
+                else:
+                    _logmsg(log, f"DRYRUN: would write HPL.dat with N={n} P={p} Q={q} to {hpcc_dir}")
+                _runcmd(
+                    [str(hpcc_bin)],
+                    out("hpcc"), overwrite=True, dry_run=dry_run, log_fh=log,
+                )
+                # Also capture hpccoutf.txt if produced
+                hpcc_out_f = hpcc_dir / "hpccoutf.txt"
+                if not dry_run and hpcc_out_f.exists():
+                    with open(out("hpcc"), "a") as fh:
+                        fh.write("\n--- hpccoutf.txt ---\n")
+                        fh.write(hpcc_out_f.read_text(errors="replace"))
+            else:
+                _logmsg(log, "WARNING: hpcc binary not found on PATH or in binpath")
+
         _logmsg(
             log,
             f"Finished running the Single Node Benchmarks. "
@@ -462,6 +619,38 @@ def report_cmd(
             tbl.add_column(f"{op.capitalize()} MB/s", justify="right")
         for np, data in sorted(mpistreams.items()):
             tbl.add_row(str(np), *[f"{data.get(op, 0):.1f}" for op in ops])
+        console.print(tbl)
+
+    # ------------------------------------------------------------------
+    # fio
+    # ------------------------------------------------------------------
+    fio_metrics = _parse_fio_out(out("fio"))
+    if fio_metrics:
+        any_results = True
+        console.rule("[bold]FIO I/O Results")
+        tbl = Table(box=None, padding=(0, 2))
+        tbl.add_column("Metric")
+        tbl.add_column("Value", justify="right")
+        for key in ("read_bw_MiB_s", "write_bw_MiB_s",
+                    "read_iops", "write_iops",
+                    "read_lat_avg_us", "write_lat_avg_us",
+                    "read_lat_p99_us", "write_lat_p99_us"):
+            if key in fio_metrics:
+                tbl.add_row(key, f"{fio_metrics[key]:.1f}")
+        console.print(tbl)
+
+    # ------------------------------------------------------------------
+    # hpcc
+    # ------------------------------------------------------------------
+    hpcc_metrics = _parse_hpcc_out(out("hpcc"))
+    if hpcc_metrics:
+        any_results = True
+        console.rule("[bold]HPCC Results")
+        tbl = Table(box=None, padding=(0, 2))
+        tbl.add_column("Metric")
+        tbl.add_column("Value", justify="right")
+        for key, val in sorted(hpcc_metrics.items()):
+            tbl.add_row(key, f"{val:.4g}")
         console.print(tbl)
 
     if not any_results:
