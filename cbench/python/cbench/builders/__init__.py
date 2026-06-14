@@ -75,8 +75,10 @@ class BenchmarkBuilder:
         """Pull upstream changes in the existing source checkout.
 
         Returns True if the source changed (rebuild needed), False otherwise.
-        Default: tries `git pull` in the expected source directory; subclasses
-        that use tarballs should override to re-download and return True.
+        Default: tries `git pull` in ``srcdir/<name>``; works for builders that
+        use :func:`git_clone`. Tarball-based builders (e.g. ``stream``) always
+        return False because there is no upstream version-check; use
+        ``cbench build run <name> --force`` to unconditionally re-fetch them.
         """
         from cbench.builders._util import git_pull
         # Builders using git_clone put source in srcdir/<name>

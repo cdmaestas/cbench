@@ -86,7 +86,16 @@ cbench build run ior --dry-run
 
 # Show build status (cached / not cached) for all builders
 cbench build list --prefix $CBENCHTEST
+
+# Pull upstream changes for git-cloned sources and rebuild only if updated
+cbench build update
+cbench build update imb   # update a single benchmark
 ```
+
+> **Note:** `cbench build update` only updates git-cloned sources (most builders).
+> Tarball-based builders (`stream`) have no upstream version-check and always report
+> "source unchanged". Use `cbench build run <name> --force` to unconditionally
+> re-download and rebuild a tarball source.
 
 Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`.
 
@@ -277,10 +286,37 @@ cbench snb store --ident run1 --destdir /scratch/snb --node n042
 # Compare two runs and flag regressions (reads from DB)
 cbench snb compare --ident run2 --baseline run1 --node n042
 cbench snb compare --ident run2 --baseline run1 --threshold 10.0
+
+# Dispatch an SNB run to a remote node via ssh/pdsh (shared filesystem required)
+cbench snb run --ident run1 --destdir /scratch/snb --remote n042
+cbench snb run --ident run1 --destdir /scratch/snb --remote n042 --remote-cbench /opt/cbench/bin/cbench
 ```
 
 Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
 Results are stored in `$CBENCHTEST/cbench_results.db` (same DB as `cbench parse`).
+
+### Web dashboard
+
+```bash
+# Install the optional web extra
+pip install "cbench[web]"
+
+# Start the dashboard (defaults to http://127.0.0.1:8080/)
+cbench serve
+
+# Expose to the network
+cbench serve --host 0.0.0.0 --port 9090
+
+# Air-gapped clusters: avoid CDN requests
+cbench serve --no-cdn
+
+# Air-gapped with local Bootstrap + Chart.js assets
+cbench serve --no-cdn --assets-dir /path/to/assets/
+# (assets dir must contain bootstrap.min.css and chart.umd.min.js)
+```
+
+Endpoints: `/` HTML dashboard, `/api/results` `/api/summary` `/api/trend` JSON API,
+`/metrics` Prometheus text exposition format.
 
 ---
 
