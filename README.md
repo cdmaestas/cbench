@@ -237,6 +237,7 @@ Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
 | Intel MPI Benchmarks | `imb` | latency µs, bandwidth MB/s |
 | IOR | `ior`, `io`, `iosanity` | write/read MB/s |
 | IO500 | `io500` | score, bandwidth GiB/s, IOPS kIOPS |
+| elbencho | `elbencho` | throughput MiB/s, IOPS, latency µs per phase |
 | MLPerf Training | `mlperf`, `mlperf-training` | time_to_train s, accuracy, epochs |
 | MLPerf Inference | `mlperf`, `mlperf-inference` | samples/s, latency p90/mean/p99 ns |
 | OSU MPI | `osu`, `mpioverhead` | bandwidth MB/s, latency µs |
