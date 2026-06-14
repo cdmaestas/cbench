@@ -378,12 +378,13 @@ def _build_remote_cmd(
     dry_run: bool,
     store: bool,
     config: Optional[str],
+    remote_cbench: str = "cbench",
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
     import shlex as _shlex
 
     inner = [
-        "cbench", "snb", "run",
+        remote_cbench, "snb", "run",
         "--ident", ident,
         "--destdir", destdir,
         "--node", remote_node,
@@ -418,6 +419,8 @@ def _build_remote_cmd(
 @click.option("--node", default=None, help="Override hostname")
 @click.option("--remote", default=None, metavar="NODE",
               help="Dispatch run to a remote node via ssh/pdsh (shared filesystem required)")
+@click.option("--remote-cbench", default="cbench", show_default=True,
+              help="Path to the cbench binary on the remote node")
 @click.option("--numcores", default=None, type=int,
               help="CPU core count (default: auto-detected)")
 @click.option("--tests",
@@ -436,6 +439,7 @@ def run_cmd(
     destdir: str,
     node: Optional[str],
     remote: Optional[str],
+    remote_cbench: str,
     numcores: Optional[int],
     tests: str,
     binpath: Optional[str],
@@ -468,6 +472,7 @@ def run_cmd(
             dry_run=dry_run,
             store=store,
             config=config,
+            remote_cbench=remote_cbench,
         )
         import shlex as _shlex
         display = " ".join(_shlex.quote(a) for a in cmd)

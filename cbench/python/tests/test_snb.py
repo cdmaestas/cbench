@@ -758,6 +758,20 @@ def test_snb_run_remote_builds_ssh_cmd(tmp_path, monkeypatch):
     assert "n002" in result.output
 
 
+def test_snb_run_remote_cbench_custom_path(tmp_path):
+    """--remote-cbench replaces 'cbench' in the dispatched command."""
+    result = runner.invoke(cli, [
+        "snb", "run",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--remote", "n001",
+        "--remote-cbench", "/opt/cbench/bin/cbench",
+        "--dry-run",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "/opt/cbench/bin/cbench" in result.output
+
+
 def test_snb_run_remote_builds_pdsh_cmd(tmp_path):
     """When remotecmd_method=pdsh (default), dispatch uses pdsh."""
     import yaml
