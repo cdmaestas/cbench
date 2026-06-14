@@ -136,6 +136,46 @@ cbench utils find-n --nprocs 512 --ppn 16 --memory 64000 --util 0.5,0.6,0.7
 cbench utils npb-procs --nprocs 500
 ```
 
+### Diagnose output files
+
+```bash
+# Scan output files for known error patterns and aggregate by error type
+cbench diag file1.out file2.out --filters openmpi,slurm
+
+# Scan an entire testset/ident tree
+cbench diag --testset bandwidth --ident run1 --filters slurm,misc
+
+# Show only sources that appeared ≥ 3 times; emit JSON
+cbench diag --testset bandwidth --ident run1 --threshold 3 --output json
+
+# Filter by node role (for OMPI src→dst errors)
+cbench diag file.out --source-only
+cbench diag file.out --source-dest-only
+```
+
+Available filter modules: `openmpi`, `slurm`, `torque`, `mvapich`, `mpiexec`, `cray`, `misc`.
+
+---
+
+### Single-node benchmarking
+
+```bash
+# Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb)
+cbench snb run --ident run1 --destdir /scratch/snb
+
+# Run a subset of tests
+cbench snb run --ident run1 --tests "stream|dgemm" --numcores 32
+
+# Preview commands without executing
+cbench snb run --ident run1 --dry-run
+
+# Display a results summary table from saved output files
+cbench snb report --ident run1 --destdir /scratch/snb
+cbench snb report --ident run1 --node n042   # report for a specific node
+```
+
+Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
+
 ---
 
 ## Supported benchmarks

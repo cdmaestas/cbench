@@ -28,14 +28,18 @@ cbench/
 ├── parse_filters/      # Error-detection filters applied during cbench parse
 │   ├── __init__.py     # build_filter_set(), apply_filters()
 │   └── *.py            # openmpi, slurm, torque, mvapich, mpiexec, cray, misc
-├── hw_tests/           # 13 single-node hw_test parsers used by cbench nodehwtest
+├── hw_tests/           # 27 single-node hw_test parsers used by cbench nodehwtest
 │   ├── __init__.py     # HwTest ABC + REGISTRY + get_hw_test()
 │   └── *.py            # cpuinfo, meminfo, streams, stream2, stress_cpu, stress_disk,
-│                       # iozone, hpcc, npb, xhpl, nodeperf, memtester, dmidecode
+│                       # iozone, hpcc, npb, xhpl, xhpl2, nodeperf, memtester, dmidecode,
+│                       # cachebench, ctcs_memtst, fpck, ibport, idle, matmult, mpqc,
+│                       # numa_gpu, numa_mem, omdiag, psnap, stride, topspin
 └── cli/
     ├── main.py         # Top-level click group; wires in all subgroups
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
-    └── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
+    ├── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
+    ├── diag.py         # cbench diag: apply parse filters, aggregate error counts
+    └── snb.py          # cbench snb: single-node benchmark run and report
 ```
 
 ## Adding a new parser
@@ -85,4 +89,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-160 tests covering config loading, all 28 MPI parsers, parse filters, nodehwtest hw_test parsers, the SQLite store, template substitution, and sizing utilities.
+225 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, and snb.
