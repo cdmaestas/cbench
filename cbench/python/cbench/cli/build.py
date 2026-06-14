@@ -12,6 +12,8 @@ import hashlib
 import json
 import os
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -44,6 +46,7 @@ class BuildLock:
 
     def __init__(self, prefix: Path) -> None:
         self.path = prefix / "build.lock"
+        self._lock = threading.Lock()
         self._data: dict = {}
         if self.path.exists():
             try:
@@ -78,21 +81,23 @@ class BuildLock:
         return all((prefix_bin / b).exists() for b in binaries)
 
     def record(self, name: str, source_url: str, cfg, binaries: list[str]) -> None:
-        """Write a successful build entry and flush to disk."""
-        self._data[name] = {
-            "source_url": source_url,
-            "config_hash": self._config_hash(cfg),
-            "built_at": datetime.now(timezone.utc).isoformat(),
-            "binaries": binaries,
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2))
+        """Write a successful build entry and flush to disk (thread-safe)."""
+        with self._lock:
+            self._data[name] = {
+                "source_url": source_url,
+                "config_hash": self._config_hash(cfg),
+                "built_at": datetime.now(timezone.utc).isoformat(),
+                "binaries": binaries,
+            }
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self._data, indent=2))
 
     def remove(self, name: str) -> None:
-        """Remove a stale entry (called before a forced rebuild)."""
-        self._data.pop(name, None)
-        if self.path.exists():
-            self.path.write_text(json.dumps(self._data, indent=2))
+        """Remove a stale entry (called before a forced rebuild, thread-safe)."""
+        with self._lock:
+            self._data.pop(name, None)
+            if self.path.exists():
+                self.path.write_text(json.dumps(self._data, indent=2))
 
 
 def _default_prefix() -> str:
@@ -301,7 +306,9 @@ def build_one(benchmark: str, prefix, srcdir, **kwargs) -> None:
 
 @build_group.command("all")
 @_build_options
-def build_all(prefix, srcdir, **kwargs) -> None:
+@click.option("--parallel", default=1, show_default=True, type=int,
+              help="Number of benchmarks to build concurrently")
+def build_all(prefix, srcdir, parallel: int, **kwargs) -> None:
     """Fetch and build all available benchmarks."""
     from cbench.builders import REGISTRY
 
@@ -311,10 +318,28 @@ def build_all(prefix, srcdir, **kwargs) -> None:
     dry_run = kwargs["dry_run"]
     lock = BuildLock(prefix_p) if not dry_run else None
 
+    names = sorted(REGISTRY)
     results: dict[str, bool] = {}
-    for name in sorted(REGISTRY):
-        results[name] = _run_one(name, prefix_p, srcdir_p, cfg,
-                                 force=force, dry_run=dry_run, lock=lock)
+
+    if parallel <= 1:
+        for name in names:
+            results[name] = _run_one(name, prefix_p, srcdir_p, cfg,
+                                     force=force, dry_run=dry_run, lock=lock)
+    else:
+        console.print(f"[cyan]Building {len(names)} benchmarks with {parallel} workers...[/cyan]")
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            futures = {
+                pool.submit(_run_one, name, prefix_p, srcdir_p, cfg,
+                            force=force, dry_run=dry_run, lock=lock): name
+                for name in names
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    results[name] = future.result()
+                except Exception as exc:
+                    console.print(f"[red]{name}: unexpected error:[/red] {exc}")
+                    results[name] = False
 
     console.rule("[bold]Summary[/bold]")
     for name, ok in sorted(results.items()):

@@ -332,3 +332,42 @@ def test_build_list_shows_cache_column(tmp_path):
     result = runner.invoke(cli, ["build", "list", "--prefix", str(tmp_path)])
     assert result.exit_code == 0
     assert "Cached" in result.output
+
+
+def test_build_all_parallel_dry_run(tmp_path):
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        "build", "all",
+        "--prefix", str(tmp_path / "prefix"),
+        "--srcdir", str(tmp_path / "src"),
+        "--parallel", "4",
+        "--dry-run",
+    ])
+    assert "Traceback" not in (result.output or "")
+    assert "Summary" in result.output
+
+
+def test_build_lock_thread_safe(tmp_path):
+    """Concurrent record() calls must not corrupt the lock file."""
+    from cbench.builders import BuildConfig
+    cfg = BuildConfig()
+    prefix_bin = tmp_path / "bin"
+    prefix_bin.mkdir()
+    for i in range(5):
+        (prefix_bin / f"bin{i}").write_text("x")
+
+    from cbench.cli.build import BuildLock
+    lock = BuildLock(tmp_path)
+    import threading
+
+    def record(i):
+        lock.record(f"bench{i}", f"https://example.com/{i}", cfg, [f"bin{i}"])
+
+    threads = [threading.Thread(target=record, args=(i,)) for i in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    lock2 = BuildLock(tmp_path)
+    assert len(lock2._data) == 5

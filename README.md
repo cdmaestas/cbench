@@ -78,6 +78,9 @@ cbench build run npb --extra class=C
 # Build everything
 cbench build all --mpicc mpicc --jobs 8 --blas-lib "-lopenblas"
 
+# Build everything using 4 parallel workers
+cbench build all --mpicc mpicc --jobs 8 --parallel 4
+
 # Preview without downloading or compiling
 cbench build run ior --dry-run
 
@@ -174,6 +177,16 @@ Results are written to:
 cbench query --benchmark xhpl
 cbench query --cluster mycluster --status PASSED --since 2025-01-01
 cbench query --testset bandwidth --output json
+
+# Date range filter
+cbench query --since 2025-01-01 --until 2025-06-30
+
+# CSV export (one row per metric per run — easy to pipe into spreadsheets)
+cbench query --testset bandwidth --output csv > results.csv
+
+# Aggregate: mean/min/max per metric grouped by benchmark
+cbench query --testset bandwidth --aggregate
+cbench query --aggregate --output json
 ```
 
 ### Node hardware testing
@@ -189,6 +202,9 @@ cbench nodehwtest start-jobs --ident run1 --remote
 # Parse node_hw_test output files and report statistical outliers
 cbench nodehwtest parse --ident run1 --characterize --save-targets baseline
 cbench nodehwtest parse --ident run1 --load-targets baseline
+
+# Store parsed metrics to the SQLite DB (queryable via cbench query --testset nodehwtest)
+cbench nodehwtest parse --ident run1 --store
 ```
 
 Output files are named `<node>.node_hw_test.run<NNNN>` in `$CBENCHTEST/nodehwtest/<ident>/`.
