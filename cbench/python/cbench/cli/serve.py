@@ -165,17 +165,21 @@ _HTML = r"""<!DOCTYPE html>
 <script>
 let trendChart = null;
 
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function statusBadge(s) {
   if (s === 'PASSED') return '<span class="badge bg-success">PASSED</span>';
-  if (s && s.startsWith('ERROR')) return '<span class="badge bg-danger">' + s + '</span>';
-  return '<span class="badge bg-secondary">' + (s || '') + '</span>';
+  if (s && s.startsWith('ERROR')) return '<span class="badge bg-danger">' + esc(s) + '</span>';
+  return '<span class="badge bg-secondary">' + esc(s) + '</span>';
 }
 
 function topMetric(metrics) {
   const entries = Object.entries(metrics || {});
   if (!entries.length) return '—';
   const [k, v] = entries[0];
-  return '<span class="metric-val">' + k + '=' + (+v.value).toPrecision(4) + (v.units || '') + '</span>';
+  return '<span class="metric-val">' + esc(k) + '=' + (+v.value).toPrecision(4) + esc(v.units || '') + '</span>';
 }
 
 async function loadSummary() {
@@ -205,15 +209,15 @@ async function loadResults() {
     return;
   }
   tbody.innerHTML = rows.map(row => `<tr>
-    <td>${row.benchmark}</td>
-    <td>${row.cluster}</td>
-    <td>${row.testset}</td>
-    <td>${row.ident}</td>
-    <td class="text-truncate" style="max-width:150px" title="${row.jobname}">${row.jobname}</td>
-    <td>${row.numprocs}</td>
+    <td>${esc(row.benchmark)}</td>
+    <td>${esc(row.cluster)}</td>
+    <td>${esc(row.testset)}</td>
+    <td>${esc(row.ident)}</td>
+    <td class="text-truncate" style="max-width:150px" title="${esc(row.jobname)}">${esc(row.jobname)}</td>
+    <td>${esc(row.numprocs)}</td>
     <td>${statusBadge(row.status)}</td>
     <td>${topMetric(row.metrics)}</td>
-    <td class="text-muted small">${(row.parsed_at || '').slice(0, 19)}</td>
+    <td class="text-muted small">${esc((row.parsed_at || '').slice(0, 19))}</td>
   </tr>`).join('');
 }
 
@@ -268,6 +272,11 @@ setInterval(refresh, 30000);
 """
 
 
+def _prom_label(s: str) -> str:
+    """Escape a Prometheus label value per the text format spec."""
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 def _prometheus_text(db) -> str:
     """Render all recent metrics in Prometheus text exposition format."""
     rows = db.query(limit=2000)
@@ -285,11 +294,11 @@ def _prometheus_text(db) -> str:
                 pass
         for metric_name, mv in row.get("metrics", {}).items():
             labels = ",".join([
-                f'benchmark="{row["benchmark"]}"',
-                f'cluster="{row["cluster"]}"',
-                f'testset="{row["testset"]}"',
-                f'ident="{row["ident"]}"',
-                f'metric="{metric_name}"',
+                f'benchmark="{_prom_label(row["benchmark"])}"',
+                f'cluster="{_prom_label(row["cluster"])}"',
+                f'testset="{_prom_label(row["testset"])}"',
+                f'ident="{_prom_label(row["ident"])}"',
+                f'metric="{_prom_label(metric_name)}"',
             ])
             line = f"cbench_metric_value{{{labels}}} {mv['value']}"
             if ts_ms:
