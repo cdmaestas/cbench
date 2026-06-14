@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -26,6 +27,27 @@ from cbench.cli.diag import diag_cmd
 from cbench.cli.snb import snb_group
 
 console = Console()
+
+
+def _safe_path(base: str, *parts: str) -> Path:
+    """Join parts onto base and raise UsageError if the result escapes base."""
+    resolved = (Path(base).joinpath(*parts)).resolve()
+    base_resolved = Path(base).resolve()
+    if not str(resolved).startswith(str(base_resolved)):
+        raise click.UsageError(
+            f"Path traversal detected: '{'/'.join(parts)}' escapes '{base}'"
+        )
+    return resolved
+
+
+def _safe_regex(pattern: Optional[str], option: str) -> Optional[re.Pattern]:
+    """Compile a user-supplied regex, raising UsageError on invalid syntax."""
+    if pattern is None:
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error as exc:
+        raise click.UsageError(f"Invalid regex for {option}: {exc}") from exc
 
 
 def _db_path(cbenchtest: str) -> Path:
@@ -134,7 +156,7 @@ def gen_jobs(
 
                     ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
                     script_name = f"{jobname}{ext}"
-                    job_dir = Path(cbenchtest) / testset / ident / jobname
+                    job_dir = _safe_path(cbenchtest, testset, ident, jobname)
 
                     if dry_run:
                         console.rule(f"{job_dir}/{script_name}")
@@ -189,11 +211,14 @@ def start_jobs(
     """Submit jobs from a generated testset/ident directory."""
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
-    ident_dir = Path(cbenchtest) / testset / ident
+    ident_dir = _safe_path(cbenchtest, testset, ident)
 
     if not ident_dir.exists():
         console.print(f"[red]Directory not found: {ident_dir}[/red]")
         raise SystemExit(1)
+
+    match_re = _safe_regex(match, "--match")
+    exclude_re = _safe_regex(exclude, "--exclude")
 
     ext = schedulers.extension(cfg)
     # Discover job scripts matching *-*ppn-* pattern
@@ -202,9 +227,9 @@ def start_jobs(
     # Apply filters
     def _keep(path: Path) -> bool:
         name = path.stem
-        if match and not re.search(match, name):
+        if match_re and not match_re.search(name):
             return False
-        if exclude and re.search(exclude, name):
+        if exclude_re and exclude_re.search(name):
             return False
         # Extract numprocs from name like benchmark-Xppn-N
         m = re.search(r"-(\d+)$", name)
@@ -238,7 +263,7 @@ def start_jobs(
                 if dry_run:
                     console.print(f"[dim]Would submit:[/dim] {cmd}")
                 else:
-                    subprocess.run(cmd, shell=True, check=False)
+                    subprocess.run(shlex.split(cmd), shell=False, check=False)
                 submitted += 1
                 if delay:
                     time.sleep(delay)
@@ -246,13 +271,17 @@ def start_jobs(
                 time.sleep(poll_interval)
     else:
         for script in scripts:
-            cmd = schedulers.submit_cmd(str(script), cfg)
             if mode == "interactive":
-                cmd = f"bash {script}"
-            if dry_run:
-                console.print(f"[dim]Would submit:[/dim] {cmd}")
+                if dry_run:
+                    console.print(f"[dim]Would run:[/dim] bash {script}")
+                else:
+                    subprocess.run(["bash", str(script)], shell=False, check=False)
             else:
-                subprocess.run(cmd, shell=True, check=False)
+                cmd = schedulers.submit_cmd(str(script), cfg)
+                if dry_run:
+                    console.print(f"[dim]Would submit:[/dim] {cmd}")
+                else:
+                    subprocess.run(shlex.split(cmd), shell=False, check=False)
             submitted += 1
             if delay:
                 time.sleep(delay)
@@ -289,7 +318,7 @@ def parse_cmd(
     """Parse benchmark output files and store results."""
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
-    ident_dir = Path(cbenchtest) / testset / ident
+    ident_dir = _safe_path(cbenchtest, testset, ident)
 
     # Build parse filter set from --customparse or cluster config
     filter_names: list[str] = []
@@ -297,7 +326,10 @@ def parse_cmd(
         filter_names = [n.strip() for n in customparse.split(",") if n.strip()]
     elif cfg.parse_filter_include:
         filter_names = [n for n in cfg.parse_filter_include if n in FILTER_MODULES]
-    active_filters = build_filter_set(filter_names) if filter_names else {}
+    try:
+        active_filters = build_filter_set(filter_names) if filter_names else {}
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
     if not ident_dir.exists():
         console.print(f"[red]Directory not found: {ident_dir}[/red]")
@@ -548,7 +580,9 @@ def rm_failed(
     """
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
-    ident_dir = Path(cbenchtest) / testset / ident
+    ident_dir = _safe_path(cbenchtest, testset, ident)
+    match_re = _safe_regex(match, "--match")
+    status_re = _safe_regex(target_status, "--status")
 
     if not ident_dir.exists():
         console.print(f"[red]Directory not found: {ident_dir}[/red]")
@@ -560,7 +594,7 @@ def rm_failed(
         if not job_dir.is_dir():
             continue
         jobname = job_dir.name
-        if match and not re.search(match, jobname):
+        if match_re and not match_re.search(jobname):
             continue
 
         parts = jobname.rsplit("-", 2)
@@ -581,7 +615,7 @@ def rm_failed(
             continue
         parsed = parser.parse(stdout, stderr)
 
-        if re.search(target_status, parsed.status):
+        if status_re and status_re.search(parsed.status):
             to_remove.append(job_dir)
 
     if not to_remove:

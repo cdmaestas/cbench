@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import socket
 import subprocess
 from datetime import datetime
@@ -44,23 +45,29 @@ def _logmsg(log_fh, msg: str) -> None:
 
 
 def _runcmd(
-    cmd: str,
+    cmd: "str | list[str]",
     outfile: Path,
     *,
     overwrite: bool = False,
     dry_run: bool = False,
     log_fh=None,
 ) -> None:
-    """Run shell command, redirect stdout+stderr to outfile (append or overwrite)."""
+    """Run a command (string for trusted shell cmds, list for user-derived args).
+
+    Strings are run with shell=True (only use for hardcoded commands).
+    Lists are run with shell=False to prevent injection.
+    """
+    display = cmd if isinstance(cmd, str) else " ".join(shlex.quote(a) for a in cmd)
     arrow = ">" if overwrite else ">>"
-    msg = f"RUNCMD: {cmd} {arrow} {outfile}"
+    msg = f"RUNCMD: {display} {arrow} {outfile}"
     if log_fh:
         _logmsg(log_fh, msg)
     if dry_run:
         return
     mode = "w" if overwrite else "a"
     with open(outfile, mode) as fh:
-        subprocess.run(cmd, shell=True, stdout=fh, stderr=subprocess.STDOUT)
+        use_shell = isinstance(cmd, str)
+        subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT)
 
 
 # ---------------------------------------------------------------------------
@@ -277,13 +284,13 @@ def run_cmd(
                 for np in range(1, numcores + 1):
                     marker = f"====> {np} processes"
                     if dry_run:
-                        _logmsg(log, f"DRYRUN: echo '{marker}'; {mpi_cmd} -n {np} {stream_mpi}")
+                        _logmsg(log, f"DRYRUN: {mpi_cmd} -n {np} {stream_mpi}")
                     else:
                         with open(out("mpistreams"), "a") as fh:
                             fh.write(f"{marker}\n")
                             subprocess.run(
-                                f"{mpi_cmd} -n {np} {stream_mpi}",
-                                shell=True, stdout=fh, stderr=subprocess.STDOUT,
+                                shlex.split(mpi_cmd) + ["-n", str(np), str(stream_mpi)],
+                                shell=False, stdout=fh, stderr=subprocess.STDOUT,
                             )
             else:
                 _logmsg(log, f"WARNING: stream-mpi not found at {stream_mpi}")
@@ -303,14 +310,18 @@ def run_cmd(
                     if threads > 1 and not is_power_of_two(threads):
                         continue
                     sub_ident = f"{identbase}_{threads}threads"
-                    gen_cmd = (
-                        f"cbench gen-jobs --testset linpack --ident {sub_ident} "
-                        f"--maxprocs {procs} --ppn {procs} --cbenchtest {cbenchtest}"
-                    )
-                    start_cmd = (
-                        f"cbench start-jobs --testset linpack --ident {sub_ident} "
-                        f"--interactive --match {procs}ppn --cbenchtest {cbenchtest}"
-                    )
+                    gen_cmd = [
+                        "cbench", "gen-jobs", "--testset", "linpack",
+                        "--ident", sub_ident,
+                        "--maxprocs", str(procs), "--ppn", str(procs),
+                        "--cbenchtest", cbenchtest,
+                    ]
+                    start_cmd = [
+                        "cbench", "start-jobs", "--testset", "linpack",
+                        "--ident", sub_ident,
+                        "--interactive", "--match", f"{procs}ppn",
+                        "--cbenchtest", cbenchtest,
+                    ]
                     run(gen_cmd, "linpack")
                     run(start_cmd, "linpack")
 
@@ -323,13 +334,15 @@ def run_cmd(
             cbenchtest = os.environ.get("CBENCHTEST", ".")
             run("true", "npb", overwrite=True)
             run(
-                f"cbench gen-jobs --testset npb --ident {identbase} "
-                f"--maxprocs {numcores} --cbenchtest {cbenchtest}",
+                ["cbench", "gen-jobs", "--testset", "npb",
+                 "--ident", identbase, "--maxprocs", str(numcores),
+                 "--cbenchtest", cbenchtest],
                 "npb",
             )
             run(
-                f"cbench start-jobs --testset npb --ident {identbase} "
-                f"--interactive --maxprocs {numcores} --cbenchtest {cbenchtest}",
+                ["cbench", "start-jobs", "--testset", "npb",
+                 "--ident", identbase, "--interactive",
+                 "--maxprocs", str(numcores), "--cbenchtest", cbenchtest],
                 "npb",
             )
 
