@@ -233,7 +233,7 @@ Available filter modules: `openmpi`, `slurm`, `torque`, `mvapich`, `mpiexec`, `c
 ### Single-node benchmarking
 
 ```bash
-# Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb)
+# Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb, fio, hpcc)
 cbench snb run --ident run1 --destdir /scratch/snb
 
 # Run a subset of tests

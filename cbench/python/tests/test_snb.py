@@ -12,6 +12,8 @@ from cbench.cli.snb import (
     _parse_cachebench_out,
     _parse_dgemm_out,
     _parse_mpistreams_out,
+    _parse_fio_out,
+    _parse_hpcc_out,
 )
 
 runner = CliRunner()
@@ -97,6 +99,68 @@ def test_parse_mpistreams_out(tmp_path):
     assert abs(result[2]["triad"] - 16000.0) < 0.1
 
 
+FIO_OUTPUT = textwrap.dedent("""\
+    fio-3.33
+    Starting 1 processes
+    read: IOPS=316k, BW=1234MiB/s (1294MB/s)(72.3GiB/60001msec)
+       clat (usec): min=2, avg=12.34, stdev=5.67, max=1234
+      clat percentiles (usec):
+       |  1.00th=[    4], 50.00th=[   10], 99.00th=[   50], 99.99th=[  200]
+    write: IOPS=100k, BW=400MiB/s (419MB/s)(24.0GiB/60001msec)
+       clat (usec): min=3, avg=20.00, stdev=8.00, max=2000
+      clat percentiles (usec):
+       |  1.00th=[    5], 99.00th=[   80], 99.99th=[  500]
+
+    Run status group 0 (all jobs):
+       READ: bw=1234MiB/s (1294MB/s), io=72.3GiB, run=60001-60001msec
+      WRITE: bw=400MiB/s (419MB/s), io=24.0GiB, run=60001-60001msec
+""")
+
+HPCC_OUTPUT = textwrap.dedent("""\
+    This is the DARPA/DOE HPC Challenge Benchmark version 1.5.0 October 2012
+    Produced by Jack Dongarra and Piotr Luszczek
+
+    ====== B E G I N N I N G   O F   T E S T S ======
+
+    Begin of Summary section.
+    SomeKernelOnNode=0
+    StarDGEMM_Gflops=2.34567
+    SingleDGEMM_Gflops=2.50000
+    PTRANS_GBs=0.56789
+    StarSTREAM_Triad=34567.89
+    MPIRandomAccess_GUPs=0.00123
+    StarFFT_Gflops=1.11111
+    HPL_Tflops=0.00123456
+    End of Summary section.
+""")
+
+
+def test_parse_fio_out(tmp_path):
+    f = tmp_path / "fio.out"
+    f.write_text(FIO_OUTPUT)
+    result = _parse_fio_out(f)
+    assert "read_bw_MiB_s" in result
+    assert abs(result["read_bw_MiB_s"] - 1234.0) < 1.0
+    assert "write_bw_MiB_s" in result
+    assert abs(result["write_bw_MiB_s"] - 400.0) < 1.0
+
+
+def test_parse_fio_out_missing(tmp_path):
+    assert _parse_fio_out(tmp_path / "nonexistent.out") == {}
+
+
+def test_parse_hpcc_out(tmp_path):
+    f = tmp_path / "hpcc.out"
+    f.write_text(HPCC_OUTPUT)
+    result = _parse_hpcc_out(f)
+    assert len(result) > 0
+    assert "hpl" in result or "ep_dgemm" in result or "stream_triad" in result
+
+
+def test_parse_hpcc_out_missing(tmp_path):
+    assert _parse_hpcc_out(tmp_path / "nonexistent.out") == {}
+
+
 # ---------------------------------------------------------------------------
 # CLI tests
 # ---------------------------------------------------------------------------
@@ -143,7 +207,7 @@ def test_snb_run_dry_run_no_binaries(tmp_path):
         "snb", "run",
         "--ident", "run1",
         "--destdir", str(tmp_path),
-        "--tests", "stream|cachebench|dgemm|mpistreams",
+        "--tests", "stream|cachebench|dgemm|mpistreams|fio|hpcc",
         "--binpath", str(tmp_path / "nonexistent"),
         "--dry-run",
     ])
@@ -197,6 +261,8 @@ def test_snb_report_all_metrics(tmp_path):
     (ident_dir / f"{hostname}.snb.mpistreams.out").write_text(MPISTREAMS_OUTPUT)
     (ident_dir / f"{hostname}.snb.nodeperf2.out").write_text(DGEMM_OUTPUT)
     (ident_dir / f"{hostname}.snb.cachebench.out").write_text(CACHEBENCH_OUTPUT)
+    (ident_dir / f"{hostname}.snb.fio.out").write_text(FIO_OUTPUT)
+    (ident_dir / f"{hostname}.snb.hpcc.out").write_text(HPCC_OUTPUT)
 
     result = runner.invoke(cli, [
         "snb", "report",
@@ -209,3 +275,5 @@ def test_snb_report_all_metrics(tmp_path):
     assert "DGEMM" in result.output
     assert "Multi-Process" in result.output
     assert "Cachebench" in result.output
+    assert "FIO" in result.output
+    assert "HPCC" in result.output
