@@ -371,3 +371,70 @@ def test_build_lock_thread_safe(tmp_path):
 
     lock2 = BuildLock(tmp_path)
     assert len(lock2._data) == 5
+
+
+# ---------------------------------------------------------------------------
+# build update
+# ---------------------------------------------------------------------------
+
+def test_build_update_help():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["build", "update", "--help"])
+    assert result.exit_code == 0
+    assert "update" in result.output.lower()
+
+
+def test_build_update_dry_run_all(tmp_path):
+    """build update --dry-run over all benchmarks should not crash."""
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        "build", "update",
+        "--prefix", str(tmp_path / "prefix"),
+        "--srcdir", str(tmp_path / "src"),
+        "--dry-run",
+    ])
+    assert "Traceback" not in (result.output or ""), result.output
+    assert "Update Summary" in result.output
+
+
+def test_build_update_unknown_benchmark(tmp_path):
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        "build", "update", "nosuchbenchmark",
+        "--prefix", str(tmp_path / "prefix"),
+        "--srcdir", str(tmp_path / "src"),
+        "--dry-run",
+    ])
+    assert result.exit_code != 0
+    assert "Unknown benchmark" in result.output
+
+
+def test_update_source_no_git_repo(tmp_path):
+    """update_source returns False when source dir is not a git repo."""
+    from cbench.builders.stream import StreamBuilder
+    builder = StreamBuilder()
+    # StreamBuilder uses srcdir/stream, exists but no .git
+    srcdir = tmp_path / "src"
+    (srcdir / "stream").mkdir(parents=True)
+    changed = builder.update_source(srcdir, dry_run=False)
+    assert changed is False
+
+
+def test_update_source_dry_run(tmp_path):
+    """update_source in dry-run mode returns False without running git."""
+    from cbench.builders.stream import StreamBuilder
+    builder = StreamBuilder()
+    srcdir = tmp_path / "src"
+    (srcdir / "stream" / ".git").mkdir(parents=True)
+    changed = builder.update_source(srcdir, dry_run=True)
+    assert changed is False
+
+
+def test_update_source_absent_dir(tmp_path):
+    """update_source returns False when the source directory doesn't exist yet."""
+    from cbench.builders.stream import StreamBuilder
+    builder = StreamBuilder()
+    srcdir = tmp_path / "src"
+    srcdir.mkdir()
+    changed = builder.update_source(srcdir, dry_run=False)
+    assert changed is False

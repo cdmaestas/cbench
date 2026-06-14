@@ -20,15 +20,38 @@ from typing import Optional
 
 import click
 
+_HTML_CDN_HEADER = """  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>"""
+
+# Minimal inline CSS used when --no-cdn is set and no local assets are present
+_HTML_MINIMAL_STYLE = """  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0d1117;color:#c9d1d9;font-family:monospace;padding:1rem}
+    h1{color:#f0f6fc;font-size:1.25rem;margin-bottom:1rem}
+    .row{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}
+    .card{background:#161b22;border:1px solid #30363d;padding:1rem;min-width:150px}
+    .fs-2{font-size:1.5rem;font-weight:bold}
+    .text-success{color:#3fb950}.text-danger{color:#f85149}
+    .text-muted{color:#8b949e;font-size:.75rem}
+    table{width:100%;border-collapse:collapse;background:#161b22;margin-bottom:1rem}
+    th,td{padding:.4rem .6rem;border:1px solid #30363d;font-size:.8rem}
+    th{color:#8b949e;text-transform:uppercase}
+    .badge-pass{color:#3fb950}.badge-err{color:#f85149}
+    input,select{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:.3rem;font-size:.8rem}
+    button{background:#1f6feb;color:#fff;border:none;padding:.3rem .8rem;cursor:pointer;font-size:.8rem}
+    canvas{background:#161b22;border:1px solid #30363d;margin-top:.5rem}
+    .metric-val{color:#79c0ff}
+    .no-cdn-notice{background:#2d1a00;border:1px solid #bb8009;color:#e3b341;padding:.5rem;margin-bottom:1rem;font-size:.8rem}
+  </style>"""
+
 _HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cbench Dashboard</title>
-  <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <!-- ASSETS_HERE -->
   <style>
     body{background:#0d1117;color:#c9d1d9}
     .card{background:#161b22;border:1px solid #30363d}
@@ -39,10 +62,12 @@ _HTML = r"""<!DOCTYPE html>
     h1{color:#f0f6fc}
     .form-control,.form-select{background:#0d1117!important;color:#c9d1d9!important;border-color:#30363d!important}
     .form-control::placeholder{color:#6e7681}
+    .no-cdn-notice{background:#2d1a00;border:1px solid #bb8009;color:#e3b341;padding:.5rem;margin-bottom:1rem;font-size:.8rem}
   </style>
 </head>
 <body>
 <div class="container-fluid py-3">
+  <!-- CDN_NOTICE_HERE -->
   <div class="d-flex align-items-center gap-3 mb-3">
     <h1 class="mb-0 fs-4">Cbench Dashboard</h1>
     <small class="text-muted">auto-refresh 30 s</small>
@@ -273,9 +298,41 @@ def _prometheus_text(db) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _make_flask_app(db_path: Path):
+def _build_html(no_cdn: bool, assets_dir: Optional[Path]) -> str:
+    """Return the dashboard HTML with appropriate asset loading strategy."""
+    if no_cdn:
+        # Try local asset files first
+        if assets_dir:
+            css_path = assets_dir / "bootstrap.min.css"
+            js_path = assets_dir / "chart.umd.min.js"
+            if css_path.exists() and js_path.exists():
+                header = (
+                    f'  <link rel="stylesheet" href="/static/bootstrap.min.css">\n'
+                    f'  <script src="/static/chart.umd.min.js"></script>'
+                )
+            else:
+                header = _HTML_MINIMAL_STYLE
+        else:
+            header = _HTML_MINIMAL_STYLE
+        notice = (
+            '\n<div class="no-cdn-notice">⚠ Running in air-gapped mode. '
+            'For full UI: copy bootstrap.min.css and chart.umd.min.js into --assets-dir.</div>'
+            if header == _HTML_MINIMAL_STYLE else ""
+        )
+    else:
+        header = _HTML_CDN_HEADER
+        notice = ""
+
+    return _HTML.replace(
+        "  <!-- ASSETS_HERE -->", header
+    ).replace(
+        "  <!-- CDN_NOTICE_HERE -->", notice
+    )
+
+
+def _make_flask_app(db_path: Path, no_cdn: bool = False, assets_dir: Optional[Path] = None):
     try:
-        from flask import Flask, Response, jsonify, request
+        from flask import Flask, Response, jsonify, request, send_from_directory
     except ImportError:
         return None
 
@@ -283,10 +340,19 @@ def _make_flask_app(db_path: Path):
 
     app = Flask(__name__)
     app.config["db_path"] = db_path
+    app.config["no_cdn"] = no_cdn
+    app.config["assets_dir"] = assets_dir
+    _html_cache = _build_html(no_cdn, assets_dir)
 
     @app.route("/")
     def index():
-        return _HTML, 200, {"Content-Type": "text/html; charset=utf-8"}
+        return _html_cache, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    @app.route("/static/<path:filename>")
+    def static_assets(filename):
+        if not assets_dir:
+            return "Assets directory not configured", 404
+        return send_from_directory(str(assets_dir), filename)
 
     @app.route("/api/summary")
     def api_summary():
@@ -344,7 +410,17 @@ def _make_flask_app(db_path: Path):
 @click.option("--host", default="127.0.0.1", show_default=True,
               help="Address to bind (use 0.0.0.0 to expose to the network)")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
-def serve_cmd(port: int, host: str, cbenchtest: Optional[str]) -> None:
+@click.option("--no-cdn", is_flag=True,
+              help="Serve without CDN dependencies (for air-gapped HPC clusters)")
+@click.option("--assets-dir", default=None, type=click.Path(),
+              help="Directory containing bootstrap.min.css and chart.umd.min.js for --no-cdn mode")
+def serve_cmd(
+    port: int,
+    host: str,
+    cbenchtest: Optional[str],
+    no_cdn: bool,
+    assets_dir: Optional[str],
+) -> None:
     """Start a web dashboard for browsing Cbench results.
 
     Requires the optional 'web' extra: pip install "cbench[web]"
@@ -353,11 +429,17 @@ def serve_cmd(port: int, host: str, cbenchtest: Optional[str]) -> None:
       /         — HTML dashboard
       /api/*    — JSON API consumed by the dashboard
       /metrics  — Prometheus text exposition (for scraping)
+
+    Air-gapped clusters: use --no-cdn to avoid CDN requests. Copy
+    bootstrap.min.css and chart.umd.min.js into a local directory and pass
+    it with --assets-dir; without assets the dashboard falls back to minimal
+    built-in CSS (no chart support).
     """
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     db_path = Path(cbenchtest) / "cbench_results.db"
+    assets_path = Path(assets_dir) if assets_dir else None
 
-    app = _make_flask_app(db_path)
+    app = _make_flask_app(db_path, no_cdn=no_cdn, assets_dir=assets_path)
     if app is None:
         raise click.ClickException(
             "Flask is not installed. Run: pip install 'cbench[web]'"

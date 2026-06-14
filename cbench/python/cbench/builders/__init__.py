@@ -71,6 +71,20 @@ class BenchmarkBuilder:
         """Return list of missing system prerequisites (empty = all present)."""
         return []
 
+    def update_source(self, srcdir: Path, *, dry_run: bool = False) -> bool:
+        """Pull upstream changes in the existing source checkout.
+
+        Returns True if the source changed (rebuild needed), False otherwise.
+        Default: tries `git pull` in the expected source directory; subclasses
+        that use tarballs should override to re-download and return True.
+        """
+        from cbench.builders._util import git_pull
+        # Builders using git_clone put source in srcdir/<name>
+        src = srcdir / self.name
+        if src.is_dir():
+            return git_pull(src, dry_run=dry_run)
+        return False
+
 
 def get_builder(name: str) -> "BenchmarkBuilder | None":
     cls = REGISTRY.get(name)
