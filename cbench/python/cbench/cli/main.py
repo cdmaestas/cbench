@@ -433,6 +433,92 @@ def _summarize(results: list[dict]) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# rm-failed
+# ---------------------------------------------------------------------------
+
+@cli.command("rm-failed")
+@click.option("--testset", required=True)
+@click.option("--ident", required=True)
+@click.option("--force", is_flag=True,
+              help="Actually delete directories (default: dry-run preview)")
+@click.option("--match", default=None, help="Regex to restrict job names considered")
+@click.option("--status", "target_status", default="ERROR",
+              help="Status pattern to match for removal (default: ERROR)")
+@click.option("--config", default=None)
+@click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
+def rm_failed(
+    testset: str,
+    ident: str,
+    force: bool,
+    match: Optional[str],
+    target_status: str,
+    config: Optional[str],
+    cbenchtest: Optional[str],
+) -> None:
+    """Remove job directories whose parse status matches --status (default: ERROR).
+
+    By default runs in preview mode — pass --force to actually delete.
+    """
+    cfg = _cfg(config)
+    cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
+    ident_dir = Path(cbenchtest) / testset / ident
+
+    if not ident_dir.exists():
+        console.print(f"[red]Directory not found: {ident_dir}[/red]")
+        raise SystemExit(1)
+
+    to_remove: list[Path] = []
+
+    for job_dir in sorted(ident_dir.iterdir()):
+        if not job_dir.is_dir():
+            continue
+        jobname = job_dir.name
+        if match and not re.search(match, jobname):
+            continue
+
+        parts = jobname.rsplit("-", 2)
+        if len(parts) < 3:
+            continue
+        benchmark = parts[0]
+
+        stdout_files = list(job_dir.glob("*.o*")) + list(job_dir.glob("slurm-*.out"))
+        if not stdout_files:
+            # No output file — treat as not-started, not an error
+            continue
+        stdout = stdout_files[0].read_text(errors="replace")
+        stderr_files = list(job_dir.glob("*.e*"))
+        stderr = stderr_files[0].read_text(errors="replace") if stderr_files else ""
+
+        parser = get_parser(benchmark)
+        if parser is None:
+            continue
+        parsed = parser.parse(stdout, stderr)
+
+        if re.search(target_status, parsed.status):
+            to_remove.append(job_dir)
+
+    if not to_remove:
+        console.print(f"[green]No jobs matching status '{target_status}' found.[/green]")
+        return
+
+    action = "Removing" if force else "Would remove"
+    for path in to_remove:
+        console.print(f"{action}: [cyan]{path}[/cyan]")
+        if force:
+            import shutil
+            shutil.rmtree(path)
+
+    if not force:
+        console.print(
+            f"\n[yellow]{len(to_remove)} director{'y' if len(to_remove)==1 else 'ies'} "
+            f"would be removed. Pass [bold]--force[/bold] to delete.[/yellow]"
+        )
+    else:
+        console.print(f"\n[green]Removed {len(to_remove)} director"
+                      f"{'y' if len(to_remove)==1 else 'ies'}.[/green]")
+
+
+# ---------------------------------------------------------------------------
 # query
 # ---------------------------------------------------------------------------
 
