@@ -14,6 +14,7 @@ _GIT_URL = "https://github.com/LLNL/mpiGraph.git"
 class MpiGraphBuilder(BenchmarkBuilder):
     name = "mpigraph"
     description = "mpiGraph LLNL all-pairs MPI send/recv bandwidth benchmark"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "mpiGraph"

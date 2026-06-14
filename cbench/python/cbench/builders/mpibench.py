@@ -14,6 +14,7 @@ _GIT_URL = "https://github.com/LLNL/mpiBench.git"
 class MpiBenchBuilder(BenchmarkBuilder):
     name = "mpibench"
     description = "mpiBench LLNL MPI collective benchmark (latency across message sizes)"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "mpiBench"

@@ -39,6 +39,7 @@ class BenchmarkBuilder:
 
     name: str = ""
     description: str = ""
+    source_url: str = ""  # canonical download URL or git repo — used by build cache
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)

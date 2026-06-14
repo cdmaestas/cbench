@@ -13,6 +13,7 @@ _TARBALL_URL = "https://www.coker.com.au/bonnie++/bonnie++-2.00a.tgz"
 class BonnieBuilder(BenchmarkBuilder):
     name = "bonnie"
     description = "Bonnie++ sequential and random disk I/O benchmark"
+    source_url = _TARBALL_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         return wget_tarball(_TARBALL_URL, srcdir / "bonnie", force=force, dry_run=dry_run)

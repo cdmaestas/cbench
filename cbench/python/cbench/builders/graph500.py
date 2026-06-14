@@ -19,6 +19,7 @@ _BINARIES = [
 class Graph500Builder(BenchmarkBuilder):
     name = "graph500"
     description = "Graph500 BFS and BFS+SSSP graph analytics benchmark"
+    source_url = _GIT_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "graph500"

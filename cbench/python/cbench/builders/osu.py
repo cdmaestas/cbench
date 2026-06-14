@@ -13,6 +13,7 @@ _TARBALL_URL = "https://mvapich.cse.ohio-state.edu/download/mvapich/osu-micro-be
 class OsuBuilder(BenchmarkBuilder):
     name = "osu"
     description = "OSU MPI Micro-Benchmarks — pt2pt, collective, one-sided"
+    source_url = _TARBALL_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         url = _TARBALL_URL

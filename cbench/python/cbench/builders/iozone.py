@@ -21,6 +21,7 @@ _DEFAULT_TARGET = "linux-AMD64"
 class IozoneBuilder(BenchmarkBuilder):
     name = "iozone"
     description = "IOzone filesystem benchmark (sequential, random, mmap I/O)"
+    source_url = _TARBALL_URL
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         top = wget_tarball(_TARBALL_URL, srcdir / "iozone", force=force, dry_run=dry_run)
