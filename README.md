@@ -236,6 +236,9 @@ Available filter modules: `openmpi`, `slurm`, `torque`, `mvapich`, `mpiexec`, `c
 # Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb, fio, hpcc)
 cbench snb run --ident run1 --destdir /scratch/snb
 
+# Run and store results directly to the SQLite DB
+cbench snb run --ident run1 --destdir /scratch/snb --store
+
 # Run a subset of tests
 cbench snb run --ident run1 --tests "stream|dgemm" --numcores 32
 
@@ -245,9 +248,20 @@ cbench snb run --ident run1 --dry-run
 # Display a results summary table from saved output files
 cbench snb report --ident run1 --destdir /scratch/snb
 cbench snb report --ident run1 --node n042   # report for a specific node
+
+# JSON output (suitable for scripts and monitoring)
+cbench snb report --ident run1 --output json
+
+# Store results from existing output files into the SQLite DB
+cbench snb store --ident run1 --destdir /scratch/snb --node n042
+
+# Compare two runs and flag regressions (reads from DB)
+cbench snb compare --ident run2 --baseline run1 --node n042
+cbench snb compare --ident run2 --baseline run1 --threshold 10.0
 ```
 
 Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
+Results are stored in `$CBENCHTEST/cbench_results.db` (same DB as `cbench parse`).
 
 ---
 
