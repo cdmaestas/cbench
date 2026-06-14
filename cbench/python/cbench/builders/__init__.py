@@ -77,4 +77,7 @@ def get_builder(name: str) -> "BenchmarkBuilder | None":
 
 
 # Auto-import all builder modules so their classes register themselves.
-from cbench.builders import stream, imb, osu, ior, hpl, npb  # noqa: F401 E402
+from cbench.builders import (  # noqa: F401 E402
+    stream, imb, osu, ior, hpl, npb,
+    hpcc, amg, hpccg, mpibench, mpigraph, bonnie, graph500,
+)

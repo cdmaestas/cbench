@@ -37,7 +37,8 @@ cbench/
 ├── builders/           # Benchmark build framework
 │   ├── __init__.py     # BenchmarkBuilder ABC + REGISTRY + BuildConfig
 │   ├── _util.py        # Shared helpers: git_clone, wget_tarball, run, install_bins
-│   └── *.py            # stream, imb, osu, ior, hpl, npb
+│   └── *.py            # stream, imb, osu, ior, hpl, npb,
+│                       # hpcc, amg, hpccg, mpibench, mpigraph, graph500, bonnie
 └── cli/
     ├── main.py         # Top-level click group; wires in all subgroups
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
@@ -95,4 +96,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-344 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
+365 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.

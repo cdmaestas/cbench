@@ -17,7 +17,10 @@ from cbench.cli.main import cli
 # Registry completeness
 # ---------------------------------------------------------------------------
 
-_EXPECTED_BUILDERS = ["stream", "imb", "osu", "ior", "hpl", "npb"]
+_EXPECTED_BUILDERS = [
+    "stream", "imb", "osu", "ior", "hpl", "npb",
+    "hpcc", "amg", "hpccg", "mpibench", "mpigraph", "bonnie", "graph500",
+]
 
 @pytest.mark.parametrize("name", _EXPECTED_BUILDERS)
 def test_builder_registered(name):
