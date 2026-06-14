@@ -14,7 +14,7 @@ from pathlib import Path
 from cbench.builders import BenchmarkBuilder, BuildConfig
 from cbench.builders._util import console, run, require, wget_tarball, install_bins
 
-_TARBALL_URL = "http://www.iozone.org/src/current/iozone3_506.tar"
+_TARBALL_URL = "https://www.iozone.org/src/current/iozone3_506.tar"
 _DEFAULT_TARGET = "linux-AMD64"
 
 

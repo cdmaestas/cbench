@@ -185,6 +185,19 @@ def test_snb_report_help():
     assert "--ident" in result.output
 
 
+def test_snb_run_rejects_bad_node(tmp_path):
+    """run_cmd must reject hostnames containing path separators."""
+    result = runner.invoke(cli, [
+        "snb", "run",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--node", "../../evil",
+        "--dry-run",
+    ])
+    assert result.exit_code != 0
+    assert "Invalid" in result.output
+
+
 def test_snb_run_dry_run(tmp_path):
     result = runner.invoke(cli, [
         "snb", "run",

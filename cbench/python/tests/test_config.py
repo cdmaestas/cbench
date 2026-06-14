@@ -140,6 +140,19 @@ def test_all_valid_batch_methods(tmp_path):
         assert cfg.batch_method == method
 
 
+def test_cluster_name_special_chars_raises(tmp_path):
+    p = _write_yaml(tmp_path, "cluster_name: 'my cluster/bad'\n")
+    with pytest.raises(ConfigError, match="cluster_name"):
+        load_config(p)
+
+
+def test_cluster_name_valid_patterns(tmp_path):
+    for name in ["mycluster", "my-cluster", "my_cluster", "Cluster01"]:
+        p = _write_yaml(tmp_path, f"cluster_name: {name}\n")
+        cfg = load_config(p)
+        assert cfg.cluster_name == name
+
+
 def test_all_valid_launch_methods(tmp_path):
     for method in ["openmpi", "mpiexec", "slurm", "alps", "yod"]:
         p = _write_yaml(tmp_path, f"joblaunch_method: {method}\n")

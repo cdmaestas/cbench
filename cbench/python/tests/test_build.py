@@ -196,6 +196,41 @@ def test_install_bins_dry_run(tmp_path):
 # BuildLock
 # ---------------------------------------------------------------------------
 
+def test_wget_tarball_rejects_zip_slip(tmp_path):
+    """wget_tarball must raise RuntimeError if a member escapes dest_dir."""
+    import tarfile as tf_mod
+    import io
+
+    # Build a malicious tarball in memory with a traversal member
+    buf = io.BytesIO()
+    with tf_mod.open(fileobj=buf, mode="w:gz") as tf:
+        info = tf_mod.TarInfo(name="../../evil.txt")
+        data = b"pwned"
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+
+    tarball_path = tmp_path / "evil.tar.gz"
+    tarball_path.write_bytes(buf.getvalue())
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    # Patch wget_tarball to skip download and use our crafted tarball
+    from unittest.mock import patch
+    import urllib.request
+
+    def fake_retrieve(url, dest_file):
+        import shutil
+        shutil.copy(str(tarball_path), dest_file)
+
+    from cbench.builders._util import wget_tarball
+    with patch.object(urllib.request, "urlretrieve", side_effect=fake_retrieve):
+        import pytest as _pytest
+        with _pytest.raises(RuntimeError, match="escapes destination"):
+            wget_tarball("https://example.com/evil.tar.gz", dest, force=True, dry_run=False)
+
+
 def test_build_lock_initially_empty(tmp_path):
     from cbench.cli.build import BuildLock
     lock = BuildLock(tmp_path)
