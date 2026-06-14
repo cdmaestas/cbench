@@ -120,6 +120,7 @@ class ResultsDB:
         ident: Optional[str] = None,
         status: Optional[str] = None,
         since: Optional[str] = None,
+        until: Optional[str] = None,
         limit: int = 1000,
     ) -> list[dict]:
         """Return runs matching the given filters, with their metrics attached."""
@@ -144,6 +145,9 @@ class ResultsDB:
         if since:
             where.append("r.parsed_at >= ?")
             params.append(since)
+        if until:
+            where.append("r.parsed_at <= ?")
+            params.append(until)
 
         where_clause = ("WHERE " + " AND ".join(where)) if where else ""
 

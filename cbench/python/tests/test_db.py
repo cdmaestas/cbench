@@ -78,3 +78,15 @@ def test_cascade_delete(db):
     with db._conn() as con:
         rows = con.execute("SELECT * FROM metrics WHERE run_id = ?", (run_id,)).fetchall()
     assert rows == []
+
+
+def test_filter_by_until(db):
+    db.store(_make_result(jobname="job1"))
+    rows = db.query(until="2020-01-01")
+    assert len(rows) == 0  # stored now is after 2020-01-01
+
+
+def test_filter_by_since_and_until(db):
+    db.store(_make_result(jobname="job1"))
+    rows = db.query(since="2020-01-01", until="2099-12-31")
+    assert len(rows) == 1
