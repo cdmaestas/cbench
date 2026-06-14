@@ -20,7 +20,7 @@ from cbench.cli.main import cli
 _EXPECTED_BUILDERS = [
     "stream", "imb", "osu", "ior", "hpl", "npb",
     "hpcc", "amg", "hpccg", "mpibench", "mpigraph", "bonnie", "graph500",
-    "iozone",
+    "iozone", "fio",
 ]
 
 @pytest.mark.parametrize("name", _EXPECTED_BUILDERS)

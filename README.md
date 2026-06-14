@@ -82,7 +82,7 @@ cbench build all --mpicc mpicc --jobs 8 --blas-lib "-lopenblas"
 cbench build run ior --dry-run
 ```
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`.
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`.
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
 
@@ -263,6 +263,7 @@ Output files are written to `<destdir>/<ident>/<hostname>.snb.<test>.out`.
 | IO500 | `io500` | score, bandwidth GiB/s, IOPS kIOPS |
 | elbencho | `elbencho` | throughput MiB/s, IOPS, latency µs per phase |
 | gpfsperf | `gpfsperf` | throughput MB/s, IOPS, avg latency ms |
+| fio | `fio` | read/write IOPS, BW MiB/s, lat avg/p99 µs |
 | MLPerf Training | `mlperf`, `mlperf-training` | time_to_train s, accuracy, epochs |
 | MLPerf Inference | `mlperf`, `mlperf-inference` | samples/s, latency p90/mean/p99 ns |
 | OSU MPI | `osu`, `mpioverhead` | bandwidth MB/s, latency µs |
