@@ -39,7 +39,8 @@ cbench/
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
     ├── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
     ├── diag.py         # cbench diag: apply parse filters, aggregate error counts
-    └── snb.py          # cbench snb: single-node benchmark run and report
+    ├── snb.py          # cbench snb: single-node benchmark run and report
+    └── main.py         # also houses: make-skel, rm-failed (single-command tools)
 ```
 
 ## Adding a new parser
@@ -89,4 +90,4 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v
 ```
 
-231 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
+238 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, and rm-failed.
