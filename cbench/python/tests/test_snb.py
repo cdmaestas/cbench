@@ -251,6 +251,107 @@ def test_snb_report_missing_ident(tmp_path):
     assert result.exit_code != 0
 
 
+def test_snb_store_cmd(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    ident_dir = tmp_path / "run1"
+    ident_dir.mkdir()
+    hostname = "n001"
+    (ident_dir / f"{hostname}.snb.streams.out").write_text(STREAMS_OUTPUT)
+    (ident_dir / f"{hostname}.snb.fio.out").write_text(FIO_OUTPUT)
+
+    result = runner.invoke(cli, [
+        "snb", "store",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--node", hostname,
+        "--numcores", "8",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Stored" in result.output
+    assert (tmp_path / "cbench_results.db").exists()
+
+
+def test_snb_report_json(tmp_path):
+    ident_dir = tmp_path / "run1"
+    ident_dir.mkdir()
+    hostname = "n001"
+    (ident_dir / f"{hostname}.snb.streams.out").write_text(STREAMS_OUTPUT)
+    (ident_dir / f"{hostname}.snb.fio.out").write_text(FIO_OUTPUT)
+
+    result = runner.invoke(cli, [
+        "snb", "report",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--node", hostname,
+        "--output", "json",
+    ])
+    import json
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["node"] == hostname
+    assert "snb_streams" in data["benchmarks"]
+    assert "snb_fio" in data["benchmarks"]
+
+
+def test_snb_compare_cmd(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    hostname = "n001"
+
+    # Store baseline and current using the DB directly
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+
+    db.store(DBResult(
+        cluster="test", testset="snb", ident="base", jobname=hostname,
+        benchmark="snb_streams", numprocs=8, ppn=8, numnodes=1, status="PASSED",
+        metrics={"copy": 10000.0, "triad": 9000.0},
+    ))
+    db.store(DBResult(
+        cluster="test", testset="snb", ident="run2", jobname=hostname,
+        benchmark="snb_streams", numprocs=8, ppn=8, numnodes=1, status="PASSED",
+        metrics={"copy": 10100.0, "triad": 9100.0},  # slight improvement
+    ))
+
+    result = runner.invoke(cli, [
+        "snb", "compare",
+        "--ident", "run2",
+        "--baseline", "base",
+        "--node", hostname,
+        "--threshold", "5.0",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "No regressions" in result.output
+
+
+def test_snb_compare_detects_regression(tmp_path, monkeypatch):
+    monkeypatch.setenv("CBENCHTEST", str(tmp_path))
+    hostname = "n001"
+
+    from cbench.db import ResultsDB, ParseResult as DBResult
+    db = ResultsDB(tmp_path / "cbench_results.db")
+
+    db.store(DBResult(
+        cluster="test", testset="snb", ident="base2", jobname=hostname,
+        benchmark="snb_streams", numprocs=8, ppn=8, numnodes=1, status="PASSED",
+        metrics={"copy": 10000.0},
+    ))
+    db.store(DBResult(
+        cluster="test", testset="snb", ident="run3", jobname=hostname,
+        benchmark="snb_streams", numprocs=8, ppn=8, numnodes=1, status="PASSED",
+        metrics={"copy": 8000.0},  # 20% drop → regression
+    ))
+
+    result = runner.invoke(cli, [
+        "snb", "compare",
+        "--ident", "run3",
+        "--baseline", "base2",
+        "--node", hostname,
+        "--threshold", "5.0",
+    ])
+    assert result.exit_code != 0
+    assert "REGRESSED" in result.output
+
+
 def test_snb_report_all_metrics(tmp_path):
     """Report command handles all output file types without error."""
     ident_dir = tmp_path / "run1"

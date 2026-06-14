@@ -1,8 +1,10 @@
 """cbench snb — single-node benchmark run and report (port of single_node_benchmark.pl).
 
 Usage:
-  cbench snb run  [--ident ID] [--destdir DIR] [--tests REGEX] [--numcores N]
-  cbench snb report [--ident ID] [--destdir DIR] [--node HOSTNAME]
+  cbench snb run    [--ident ID] [--destdir DIR] [--tests REGEX] [--numcores N] [--store]
+  cbench snb report [--ident ID] [--destdir DIR] [--node HOSTNAME] [--output table|json]
+  cbench snb store  [--ident ID] [--destdir DIR] [--node HOSTNAME]
+  cbench snb compare --ident ID --baseline ID [--node HOSTNAME] [--threshold PCT]
 """
 
 from __future__ import annotations
@@ -155,6 +157,110 @@ def _parse_mpistreams_out(outfile: Path) -> dict[int, dict[str, float]]:
 
 
 # ---------------------------------------------------------------------------
+# SNB → DB: collect all metrics from saved output files
+# ---------------------------------------------------------------------------
+
+def _collect_snb_metrics(
+    ident_dir: Path,
+    hostname: str,
+    cluster: str,
+    ident: str,
+    numcores: int,
+) -> "list":
+    """Parse all snb output files and return a list of db.ParseResult objects."""
+    from cbench.db import ParseResult as DBResult
+
+    def outfile(tag: str) -> Path:
+        return ident_dir / f"{hostname}.snb.{tag}.out"
+
+    results = []
+
+    def _make(benchmark: str, metrics: dict[str, float], units: dict[str, str]) -> None:
+        if metrics:
+            results.append(DBResult(
+                cluster=cluster,
+                testset="snb",
+                ident=ident,
+                jobname=hostname,
+                benchmark=benchmark,
+                numprocs=numcores,
+                ppn=numcores,
+                numnodes=1,
+                status="PASSED",
+                metrics=metrics,
+                metric_units=units,
+            ))
+
+    # streams
+    streams = _parse_streams_out(outfile("streams"))
+    _make("snb_streams", streams, {k: "MB/s" for k in streams})
+
+    # cachebench
+    cb = _parse_cachebench_out(outfile("cachebench"))
+    _make("snb_cachebench", cb, {k: "MB/s" for k in cb})
+
+    # dgemm — flatten {mem_mb: gflops} → {"gflops_<mem>mb": val}
+    dgemm_raw = _parse_dgemm_out(outfile("nodeperf2"))
+    dgemm = {f"gflops_{mem}mb": gf for mem, gf in dgemm_raw.items()}
+    _make("snb_dgemm", dgemm, {k: "GFlops" for k in dgemm})
+
+    # mpistreams — flatten {nprocs: {op: val}} → {"<op>_<n>proc": val}
+    ms_raw = _parse_mpistreams_out(outfile("mpistreams"))
+    ms: dict[str, float] = {}
+    ms_units: dict[str, str] = {}
+    for np_count, ops in ms_raw.items():
+        for op, val in ops.items():
+            key = f"{op}_{np_count}proc"
+            ms[key] = val
+            ms_units[key] = "MB/s"
+    _make("snb_mpistreams", ms, ms_units)
+
+    # fio
+    fio = _parse_fio_out(outfile("fio"))
+    fio_units = {
+        "read_bw_MiB_s": "MiB/s", "write_bw_MiB_s": "MiB/s",
+        "read_iops": "IOPS", "write_iops": "IOPS",
+        "read_lat_avg_us": "us", "write_lat_avg_us": "us",
+        "read_lat_p99_us": "us", "write_lat_p99_us": "us",
+    }
+    _make("snb_fio", fio, {k: fio_units.get(k, "") for k in fio})
+
+    # hpcc
+    hpcc = _parse_hpcc_out(outfile("hpcc"))
+    from cbench.parsers.hpcc import HpccParser
+    hpcc_units = HpccParser().metric_units()
+    _make("snb_hpcc", hpcc, {k: hpcc_units.get(k, "") for k in hpcc})
+
+    return results
+
+
+def _store_snb_results(
+    ident_dir: Path,
+    hostname: str,
+    cluster: str,
+    ident: str,
+    numcores: int,
+    log_fh=None,
+) -> int:
+    """Parse output files and store all metrics to the results DB. Returns row count."""
+    import os
+    from cbench.db import ResultsDB
+
+    cbenchtest = os.environ.get("CBENCHTEST", ".")
+    db_path = Path(cbenchtest) / "cbench_results.db"
+    db = ResultsDB(db_path)
+    rows = _collect_snb_metrics(ident_dir, hostname, cluster, ident, numcores)
+    for r in rows:
+        db.store(r)
+    msg = f"Stored {len(rows)} SNB result(s) to {db_path}"
+    if log_fh:
+        _logmsg(log_fh, msg)
+    else:
+        console.print(msg)
+    return len(rows)
+
+
+# ---------------------------------------------------------------------------
 # CLI group
 # ---------------------------------------------------------------------------
 
@@ -183,6 +289,7 @@ def snb_group() -> None:
 @click.option("--mpi-cmd", default="mpirun", show_default=True,
               help="MPI launch command for mpistreams")
 @click.option("--dry-run", is_flag=True, help="Print commands without executing")
+@click.option("--store", is_flag=True, help="Store results in SQLite DB after running")
 @click.option("--config", default=None)
 def run_cmd(
     ident: Optional[str],
@@ -193,6 +300,7 @@ def run_cmd(
     binpath: Optional[str],
     mpi_cmd: str,
     dry_run: bool,
+    store: bool,
     config: Optional[str],
 ) -> None:
     """Run the single-node benchmark suite and save output files."""
@@ -514,6 +622,9 @@ def run_cmd(
             f"Run `cbench snb report --ident {ident} --destdir {destdir}` to view results.",
         )
 
+        if store and not dry_run:
+            _store_snb_results(ident_dir, hostname, cfg.cluster_name, ident, numcores, log)
+
 
 # ---------------------------------------------------------------------------
 # snb report
@@ -523,11 +634,17 @@ def run_cmd(
 @click.option("--ident", default=None, help="Test identifier")
 @click.option("--destdir", default=".", show_default=True, type=click.Path())
 @click.option("--node", default=None, help="Hostname of benchmarked node (default: current host)")
+@click.option("--output", "output_fmt", default="table",
+              type=click.Choice(["table", "json"]), show_default=True,
+              help="Output format")
+@click.option("--store", is_flag=True, help="Store results in SQLite DB")
 @click.option("--config", default=None)
 def report_cmd(
     ident: Optional[str],
     destdir: str,
     node: Optional[str],
+    output_fmt: str,
+    store: bool,
     config: Optional[str],
 ) -> None:
     """Parse snb output files and display a summary report."""
@@ -550,8 +667,25 @@ def report_cmd(
         console.print(f"[red]Directory not found: {ident_dir}[/red]")
         raise SystemExit(1)
 
+    numcores = _detect_cores()
+
     def out(tag: str) -> Path:
         return ident_dir / f"{hostname}.snb.{tag}.out"
+
+    # JSON output: collect all metrics and dump
+    if output_fmt == "json":
+        import json
+        collected = _collect_snb_metrics(ident_dir, hostname, cfg.cluster_name, ident, numcores)
+        payload = {
+            "cluster": cfg.cluster_name,
+            "ident": ident,
+            "node": hostname,
+            "benchmarks": {r.benchmark: r.metrics for r in collected},
+        }
+        click.echo(json.dumps(payload, indent=2))
+        if store:
+            _store_snb_results(ident_dir, hostname, cfg.cluster_name, ident, numcores)
+        return
 
     console.rule(f"[bold]Single Node Benchmark Report — {hostname}")
 
@@ -659,3 +793,153 @@ def report_cmd(
             "[yellow]No parsed results found. "
             f"Run `cbench snb run --ident {ident} --destdir {destdir}` first.[/yellow]"
         )
+    elif store:
+        _store_snb_results(ident_dir, hostname, cfg.cluster_name, ident, numcores)
+
+
+# ---------------------------------------------------------------------------
+# snb store
+# ---------------------------------------------------------------------------
+
+@snb_group.command("store")
+@click.option("--ident", default=None, help="Test identifier")
+@click.option("--destdir", default=".", show_default=True, type=click.Path())
+@click.option("--node", default=None, help="Hostname (default: current host)")
+@click.option("--numcores", default=None, type=int, help="CPU core count (default: auto-detected)")
+@click.option("--config", default=None)
+def store_cmd(
+    ident: Optional[str],
+    destdir: str,
+    node: Optional[str],
+    numcores: Optional[int],
+    config: Optional[str],
+) -> None:
+    """Parse saved snb output files and store all metrics to the SQLite DB."""
+    from cbench.config import load_config
+
+    cfg = load_config(config)
+    hostname = node or _hostname()
+    if "/" in hostname or "\\" in hostname or hostname.startswith(".."):
+        raise click.UsageError(f"Invalid --node value: '{hostname}'")
+    ident = ident or f"{cfg.cluster_name}1"
+    numcores = numcores or _detect_cores()
+    destdir_p = Path(destdir).resolve()
+    ident_dir = (destdir_p / ident).resolve()
+    if not str(ident_dir).startswith(str(destdir_p)):
+        raise click.UsageError(f"Path traversal detected: ident '{ident}' escapes destdir")
+    if not ident_dir.exists():
+        console.print(f"[red]Directory not found: {ident_dir}[/red]")
+        raise SystemExit(1)
+    _store_snb_results(ident_dir, hostname, cfg.cluster_name, ident, numcores)
+
+
+# ---------------------------------------------------------------------------
+# snb compare
+# ---------------------------------------------------------------------------
+
+@snb_group.command("compare")
+@click.option("--ident", required=True, help="Current run identifier")
+@click.option("--baseline", required=True, help="Baseline run identifier to compare against")
+@click.option("--node", default=None, help="Hostname (default: current host)")
+@click.option("--threshold", default=5.0, show_default=True, type=float,
+              help="Regression threshold in percent (absolute change)")
+@click.option("--config", default=None)
+def compare_cmd(
+    ident: str,
+    baseline: str,
+    node: Optional[str],
+    threshold: float,
+    config: Optional[str],
+) -> None:
+    """Compare SNB results for two idents from the SQLite DB and flag regressions."""
+    import os
+    from cbench.config import load_config
+    from cbench.db import ResultsDB
+
+    cfg = load_config(config)
+    hostname = node or _hostname()
+    if "/" in hostname or "\\" in hostname or hostname.startswith(".."):
+        raise click.UsageError(f"Invalid --node value: '{hostname}'")
+
+    cbenchtest = os.environ.get("CBENCHTEST", ".")
+    db_path = Path(cbenchtest) / "cbench_results.db"
+    if not db_path.exists():
+        console.print(f"[red]No results DB found at {db_path}. Run `cbench snb store` first.[/red]")
+        raise SystemExit(1)
+
+    db = ResultsDB(db_path)
+
+    def _fetch(run_ident: str) -> dict[str, dict[str, float]]:
+        """Return {benchmark: {metric: value}} for the given ident+node."""
+        rows = db.query(testset="snb", ident=run_ident, cluster=cfg.cluster_name)
+        result: dict[str, dict[str, float]] = {}
+        for row in rows:
+            if row["jobname"] != hostname:
+                continue
+            bm = row["benchmark"]
+            result[bm] = {k: v["value"] for k, v in row["metrics"].items()}
+        return result
+
+    current = _fetch(ident)
+    base = _fetch(baseline)
+
+    if not current:
+        console.print(f"[red]No SNB results for ident='{ident}' node='{hostname}' in DB.[/red]")
+        raise SystemExit(1)
+    if not base:
+        console.print(f"[red]No SNB results for baseline='{baseline}' node='{hostname}' in DB.[/red]")
+        raise SystemExit(1)
+
+    console.rule(f"[bold]SNB Comparison: {baseline} → {ident}  (node: {hostname})")
+
+    all_benchmarks = sorted(set(current) | set(base))
+    regressions = 0
+
+    for bm in all_benchmarks:
+        cur_metrics = current.get(bm, {})
+        base_metrics = base.get(bm, {})
+        all_keys = sorted(set(cur_metrics) | set(base_metrics))
+        if not all_keys:
+            continue
+
+        tbl = Table(title=bm, box=None, padding=(0, 2))
+        tbl.add_column("Metric")
+        tbl.add_column("Baseline", justify="right")
+        tbl.add_column("Current", justify="right")
+        tbl.add_column("Change %", justify="right")
+        tbl.add_column("Status")
+
+        for key in all_keys:
+            b_val = base_metrics.get(key)
+            c_val = cur_metrics.get(key)
+            if b_val is None:
+                tbl.add_row(key, "—", f"{c_val:.4g}", "—", "[yellow]NEW[/yellow]")
+                continue
+            if c_val is None:
+                tbl.add_row(key, f"{b_val:.4g}", "—", "—", "[yellow]MISSING[/yellow]")
+                continue
+            if b_val == 0:
+                pct = 0.0
+            else:
+                pct = (c_val - b_val) / abs(b_val) * 100.0
+            pct_str = f"{pct:+.1f}%"
+            if abs(pct) >= threshold:
+                # Regressions: lower is worse for bandwidth/IOPS/GFlops; higher is worse for latency
+                is_latency = "lat" in key or "latency" in key
+                regressed = (pct < 0 and not is_latency) or (pct > 0 and is_latency)
+                if regressed:
+                    status = "[red]REGRESSED[/red]"
+                    regressions += 1
+                else:
+                    status = "[green]IMPROVED[/green]"
+            else:
+                status = "[dim]OK[/dim]"
+            tbl.add_row(key, f"{b_val:.4g}", f"{c_val:.4g}", pct_str, status)
+
+        console.print(tbl)
+
+    if regressions:
+        console.print(f"\n[red bold]{regressions} regression(s) detected (threshold: {threshold}%)[/red bold]")
+        raise SystemExit(1)
+    else:
+        console.print(f"\n[green bold]No regressions detected (threshold: {threshold}%)[/green bold]")
