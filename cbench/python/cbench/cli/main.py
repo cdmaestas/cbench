@@ -64,7 +64,7 @@ def _cfg(config: Optional[str]) -> ClusterConfig:
 # ---------------------------------------------------------------------------
 
 @click.group()
-@click.version_option(package_name="cbench")
+@click.version_option(package_name="cbench", prog_name="cbench")
 def cli() -> None:
     """Cbench HPC benchmarking framework — Python toolchain."""
 
