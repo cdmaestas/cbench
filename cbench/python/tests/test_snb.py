@@ -14,6 +14,8 @@ from cbench.cli.snb import (
     _parse_mpistreams_out,
     _parse_fio_out,
     _parse_hpcc_out,
+    _parse_linpack_out,
+    _parse_npb_out,
 )
 
 runner = CliRunner()
@@ -159,6 +161,90 @@ def test_parse_hpcc_out(tmp_path):
 
 def test_parse_hpcc_out_missing(tmp_path):
     assert _parse_hpcc_out(tmp_path / "nonexistent.out") == {}
+
+
+LINPACK_OUTPUT = """\
+matrix A is randomly generated
+T/V                N    NB     P     Q               Time                 Gflops
+--------------------------------------------------------------------------------
+WR11C2R4        1024   192     1     4               0.09             7.9022e+00
+
+PASSED
+PASSED
+PASSED
+
+Finished      1 tests with the following results:
+              1 tests completed and passed residual checks,
+              0 tests completed and failed residual checks,
+              0 tests skipped because of illegal input values.
+"""
+
+NPB_EP_OUTPUT = """\
+NAS Parallel Benchmarks (NPB3.4.2) - EP Benchmark
+Benchmark Completed.
+ Mop/s total     =               12345.67
+ Verification    =               SUCCESSFUL
+"""
+
+NPB_CG_OUTPUT = """\
+NAS Parallel Benchmarks (NPB3.4.2) - CG Benchmark
+Benchmark Completed.
+ Mop/s total     =                5678.90
+ Verification    =               SUCCESSFUL
+"""
+
+
+def test_parse_linpack_out(tmp_path):
+    f = tmp_path / "linpack.out"
+    f.write_text(LINPACK_OUTPUT)
+    result = _parse_linpack_out(f)
+    assert "gflops" in result
+    assert abs(result["gflops"] - 7.9022) < 0.01
+
+
+def test_parse_linpack_out_missing(tmp_path):
+    assert _parse_linpack_out(tmp_path / "nonexistent.out") == {}
+
+
+def test_parse_npb_out_single(tmp_path):
+    f = tmp_path / "npb.out"
+    f.write_text(NPB_EP_OUTPUT)
+    result = _parse_npb_out(f)
+    assert "ep_mops" in result
+    assert abs(result["ep_mops"] - 12345.67) < 1.0
+
+
+def test_parse_npb_out_multi(tmp_path):
+    f = tmp_path / "npb.out"
+    f.write_text(NPB_EP_OUTPUT + "\n" + NPB_CG_OUTPUT)
+    result = _parse_npb_out(f)
+    assert "ep_mops" in result
+    assert "cg_mops" in result
+    assert abs(result["ep_mops"] - 12345.67) < 1.0
+    assert abs(result["cg_mops"] - 5678.90) < 1.0
+
+
+def test_parse_npb_out_missing(tmp_path):
+    assert _parse_npb_out(tmp_path / "nonexistent.out") == {}
+
+
+def test_snb_report_linpack_and_npb(tmp_path):
+    """report command shows Linpack and NPB sections when output files exist."""
+    ident_dir = tmp_path / "run1"
+    ident_dir.mkdir()
+    hostname = "n001"
+    (ident_dir / f"{hostname}.snb.linpack.out").write_text(LINPACK_OUTPUT)
+    (ident_dir / f"{hostname}.snb.npb.out").write_text(NPB_EP_OUTPUT + "\n" + NPB_CG_OUTPUT)
+
+    result = runner.invoke(cli, [
+        "snb", "report",
+        "--ident", "run1",
+        "--destdir", str(tmp_path),
+        "--node", hostname,
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Linpack" in result.output
+    assert "NAS Parallel" in result.output
 
 
 # ---------------------------------------------------------------------------
