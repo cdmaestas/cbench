@@ -2,7 +2,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult, REGISTRY
 from cbench.parsers import (  # noqa: F401 — side-effect: registers parsers
     xhpl, hpcc, imb, npb, ior, osu,
     amg, beff, bonnie, com, fileop, graph500, hpccg, irs,
-    lammps, laten, mdtest, miranda, mpibench, mpigraph,
+    lammps, laten, mdtest, miranda, mpibench, mpigraph, mpioverhead,
     phdmesh, rotate, rotlat, routecheck, sppm, sqmr,
     stress, sweep3d, trilinos,
 )
