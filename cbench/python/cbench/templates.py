@@ -14,7 +14,8 @@ import re
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from jinja2 import Environment, Undefined
+from jinja2.sandbox import SandboxedEnvironment
+from jinja2 import Undefined
 
 if TYPE_CHECKING:
     from cbench.config import ClusterConfig
@@ -56,8 +57,8 @@ def _here_to_jinja(text: str) -> str:
     return re.sub(r"\b([A-Z][A-Z0-9_]+)_HERE\b", r"{{ \1 }}", text)
 
 
-def _make_env() -> Environment:
-    return Environment(
+def _make_env() -> SandboxedEnvironment:
+    return SandboxedEnvironment(
         variable_start_string="{{ ",
         variable_end_string=" }}",
         undefined=Undefined,
