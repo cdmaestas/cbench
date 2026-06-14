@@ -848,3 +848,57 @@ def test_build_html_no_cdn_missing_one_asset_uses_minimal(tmp_path):
     html = _build_html(no_cdn=True, assets_dir=tmp_path)
     assert "cdn.jsdelivr.net" not in html
     assert "/static/chart.umd.min.js" not in html
+
+
+# ---------------------------------------------------------------------------
+# Security: XSS escaping in dashboard JS
+# ---------------------------------------------------------------------------
+
+def test_dashboard_html_contains_esc_helper():
+    """The esc() helper must be present in the dashboard HTML."""
+    from cbench.cli.serve import _build_html
+    html = _build_html(no_cdn=False, assets_dir=None)
+    assert "function esc(" in html
+    assert "replace(/&/g" in html
+
+
+def test_dashboard_results_table_uses_esc():
+    """All DB-sourced fields in the results table must be wrapped with esc()."""
+    from cbench.cli.serve import _build_html
+    html = _build_html(no_cdn=False, assets_dir=None)
+    # Each of these fields must appear as esc(...) not bare ${...}
+    for field in ("benchmark", "cluster", "testset", "ident", "jobname", "numprocs"):
+        assert f"esc(row.{field})" in html, f"Field {field!r} not wrapped with esc()"
+
+
+# ---------------------------------------------------------------------------
+# Security: Prometheus label escaping
+# ---------------------------------------------------------------------------
+
+def test_prometheus_label_escaping():
+    """_prom_label must escape backslashes, double-quotes, and newlines."""
+    from cbench.cli.serve import _prom_label
+    assert _prom_label('a"b') == 'a\\"b'
+    assert _prom_label("a\nb") == "a\\nb"
+    assert _prom_label("a\\b") == "a\\\\b"
+    assert _prom_label("normal") == "normal"
+
+
+def test_prometheus_text_escapes_labels(tmp_path):
+    """Metric names with double-quotes are escaped in /metrics output."""
+    from cbench.cli.serve import _prometheus_text
+    from cbench.db import ResultsDB, ParseResult
+
+    db = ResultsDB(tmp_path / "test.db")
+    pr = ParseResult(
+        cluster="c1", testset="ts", ident="i1", jobname="xhpl-1ppn-1",
+        benchmark="xhpl", numprocs=1, ppn=1, numnodes=1,
+        status="PASSED",
+        metrics={'gfl"ops': 1.0},
+        metric_units={'gfl"ops': "GFlop/s"},
+    )
+    db.store(pr)
+    text = _prometheus_text(db)
+    # The double-quote in the metric name must be escaped
+    assert '\\"' in text
+    assert 'metric="gfl\\"ops"' in text
