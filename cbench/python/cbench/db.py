@@ -62,6 +62,13 @@ CREATE INDEX IF NOT EXISTS idx_runs_status     ON runs(status);
 CREATE INDEX IF NOT EXISTS idx_runs_parsed_at  ON runs(parsed_at);
 """
 
+# Unique constraint on the natural key — applied separately so existing DBs
+# without duplicate rows can be upgraded without recreating the schema.
+_DEDUP_INDEX_DDL = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_dedup
+    ON runs(cluster, testset, ident, jobname, benchmark);
+"""
+
 
 class ResultsDB:
     def __init__(self, path: str | Path) -> None:
@@ -83,13 +90,32 @@ class ResultsDB:
     def _init(self) -> None:
         with self._conn() as con:
             con.executescript(_DDL)
+        # Apply the dedup index separately — CREATE UNIQUE INDEX fails if the
+        # existing DB already has duplicate rows (pre-dedup data), so we catch
+        # that case and warn rather than crashing.
+        try:
+            with self._conn() as con:
+                con.executescript(_DEDUP_INDEX_DDL)
+        except (sqlite3.OperationalError, sqlite3.IntegrityError):
+            import warnings
+            warnings.warn(
+                f"{self.path} contains duplicate run rows; re-parse or run "
+                "`cbench db deduplicate` to remove them before deduplication "
+                "takes effect.",
+                stacklevel=2,
+            )
 
     def store(self, result: ParseResult) -> int:
-        """Insert a ParseResult and return the new run id."""
+        """Insert or replace a ParseResult and return the run id.
+
+        Idempotent: re-storing a result with the same
+        (cluster, testset, ident, jobname, benchmark) overwrites the previous
+        row and its metrics rather than creating a duplicate.
+        """
         with self._conn() as con:
             cur = con.execute(
                 """
-                INSERT INTO runs
+                INSERT OR REPLACE INTO runs
                     (cluster, testset, ident, jobname, benchmark,
                      numprocs, ppn, numnodes, status, status_detail, parsed_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?)
@@ -243,6 +269,28 @@ class ResultsDB:
 
     def export_json(self, **query_kwargs) -> str:
         return json.dumps(self.query(**query_kwargs), indent=2)
+
+    def deduplicate(self) -> int:
+        """Remove duplicate runs, keeping the most recent per natural key.
+
+        Returns the number of rows deleted.  After deduplication the unique
+        index can be applied by calling _init() again.
+        """
+        with self._conn() as con:
+            cur = con.execute(
+                """
+                DELETE FROM runs
+                WHERE id NOT IN (
+                    SELECT MAX(id)
+                    FROM runs
+                    GROUP BY cluster, testset, ident, jobname, benchmark
+                )
+                """
+            )
+            deleted = cur.rowcount
+        # Re-run init so the dedup index is applied now that duplicates are gone
+        self._init()
+        return deleted
 
     def summary(self) -> dict:
         """Return high-level counts by status."""

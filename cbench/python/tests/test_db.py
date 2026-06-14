@@ -124,3 +124,71 @@ def test_trend_empty_when_no_match(db):
     db.store(_make_result())
     rows = db.trend(benchmark="osubw", metric="nonexistent_metric")
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Deduplication
+# ---------------------------------------------------------------------------
+
+def test_store_is_idempotent(db):
+    """Storing the same natural key twice must not create a duplicate row."""
+    db.store(_make_result(metrics={"unidir_bw": 9000.0}))
+    db.store(_make_result(metrics={"unidir_bw": 9500.0}))  # same key, updated value
+    rows = db.query()
+    assert len(rows) == 1
+    assert rows[0]["metrics"]["unidir_bw"]["value"] == 9500.0
+
+
+def test_store_idempotent_different_benchmark(db):
+    """Two stores with different benchmarks are separate rows, not duplicates."""
+    db.store(_make_result(benchmark="osubw", jobname="osubw-2ppn-16",
+                          metrics={"bw": 9500.0}))
+    db.store(_make_result(benchmark="xhpl", jobname="xhpl-2ppn-16",
+                          metrics={"gflops": 100.0}))
+    rows = db.query()
+    assert len(rows) == 2
+
+
+def test_store_idempotent_metrics_replaced(db):
+    """Re-storing replaces metrics, not accumulates them."""
+    db.store(_make_result(metrics={"bw": 9000.0, "lat": 1.5}))
+    # Second store with fewer metrics — old metrics must be gone
+    db.store(_make_result(metrics={"bw": 9500.0}))
+    rows = db.query()
+    assert len(rows) == 1
+    assert "bw" in rows[0]["metrics"]
+    assert "lat" not in rows[0]["metrics"]
+
+
+def test_deduplicate_removes_older_rows(tmp_path):
+    """deduplicate() keeps most-recent row per natural key."""
+    import sqlite3 as _sqlite3
+    from cbench.db import _DDL
+
+    db_path = tmp_path / "legacy.db"
+    r = _make_result()
+
+    # Simulate a pre-dedup DB: create schema without the unique index,
+    # then insert two rows sharing the same natural key.
+    with _sqlite3.connect(db_path) as con:
+        con.executescript(_DDL)
+        for ts in ("2025-01-01T00:00:00", "2025-06-01T00:00:00"):
+            con.execute(
+                "INSERT INTO runs (cluster,testset,ident,jobname,benchmark,"
+                "numprocs,ppn,numnodes,status,status_detail,parsed_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (r.cluster, r.testset, r.ident, r.jobname, r.benchmark,
+                 r.numprocs, r.ppn, r.numnodes, r.status, r.status_detail, ts),
+            )
+
+    # Opening ResultsDB will warn (can't add unique index over duplicates)
+    import warnings
+    with warnings.catch_warnings(record=True):
+        db = ResultsDB(db_path)
+
+    assert len(db.query(limit=100)) == 2
+    deleted = db.deduplicate()
+    assert deleted == 1
+    rows = db.query(limit=100)
+    assert len(rows) == 1
+    assert rows[0]["parsed_at"].startswith("2025-06-01")
