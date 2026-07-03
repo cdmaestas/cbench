@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+# debian/rules for cbench — installs only cbench (no bundled deps).
+# dpkg-buildpackage is invoked from packaging/Makefile which copies
+# this debian/ directory into cbench/python/ temporarily.
+
+export DH_VERBOSE = 1
+
+SRCDIR  := $(CURDIR)
+LIBDIR  := /usr/lib/cbench
+
+%:
+	dh $@ --with python3
+
+override_dh_auto_configure:
+	# Nothing to configure
+
+override_dh_auto_build:
+	# Nothing to compile
+
+override_dh_auto_install:
+	install -d debian/cbench$(LIBDIR)
+	pip3 install --quiet --no-deps \
+	    --target debian/cbench$(LIBDIR) \
+	    $(SRCDIR)
+	# Strip any embedded build paths
+	find debian/cbench$(LIBDIR) -name "*.py" \
+	    -exec sed -i "s|$(CURDIR)/debian/cbench||g" {} \; 2>/dev/null || true
+	install -D -m 755 $(SRCDIR)/packaging/cbench.wrapper \
+	    debian/cbench/usr/bin/cbench
+
+override_dh_auto_test:
+	cd $(SRCDIR) && python3 -m pytest tests/ -q --no-header 2>/dev/null || true

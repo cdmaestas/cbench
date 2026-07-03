@@ -1,0 +1,6 @@
+#!/bin/sh
+# Wrapper for the cbench CLI installed under /usr/lib/cbench.
+# Sets PYTHONPATH so the bundled (or --target-installed) packages are found,
+# then delegates to the cbench entry point.
+export PYTHONPATH=/usr/lib/cbench${PYTHONPATH:+:$PYTHONPATH}
+exec python3 -m cbench.cli.main "$@"

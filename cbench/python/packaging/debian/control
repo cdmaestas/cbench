@@ -1,0 +1,33 @@
+Source: cbench
+Section: science
+Priority: optional
+Maintainer: cdmaestas <cdmaestas@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-pip,
+               python3-setuptools
+Standards-Version: 4.6.2
+Homepage: https://github.com/cdmaestas/cbench
+
+Package: cbench
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         python3 (>= 3.9),
+         python3-click (>= 8.1),
+         python3-yaml (>= 6.0),
+         python3-rich (>= 13.0),
+         python3-jinja2 (>= 3.1),
+         python3-jsonschema (>= 4.0)
+Suggests: python3-flask
+Description: Cbench HPC benchmarking framework — Python toolchain
+ Cbench is a framework for building, running, and parsing HPC benchmarks
+ across Linux parallel compute clusters. The Python toolchain (v2.0)
+ provides a cbench CLI covering the full benchmark lifecycle:
+ .
+  * Build benchmark software (stream, HPL, IMB, OSU, IOR, NPB, and more)
+  * Generate and submit batch job scripts (SLURM, PBS, LSF, local)
+  * Parse benchmark output into structured results (SQLite + JSON)
+  * Single-node benchmarking suite (SNB) with direct binary invocation
+  * Web dashboard with Prometheus metrics endpoint (optional, needs flask)

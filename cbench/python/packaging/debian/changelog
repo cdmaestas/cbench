@@ -1,0 +1,8 @@
+cbench (2.0.0-1) unstable; urgency=medium
+
+  * Initial v2.0 package release — Python toolchain.
+  * Adds cbench CLI: build, gen-jobs, start-jobs, parse, query,
+    snb, nodehwtest, serve, utils subcommands.
+  * Installs to /usr/lib/cbench/ with /usr/bin/cbench wrapper.
+
+ -- cdmaestas <cdmaestas@gmail.com>  Thu, 03 Jul 2026 00:00:00 +0000
