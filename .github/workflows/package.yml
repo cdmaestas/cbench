@@ -17,12 +17,37 @@ on:
 
 jobs:
   # -------------------------------------------------------------------------
+  # Generate man pages once; all package jobs download and reuse them.
+  # -------------------------------------------------------------------------
+  man:
+    name: Generate man pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate man pages
+        working-directory: cbench/python/packaging
+        run: make man
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
   # fpm builds — bundle all Python deps into the package.
   # Only requires python3 >= 3.9 on the target host; nothing else.
   # -------------------------------------------------------------------------
   fpm:
     name: fpm ${{ matrix.type }}
     runs-on: ubuntu-latest
+    needs: man
     strategy:
       fail-fast: false
       matrix:
@@ -35,11 +60,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restore man pages
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
+
       - name: Install fpm
         run: gem install fpm --no-document
 
       - name: Build ${{ matrix.type }} (fpm)
         working-directory: cbench/python/packaging
+        # stage target skips man generation when _stage/man already exists
         run: make fpm-${{ matrix.type }}
 
       - uses: actions/upload-artifact@v4
@@ -55,6 +87,7 @@ jobs:
   native-rpm:
     name: native RPM (rpmbuild)
     runs-on: ubuntu-latest
+    needs: man
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +95,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Restore man pages
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
 
       - name: Install rpmbuild
         run: sudo apt-get install -y --no-install-recommends rpm
@@ -83,6 +122,7 @@ jobs:
   native-deb:
     name: native DEB (dpkg-buildpackage)
     runs-on: ubuntu-latest
+    needs: man
 
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +130,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Restore man pages
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
 
       - name: Install build and runtime dependencies
         run: |
