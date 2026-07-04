@@ -1,0 +1,131 @@
+name: Build Packages
+
+on:
+  push:
+    branches: [v2.0, main]
+    paths:
+      - "cbench/python/**"
+      - ".github/workflows/package.yml"
+  pull_request:
+    paths:
+      - "cbench/python/**"
+      - ".github/workflows/package.yml"
+  # Allow building packages on any published release, and on demand.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  # -------------------------------------------------------------------------
+  # fpm builds — bundle all Python deps into the package.
+  # Only requires python3 >= 3.9 on the target host; nothing else.
+  # -------------------------------------------------------------------------
+  fpm:
+    name: fpm ${{ matrix.type }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [rpm, deb]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install fpm
+        run: gem install fpm --no-document
+
+      - name: Build ${{ matrix.type }} (fpm)
+        working-directory: cbench/python/packaging
+        run: make fpm-${{ matrix.type }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-fpm-${{ matrix.type }}
+          path: cbench/python/packaging/_dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # native RPM — uses system Python packages for deps; rpmbuild on Ubuntu.
+  # Produces a proper .spec-based RPM suitable for distro repos.
+  # -------------------------------------------------------------------------
+  native-rpm:
+    name: native RPM (rpmbuild)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install rpmbuild
+        run: sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Build RPM (native)
+        working-directory: cbench/python/packaging
+        run: make native-rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-native-rpm
+          path: cbench/python/packaging/_dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # native DEB — uses system Python packages for deps; dpkg-buildpackage.
+  # Produces a proper debian-policy-compliant .deb.
+  # -------------------------------------------------------------------------
+  native-deb:
+    name: native DEB (dpkg-buildpackage)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build and runtime dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            debhelper dh-python python3-all python3-pip python3-setuptools \
+            python3-click python3-yaml python3-rich python3-jinja2 python3-jsonschema
+
+      - name: Build DEB (native)
+        working-directory: cbench/python/packaging
+        run: make native-deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-native-deb
+          path: cbench/python/packaging/_dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # On a published GitHub Release, attach all four packages to the release.
+  # -------------------------------------------------------------------------
+  attach-to-release:
+    name: Attach packages to release
+    needs: [fpm, native-rpm, native-deb]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**
