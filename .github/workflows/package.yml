@@ -10,7 +10,6 @@ on:
     paths:
       - "cbench/python/**"
       - ".github/workflows/package.yml"
-  # Allow building packages on any published release, and on demand.
   release:
     types: [published]
   workflow_dispatch:
@@ -42,7 +41,6 @@ jobs:
 
   # -------------------------------------------------------------------------
   # fpm builds — bundle all Python deps into the package.
-  # Only requires python3 >= 3.9 on the target host; nothing else.
   # -------------------------------------------------------------------------
   fpm:
     name: fpm ${{ matrix.type }}
@@ -59,6 +57,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Set version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          # RPM forbids hyphens in version; replace with dots (e.g. 2.1.0-rc1 → 2.1.0.rc1)
+          echo "VERSION=${TAG//-/.}" >> "$GITHUB_ENV"
 
       - name: Restore man pages
         uses: actions/download-artifact@v4
@@ -94,6 +100,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          RPM_VER="${TAG//-/.}"
+          # Patch Version: field in the spec
+          awk -v v="Version:        $RPM_VER" \
+            '/^Version:/{print v; next} 1' \
+            cbench/python/packaging/cbench.spec > /tmp/_spec \
+            && mv /tmp/_spec cbench/python/packaging/cbench.spec
+
       - name: Restore man pages
         uses: actions/download-artifact@v4
         with:
@@ -128,6 +146,22 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          # Patch Version: in debian/control
+          awk -v v="Version: $TAG" \
+            '/^Version:/{print v; next} 1' \
+            cbench/python/packaging/debian/control > /tmp/_ctrl \
+            && mv /tmp/_ctrl cbench/python/packaging/debian/control
+          # Patch first line of debian/changelog
+          awk -v v="cbench ($TAG-1) unstable; urgency=medium" \
+            'NR==1{print v; next} 1' \
+            cbench/python/packaging/debian/changelog > /tmp/_cl \
+            && mv /tmp/_cl cbench/python/packaging/debian/changelog
+
       - name: Restore man pages
         uses: actions/download-artifact@v4
         with:
@@ -152,8 +186,7 @@ jobs:
           if-no-files-found: error
 
   # -------------------------------------------------------------------------
-  # Sign all RPMs with the project GPG key.
-  # Only runs on published releases; requires the GPG_PRIVATE_KEY secret.
+  # Sign all RPMs with the project GPG key (release builds only).
   # Mirrors the signing pattern used in Scale-GUInstall.
   # -------------------------------------------------------------------------
   sign-rpm:
@@ -213,7 +246,7 @@ jobs:
           if-no-files-found: error
 
   # -------------------------------------------------------------------------
-  # Attach all packages (signed RPMs + DEBs + GPG public key) to the release.
+  # Attach all packages to the release; detect pre-release; clean up old ones.
   # -------------------------------------------------------------------------
   attach-to-release:
     name: Attach packages to release
@@ -248,6 +281,20 @@ jobs:
         run: cp cbench/python/packaging/RPM-GPG-KEY-cbench dist/
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.3.2
         with:
           files: dist/**
+          prerelease: ${{ contains(github.event.release.tag_name, '-') }}
+
+      - name: Delete old releases (keep newest 3)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[3:] | .[].tagName' \
+          | while read -r tag; do
+              echo "Deleting release $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" \
+                --yes --cleanup-tag
+            done
