@@ -1,5 +1,5 @@
 PACKAGE  = cbench
-VERSION  = 2.0.0
+VERSION  ?= 2.0.0
 RELEASE  = 1
 
 # Install paths (on target system)
