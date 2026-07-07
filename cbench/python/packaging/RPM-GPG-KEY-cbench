@@ -1,0 +1,23 @@
+# Replace this file with the exported ASCII-armored GPG public key used to sign
+# cbench RPM packages. Then add the private key as the GPG_PRIVATE_KEY GitHub
+# Actions secret (Settings → Secrets and variables → Actions).
+#
+# To generate a signing key (no passphrase, for CI use):
+#
+#   gpg --batch --gen-key <<EOF
+#   %no-protection
+#   Key-Type: RSA
+#   Key-Length: 4096
+#   Name-Real: Cbench RPM Signing
+#   Name-Email: cbench-signing@example.com
+#   Expire-Date: 0
+#   EOF
+#
+#   KEY_ID=$(gpg --list-secret-keys --keyid-format LONG \
+#     | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+#
+#   # Export public key → commit this file
+#   gpg --export --armor "$KEY_ID" > packaging/RPM-GPG-KEY-cbench
+#
+#   # Export private key → add as GitHub secret GPG_PRIVATE_KEY
+#   gpg --export-secret-keys --armor "$KEY_ID"
