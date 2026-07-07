@@ -1,23 +1,30 @@
-# Replace this file with the exported ASCII-armored GPG public key used to sign
-# cbench RPM packages. Then add the private key as the GPG_PRIVATE_KEY GitHub
-# Actions secret (Settings → Secrets and variables → Actions).
-#
-# To generate a signing key (no passphrase, for CI use):
-#
-#   gpg --batch --gen-key <<EOF
-#   %no-protection
-#   Key-Type: RSA
-#   Key-Length: 4096
-#   Name-Real: Cbench RPM Signing
-#   Name-Email: cbench-signing@example.com
-#   Expire-Date: 0
-#   EOF
-#
-#   KEY_ID=$(gpg --list-secret-keys --keyid-format LONG \
-#     | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
-#
-#   # Export public key → commit this file
-#   gpg --export --armor "$KEY_ID" > packaging/RPM-GPG-KEY-cbench
-#
-#   # Export private key → add as GitHub secret GPG_PRIVATE_KEY
-#   gpg --export-secret-keys --armor "$KEY_ID"
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mQINBGpMcFMBEACymxRK9VF/X7FVjcvjX0ciKaXsaks+Jh2y97l9g2uwyYCvLrXI
+PWueFAXgoZJ4oUysP8H903thIg2Oeyclz7t1krOKYmif1VRJOtZM/rOSpvCYHO4z
+GKKHdKnlJyFewzGk52gwc4QUw8l39+jCA6NT1ZkhgvihrIoaeIg6DYAC762EfEA8
+a4pwt5wZfkdQKZUxgg/sqOW7xoEds9bvDWQG/gnQU32uNFbSnf6AAGSxDMwo2kLM
+zR+/dNAeC2Zea+Dr5RZBksZpBxN+0YAvSCq5zH+CoFVpUi61z0gpcP1MauPFxkdv
+DQQJvWGFD/XsPyS904VCdJPaxCKbmGh6P5Q/jxA/6xPyEW0eMzp1dR6p5wiEKb43
+DJ7/yrnFuYM5V/Dz5NSgHNmoRB5Pigvkp+xXLTiZdBhiePxmdg5ByThUcXsqeUac
+C0kXD5SZDlGSnb9pqwTapHY7UxhZYq+hon2/cO/jRx2Perd9cgZabbjcGdUrvTPW
+LPMqM/nLScOUkiXazs1gWrU8vZuVHrb8vWp95m0X2O6KUu/g8P+oyMQON1a79zSy
+r6SoAZY02rbAdAbWbkVikiH0v4fuJvoAH1Yi0cUuHf5vA0JdlA32UA2g8d0hSlur
+SYSwaLudm76DOkFKR5F/X/9RkHT03jG8sqY0Yb5aTD81D+b7UHWhtwpHawARAQAB
+tDhDYmVuY2ggUlBNIFNpZ25pbmcgPGNiZW5jaC1zaWduaW5nQGNkbWFlc3Rhcy5n
+aXRodWIuY29tPokCbgQTAQgAWBYhBK9VVijlCPoDIJy27NVE3SSGoU/zBQJqTHBT
+GxSAAAAAAAQADm1hbnUyLDIuNSsxLjEyLDAsMwMbLwQFCwkIBwICIgIGFQoJCAsC
+BBYCAwECHgcCF4AACgkQ1UTdJIahT/OdHQ//cc6Tu8QkJhnsyOmuzGYwNWFNgbzT
+85jOH1mHLreDgX51MG4nmwri8Pq4EdLUouv1sFpirsyTMMWo8N1QgwNiboWTCao4
+yGUDEC8hBfOvHHQU8CJCa2RScPG1lG6TcN99SUe7+e4z1dQ0GBes7rJVrBuU/Hgt
+BmSsgYLn9QlxE9gq+3DKj5ckh1xXOkYsxdCzc4gmXycoYy7/tre7vERnDG2N6F3a
+H8Cdq1pv/RcizYotvi2luQGKpo4XmyDFqozuyrjM48tBWW8iCVJi+2KRlQpXUZvW
+7Ic+HZq+E01D+4awZEBVuAFHbBM5NvH+LuHVUCYFGGmEOhfHIdP9kKOrJq8V870D
+W/izyj1s4BhWBd0hL27DJJsogMhTA2TwxuqPtD7+ofjhyGOlw/Qi3Vbt8zfE2jFt
+a9HZa978vTems+xICGr+BP8uqJcKUr8VoXADYG2XaoYNDdw28EXy78ZSv27k0mdb
+rXwMIFomBdDrYEYKWg9o4uB/l25uxJkGRTkzVgu+rrPg1u8OWE9Md0tm5WNWuftm
+QA9x6Qas2BsygvQUSjS1rmLeQdw07etUmO/HnyPSQDZkuToOTdaBAoV+aZSDma5V
+C8mspHhUCwUc8gmR/+2eTxJ/bMgiZRZhafQya079OPyORgSlh1zaDIUS/LpAYJRm
+AT8SwKwkLlF5gaM=
+=OR4r
+-----END PGP PUBLIC KEY BLOCK-----
