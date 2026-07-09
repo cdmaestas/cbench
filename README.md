@@ -45,7 +45,28 @@ The Python toolchain (`cbench/python/`) is a pip-installable package that replac
 - Python 3.9+
 - `click`, `pyyaml`, `rich`, `jinja2`, `jsonschema` (installed automatically)
 
-### Install
+### Install from RPM or DEB (recommended for clusters)
+
+Download the package and GPG public key from the [GitHub Releases page](https://github.com/cdmaestas/cbench/releases).
+
+**RHEL / Rocky / Fedora — with GPG verification (recommended):**
+```bash
+# Import the signing key once, then install
+sudo rpm --import RPM-GPG-KEY-cbench
+sudo dnf install ./cbench-<version>-1.noarch.rpm
+```
+
+**RHEL / Rocky / Fedora — skip GPG check (air-gapped or quick install):**
+```bash
+sudo dnf install --nogpgcheck ./cbench-<version>-1.noarch.rpm
+```
+
+**Ubuntu / Debian:**
+```bash
+sudo apt install ./cbench_<version>-1_all.deb
+```
+
+### Install from source (development)
 
 ```bash
 pip install -e cbench/python/
