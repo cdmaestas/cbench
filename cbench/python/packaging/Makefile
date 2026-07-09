@@ -40,7 +40,7 @@ man:
 	rm -rf "$(MANSTAGE)"
 	mkdir -p "$(STAGEDIR)$(MANDIR)"
 	pip3 install --quiet --no-deps --target "$(MANSTAGE)" "$(SRCDIR)"
-	pip3 install --quiet --target "$(MANSTAGE)" "click-man>=0.8"
+	pip3 install --quiet --target "$(MANSTAGE)" "click-man>=0.4"
 	PYTHONPATH="$(MANSTAGE)" python3 "$(PKGDIR)gen_manpages.py" \
 	    "$(STAGEDIR)$(MANDIR)"
 	gzip -f "$(STAGEDIR)$(MANDIR)"/*.1
