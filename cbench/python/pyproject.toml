@@ -19,7 +19,7 @@ dependencies = [
 cbench = "cbench.cli.main:cli"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov", "click-man>=0.8"]
+dev = ["pytest>=8.0", "pytest-cov", "click-man>=0.4"]
 web = ["flask>=2.0"]
 
 [tool.setuptools.packages.find]
