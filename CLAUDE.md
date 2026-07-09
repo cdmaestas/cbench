@@ -32,7 +32,7 @@ cbench utils run-sizes --maxprocs 512 --pof2
 cbench nodehwtest gen-jobs --nodelist n[1-10] --ident run1
 ```
 
-There is no linter or formatter configured. CI runs `pytest` on Python 3.9–3.12 via `.github/workflows/test.yml` on pushes to `cbench/python/**`.
+There is no linter or formatter configured. CI runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 via `.github/workflows/test.yml` on pushes to `cbench/python/**`. Coverage report is uploaded as an artifact on the Python 3.12 run. Keep coverage above 80% — the CI gate enforces it.
 
 ## Python package architecture (`cbench/python/cbench/`)
 
@@ -53,16 +53,30 @@ Seven modules (openmpi, slurm, torque, mvapich, mpiexec, cray, misc) each expose
 Used exclusively by `cbench nodehwtest parse`. Same auto-registration pattern as benchmark parsers but via `HwTest` base class with `name` and `test_class` class variables. Each `parse(lines: list[str])` returns `dict[str, float | str]`. The output file format uses `CBENCH MARK: MODULE <name>` delimiters — `cli/nodehwtest.py:_parse_run_file()` segments the file and dispatches to the right `HwTest`.
 
 ### 5. Database (`db.py`)
-`ResultsDB` wraps SQLite with WAL mode and FK cascade deletes. Schema: `runs` table + `metrics` table (one row per metric per run). `store(ParseResult)` is idempotent-safe via INSERT OR REPLACE on `(cluster, testset, ident, jobname)`. The DB lives at `$CBENCHTEST/cbench_results.db`.
+`ResultsDB` wraps SQLite with WAL mode and FK cascade deletes. Schema: `runs` table + `metrics` table (one row per metric per run). `store(ParseResult)` is idempotent-safe via `INSERT OR REPLACE` on a `UNIQUE` index of `(cluster, testset, ident, jobname, benchmark)` — re-parsing overwrites rather than duplicating. `deduplicate()` migrates pre-index databases. `trend(benchmark, metric)` returns per-ident averages ordered chronologically. The DB lives at `$CBENCHTEST/cbench_results.db`.
 
 ### 6. CLI (`cli/`)
-Four subgroups wired into `cli/main.py`:
+Six subgroups wired into `cli/main.py`:
 - `gen-jobs` / `start-jobs` / `parse` / `query` — MPI benchmark workflow
-- `nodehwtest gen-jobs` / `start-jobs` / `parse` — single-node hw test workflow  
+- `nodehwtest gen-jobs` / `start-jobs` / `parse` — single-node hw test workflow
+- `snb run` / `report` / `store` / `compare` — single-node benchmark suite
+- `build run` / `build all` / `build list` / `build check` / `build update` — benchmark builder framework
+- `serve` — Flask web dashboard (optional `cbench[web]` extra)
 - `utils run-sizes` / `find-pq` / `find-n` / `npb-procs` — sizing utilities
 
 ### 7. Templates (`templates.py`)
 `_here_to_jinja(text)` converts legacy `TOKEN_HERE` syntax in `*.in` template files to `{{ TOKEN }}` at load time — existing Perl templates work without modification. `RUN_SIZES` is the canonical list of proc counts used across generation and filtering.
+
+### 8. Benchmark builders (`builders/`)
+Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkBuilder` base class provides `fetch()`, `build()`, `check_requires()`, and `update_source()`. `update_source()` calls `git_pull()` from `_util.py` for git-cloned sources; tarball sources always return False. `BuildLock` (in `cli/build.py`) caches successful builds in `<prefix>/build.lock` (JSON) keyed by source URL + SHA-256 config hash. Available builders: `stream`, `imb`, `osu`, `ior`, `hpl`, `hpcc`, `npb`, `amg`, `hpccg`, `mpibench`, `mpigraph`, `graph500`, `bonnie`, `iozone`, `fio`.
+
+To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`, set `name`, `description`, `source_url`, implement `fetch()` and `build()`, then import in `builders/__init__.py`.
+
+### 9. Single-node benchmarks (`cli/snb.py`)
+`cbench snb run` executes stream, cachebench, dgemm, mpistreams, linpack, npb, fio, hpcc directly (no job scheduler). Linpack uses `_generate_hpl_dat()` to size HPL.dat to ~50% memory; output parsed by `XhplParser`. NPB runs `EP.B.x` and `CG.B.x`, appending to a single `.npb.out` file; output split by "NAS Parallel Benchmarks" sections and parsed by `NpbParser`. `--remote NODE` dispatches via ssh/pdsh using `remotecmd_method` from `cluster.yaml`; node name is validated (rejects `/`, `\\`, `..`, spaces). `--remote-cbench PATH` sets the cbench binary path on the remote.
+
+### 10. Web dashboard (`cli/serve.py`)
+Flask app (optional `cbench[web]`). Routes: `/` HTML dashboard, `/api/summary`, `/api/results`, `/api/trend`, `/metrics` (Prometheus text format), `/static/<file>` (local assets). `--no-cdn` avoids CDN; `--assets-dir` serves local Bootstrap/Chart.js. Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment (XSS prevention). Prometheus label values are escaped via `_prom_label()` (`"` → `\"`, `\n` → `\\n`).
 
 ## Key environment variables
 
@@ -71,6 +85,17 @@ Four subgroups wired into `cli/main.py`:
 | `CBENCHOME` | Root of the cbench installation (contains `cluster.yaml`, `perllib/`, `templates/`) |
 | `CBENCHTEST` | Root of the test output tree; also searched for `cluster.yaml` |
 | `CBENCHCLUSTER` | Selects a named cluster section within `cluster.yaml` |
+
+## Security baseline
+
+These decisions are intentional — do not re-flag as vulnerabilities:
+- `--mpi-cmd`, `--remote-cbench`, `--assets-dir` are CLI flags controlled by the cluster operator. They are trusted input; no validation beyond what the OS enforces.
+- `send_from_directory(assets_dir, filename)` — Flask's `safe_join` prevents path traversal within the dir; the dir itself is operator-chosen at startup.
+- Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment.
+- Prometheus label values are escaped via `_prom_label()` in `cli/serve.py`.
+- Tarball downloads use a zip-slip guard (validates every member path before `extractall`).
+- `cluster_name` in `cluster.yaml` is restricted to `[A-Za-z0-9_-]+` by JSON Schema validation.
+- `--node`/`--remote` hostname arguments reject `/`, `\\`, `..`, and spaces.
 
 ## Adding a benchmark parser (checklist)
 
