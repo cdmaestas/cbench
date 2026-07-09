@@ -1,0 +1,300 @@
+name: Build Packages
+
+on:
+  push:
+    branches: [v2.0, main]
+    paths:
+      - "cbench/python/**"
+      - ".github/workflows/package.yml"
+  pull_request:
+    paths:
+      - "cbench/python/**"
+      - ".github/workflows/package.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Generate man pages once; all package jobs download and reuse them.
+  # -------------------------------------------------------------------------
+  man:
+    name: Generate man pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate man pages
+        working-directory: cbench/python/packaging
+        run: make man
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # fpm builds — bundle all Python deps into the package.
+  # -------------------------------------------------------------------------
+  fpm:
+    name: fpm ${{ matrix.type }}
+    runs-on: ubuntu-latest
+    needs: man
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [rpm, deb]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          # RPM forbids hyphens in version; replace with dots (e.g. 2.1.0-rc1 → 2.1.0.rc1)
+          echo "VERSION=${TAG//-/.}" >> "$GITHUB_ENV"
+
+      - name: Restore man pages
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
+
+      - name: Install fpm
+        run: gem install fpm --no-document
+
+      - name: Build ${{ matrix.type }} (fpm)
+        working-directory: cbench/python/packaging
+        run: make fpm-${{ matrix.type }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-fpm-${{ matrix.type }}
+          path: cbench/python/packaging/_dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # native RPM — uses system Python packages for deps; rpmbuild on Ubuntu.
+  # -------------------------------------------------------------------------
+  native-rpm:
+    name: native RPM (rpmbuild)
+    runs-on: ubuntu-latest
+    needs: man
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          RPM_VER="${TAG//-/.}"
+          # Patch Version: field in the spec
+          awk -v v="Version:        $RPM_VER" \
+            '/^Version:/{print v; next} 1' \
+            cbench/python/packaging/cbench.spec > /tmp/_spec \
+            && mv /tmp/_spec cbench/python/packaging/cbench.spec
+
+      - name: Restore man pages
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
+
+      - name: Install rpmbuild
+        run: sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Build RPM (native)
+        working-directory: cbench/python/packaging
+        run: make native-rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-native-rpm
+          path: cbench/python/packaging/_dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # native DEB — uses system Python packages for deps; dpkg-buildpackage.
+  # -------------------------------------------------------------------------
+  native-deb:
+    name: native DEB (dpkg-buildpackage)
+    runs-on: ubuntu-latest
+    needs: man
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          # Patch Version: in debian/control
+          awk -v v="Version: $TAG" \
+            '/^Version:/{print v; next} 1' \
+            cbench/python/packaging/debian/control > /tmp/_ctrl \
+            && mv /tmp/_ctrl cbench/python/packaging/debian/control
+          # Patch first line of debian/changelog
+          awk -v v="cbench ($TAG-1) unstable; urgency=medium" \
+            'NR==1{print v; next} 1' \
+            cbench/python/packaging/debian/changelog > /tmp/_cl \
+            && mv /tmp/_cl cbench/python/packaging/debian/changelog
+
+      - name: Restore man pages
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-manpages
+          path: cbench/python/packaging/_stage/usr/share/man/
+
+      - name: Install build and runtime dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            debhelper dh-python python3-all python3-pip python3-setuptools \
+            python3-click python3-yaml python3-rich python3-jinja2 python3-jsonschema
+
+      - name: Build DEB (native)
+        working-directory: cbench/python/packaging
+        run: make native-deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-native-deb
+          path: cbench/python/packaging/_dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # Sign all RPMs with the project GPG key (release builds only).
+  # Mirrors the signing pattern used in Scale-GUInstall.
+  # -------------------------------------------------------------------------
+  sign-rpm:
+    name: Sign RPMs
+    runs-on: ubuntu-latest
+    needs: [fpm, native-rpm]
+    if: github.event_name == 'release'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rpmsign
+        run: sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Download fpm RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-fpm-rpm
+          path: dist/
+
+      - name: Download native RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-native-rpm
+          path: dist/
+
+      - name: Import GPG signing key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null \
+            | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          echo "GPG_KEY_ID=$KEY_ID" >> "$GITHUB_ENV"
+          mkdir -p ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent
+          printf '%%_gpg_name %s\n%%__gpg /usr/bin/gpg\n%%__gpg_sign_cmd %%{__gpg} gpg --batch --no-verbose --no-armor --no-secmem-warning -u "%%{_gpg_name}" -sbo %%{__signature_filename} --digest-algo sha256 %%{__plaintext_filename}\n' \
+            "$KEY_ID" > ~/.rpmmacros
+
+      - name: Sign RPMs
+        run: |
+          for rpm in dist/*.rpm; do
+            rpmsign --addsign "$rpm"
+            echo "Signed: $rpm"
+          done
+
+      - name: Verify RPM signatures
+        run: |
+          rpm --import cbench/python/packaging/RPM-GPG-KEY-cbench
+          for rpm in dist/*.rpm; do
+            rpm --checksig "$rpm" && echo "OK: $rpm"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbench-signed-rpms
+          path: dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # Attach all packages to the release; detect pre-release; clean up old ones.
+  # -------------------------------------------------------------------------
+  attach-to-release:
+    name: Attach packages to release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    needs: [sign-rpm, native-deb, fpm]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download signed RPMs
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-signed-rpms
+          path: dist/
+
+      - name: Download fpm DEB
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-fpm-deb
+          path: dist/
+
+      - name: Download native DEB
+        uses: actions/download-artifact@v4
+        with:
+          name: cbench-native-deb
+          path: dist/
+
+      - name: Copy GPG public key into dist/
+        run: cp cbench/python/packaging/RPM-GPG-KEY-cbench dist/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2.3.2
+        with:
+          files: dist/**
+          prerelease: ${{ contains(github.event.release.tag_name, '-') }}
+
+      - name: Delete old releases (keep newest 3)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[3:] | .[].tagName' \
+          | while read -r tag; do
+              echo "Deleting release $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" \
+                --yes --cleanup-tag
+            done
