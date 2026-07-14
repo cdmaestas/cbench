@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """hw_test parser: omdiag — Dell OpenManage diagnostics."""
 
 import re
