@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """hw_test parser: numa_mem — NUMA memory bandwidth (STREAM)."""
 
 import re

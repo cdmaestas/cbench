@@ -40,13 +40,13 @@ cbench/
 │   └── *.py            # stream, imb, osu, ior, hpl, npb,
 │                       # hpcc, amg, hpccg, mpibench, mpigraph, graph500, bonnie, iozone, fio
 └── cli/
-    ├── main.py         # Top-level click group; wires in all subgroups
+    ├── main.py         # Top-level click group; gen-jobs | start-jobs | parse | query | make-skel | rm-failed
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
     ├── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
     ├── diag.py         # cbench diag: apply parse filters, aggregate error counts
-    ├── snb.py          # cbench snb: single-node benchmark run and report
-    ├── build.py        # cbench build: list | run <name> | all
-    └── main.py         # also houses: make-skel, rm-failed (single-command tools)
+    ├── snb.py          # cbench snb: run | report | store | compare (single-node benchmarks)
+    ├── build.py        # cbench build: list | run <name> | all | check | update
+    └── serve.py        # cbench serve: Flask web dashboard + Prometheus /metrics endpoint
 ```
 
 ## Adding a new parser
@@ -93,7 +93,11 @@ print(db.export_json(cluster="mycluster"))
 ## Running tests
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -v --cov=cbench --cov-report=term-missing --cov-fail-under=80
 ```
 
-431 tests covering config loading, all 28 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, build, and rm-failed.
+498 tests covering config loading, all 34 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, build, rm-failed, and the web dashboard/Prometheus endpoints. CI enforces ≥80% coverage.
+
+## Python version
+
+Requires Python 3.9+. All type annotations use `from __future__ import annotations` for 3.9 compatibility.

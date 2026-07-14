@@ -352,7 +352,9 @@ def start_jobs(
                 subprocess.Popen(cmd, shell=True)
                 console.print(f"[green]Backgrounded remote execution on {len(nodes)} nodes[/green]")
             else:
-                subprocess.run(cmd, shell=True)
+                result = subprocess.run(cmd, shell=True)
+                if result.returncode != 0:
+                    console.print(f"[yellow]Warning: remote pdsh command exited {result.returncode}[/yellow]")
 
 
 def _expand_pdsh(spec: str) -> list[str]:

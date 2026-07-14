@@ -63,7 +63,9 @@ def git_pull(dest: Path, *, dry_run: bool) -> bool:
         ["git", "rev-parse", "HEAD"], cwd=dest, capture_output=True, text=True
     ).stdout.strip()
     console.print(f"  [cyan]git pull[/cyan] in {dest}")
-    subprocess.run(["git", "pull", "--ff-only"], cwd=dest, check=False)
+    result = subprocess.run(["git", "pull", "--ff-only"], cwd=dest)
+    if result.returncode != 0:
+        raise RuntimeError(f"git pull --ff-only failed in {dest} (exit {result.returncode})")
     after = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=dest, capture_output=True, text=True
     ).stdout.strip()

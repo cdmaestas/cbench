@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """hw_test parser: matmult — matrix multiply benchmark."""
 
 import re

@@ -52,7 +52,13 @@ class BuildLock:
         if self.path.exists():
             try:
                 self._data = json.loads(self.path.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                import warnings
+                warnings.warn(
+                    f"build.lock at {self.path} is corrupt or unreadable ({exc}); "
+                    "starting with an empty cache — re-run to rebuild.",
+                    stacklevel=3,
+                )
                 self._data = {}
 
     @staticmethod

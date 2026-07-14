@@ -755,6 +755,10 @@ def query_cmd(
     # -- prometheus output --
     if output == "prometheus":
         from datetime import datetime as _dt
+
+        def _prom_label(s: str) -> str:
+            return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
         lines = [
             "# HELP cbench_metric_value Cbench benchmark metric value",
             "# TYPE cbench_metric_value gauge",
@@ -769,11 +773,11 @@ def query_cmd(
                     pass
             for m_name, mv in row.get("metrics", {}).items():
                 labels = ",".join([
-                    f'benchmark="{row["benchmark"]}"',
-                    f'cluster="{row["cluster"]}"',
-                    f'testset="{row["testset"]}"',
-                    f'ident="{row["ident"]}"',
-                    f'metric="{m_name}"',
+                    f'benchmark="{_prom_label(row["benchmark"])}"',
+                    f'cluster="{_prom_label(row["cluster"])}"',
+                    f'testset="{_prom_label(row["testset"])}"',
+                    f'ident="{_prom_label(row["ident"])}"',
+                    f'metric="{_prom_label(m_name)}"',
                 ])
                 line = f"cbench_metric_value{{{labels}}} {mv['value']}"
                 if ts_ms:
