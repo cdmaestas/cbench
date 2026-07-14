@@ -70,7 +70,9 @@ def _runcmd(
     mode = "w" if overwrite else "a"
     with open(outfile, mode) as fh:
         use_shell = isinstance(cmd, str)
-        subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd)
+        result = subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd)
+    if result.returncode != 0 and log_fh:
+        _logmsg(log_fh, f"WARNING: command exited {result.returncode}: {display}")
 
 
 # ---------------------------------------------------------------------------
@@ -573,10 +575,12 @@ def run_cmd(
                             _logmsg(log, f"DRYRUN: OMP_NUM_THREADS={numcores} {np2} -i {iters} -s {n}")
                         else:
                             with open(out("nodeperf2"), "a") as fh:
-                                subprocess.run(
+                                r = subprocess.run(
                                     [str(np2), "-i", str(iters), "-s", str(n)],
                                     env=env, stdout=fh, stderr=subprocess.STDOUT,
                                 )
+                            if r.returncode != 0:
+                                _logmsg(log, f"WARNING: nodeperf2 exited {r.returncode} (n={n})")
                     n = max(n + 1, int(n * 1.5))
             else:
                 _logmsg(log, f"WARNING: nodeperf2-nompi not found in {binpath_p}")
@@ -596,10 +600,12 @@ def run_cmd(
                     else:
                         with open(out("mpistreams"), "a") as fh:
                             fh.write(f"{marker}\n")
-                            subprocess.run(
+                            r = subprocess.run(
                                 shlex.split(mpi_cmd) + ["-n", str(np), str(stream_mpi)],
                                 shell=False, stdout=fh, stderr=subprocess.STDOUT,
                             )
+                        if r.returncode != 0:
+                            _logmsg(log, f"WARNING: mpistreams exited {r.returncode} (np={np})")
             else:
                 _logmsg(log, f"WARNING: stream-mpi not found at {stream_mpi}")
 

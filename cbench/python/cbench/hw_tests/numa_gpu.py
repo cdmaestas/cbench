@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """hw_test parser: numa_gpu — NUMA GPU bandwidth (SHOC)."""
 
 import re

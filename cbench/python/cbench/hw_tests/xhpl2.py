@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """hw_test parser: xhpl2 — single-node HP Linpack 2.0."""
 
 import re
