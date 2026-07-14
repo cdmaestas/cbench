@@ -73,7 +73,7 @@ jobs:
           path: cbench/python/packaging/_stage/usr/share/man/
 
       - name: Install fpm
-        run: gem install fpm --no-document
+        run: sudo gem install fpm --no-document
 
       - name: Build ${{ matrix.type }} (fpm)
         working-directory: cbench/python/packaging
@@ -119,7 +119,9 @@ jobs:
           path: cbench/python/packaging/_stage/usr/share/man/
 
       - name: Install rpmbuild
-        run: sudo apt-get install -y --no-install-recommends rpm
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends rpm python3-dev
 
       - name: Build RPM (native)
         working-directory: cbench/python/packaging
@@ -172,7 +174,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            debhelper dh-python python3-all python3-pip python3-setuptools \
+            build-essential debhelper dh-python python3-all python3-pip python3-setuptools \
             python3-click python3-yaml python3-rich python3-jinja2 python3-jsonschema
 
       - name: Build DEB (native)

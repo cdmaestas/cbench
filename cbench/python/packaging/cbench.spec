@@ -6,7 +6,6 @@ License:        GPLv2
 URL:            https://github.com/cdmaestas/cbench
 BuildArch:      noarch
 
-BuildRequires:  python3-devel
 BuildRequires:  python3-pip
 
 # Runtime: use distro-provided Python packages rather than bundling.
