@@ -40,7 +40,7 @@ def _testset_path(cbenchtest: str) -> Path:
 def _ident_path(cbenchtest: str, ident: str) -> Path:
     base = _testset_path(cbenchtest)
     resolved = (base / ident).resolve()
-    if not str(resolved).startswith(str(base.resolve())):
+    if not resolved.is_relative_to(base.resolve()):
         raise click.UsageError(
             f"Path traversal detected: ident '{ident}' escapes nodehwtest directory"
         )
@@ -578,14 +578,14 @@ def parse_cmd(
 
         if save_targets:
             tfile = (ident_dir / save_targets).resolve()
-            if not str(tfile).startswith(str(ident_dir.resolve())):
+            if not tfile.is_relative_to(ident_dir.resolve()):
                 raise click.UsageError(f"--save-targets path escapes the ident directory: {tfile}")
             _save_targets(tfile, targets, len(nodehash), total_iterations)
             console.print(f"[cyan]Saved target values to {tfile}[/cyan]")
     else:
         tfile_name = load_targets or "target_hw_values"
         tfile = (ident_dir / tfile_name).resolve()
-        if not str(tfile).startswith(str(ident_dir.resolve())):
+        if not tfile.is_relative_to(ident_dir.resolve()):
             raise click.UsageError(f"--load-targets path escapes the ident directory: {tfile}")
         targets = _load_targets(tfile)
         if targets:
