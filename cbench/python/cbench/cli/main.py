@@ -769,8 +769,11 @@ def query_cmd(
                 try:
                     dt = _dt.fromisoformat(row["parsed_at"].replace("Z", "+00:00"))
                     ts_ms = str(int(dt.timestamp() * 1000))
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    raise AssertionError(
+                        f"Corrupt parsed_at timestamp {row['parsed_at']!r} in results DB "
+                        f"(benchmark={row['benchmark']}, ident={row['ident']}): {e}"
+                    ) from e
             for m_name, mv in row.get("metrics", {}).items():
                 labels = ",".join([
                     f'benchmark="{_prom_label(row["benchmark"])}"',

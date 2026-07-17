@@ -51,8 +51,10 @@ def _scan_file(
     """Return list of (filename, error_type, src, dst) tuples for a single file."""
     try:
         text = path.read_text(errors="replace")
-    except OSError:
-        return []
+    except OSError as e:
+        # An unreadable file must not be reported as clean — surface it as a
+        # scan hit so it shows up in the diagnosis output.
+        return [(path.name, f"UNREADABLE ({e})", None, None)]
     hits = []
     for msg in apply_filters(filters, text):
         error_type, src, dst = _classify(msg)

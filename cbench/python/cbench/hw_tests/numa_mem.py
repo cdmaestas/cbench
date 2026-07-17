@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """hw_test parser: numa_mem — NUMA memory bandwidth (STREAM)."""
+
+from __future__ import annotations
 
 import re
 from collections import defaultdict
@@ -33,17 +33,16 @@ class NumaMemHwTest(HwTest):
             if m:
                 mem_location = m.group(1)
 
-            m = re.search(r"(stream-\S+)$", line)
-            if m:
+            if m := re.search(r"(stream-\S+)$", line):
                 bin_name = m.group(1)
-            elif re.search(r"Copy:\s*(\d+)", line):
-                copy = float(re.search(r"Copy:\s*(\d+)", line).group(1))  # type: ignore[union-attr]
-            elif re.search(r"Scale:\s*(\d+)", line):
-                scale = float(re.search(r"Scale:\s*(\d+)", line).group(1))  # type: ignore[union-attr]
-            elif re.search(r"Add:\s*(\d+)", line):
-                add = float(re.search(r"Add:\s*(\d+)", line).group(1))  # type: ignore[union-attr]
-            elif re.search(r"Triad:\s*(\d+)", line):
-                triad = float(re.search(r"Triad:\s*(\d+)", line).group(1))  # type: ignore[union-attr]
+            elif m := re.search(r"Copy:\s*(\d+)", line):
+                copy = float(m.group(1))
+            elif m := re.search(r"Scale:\s*(\d+)", line):
+                scale = float(m.group(1))
+            elif m := re.search(r"Add:\s*(\d+)", line):
+                add = float(m.group(1))
+            elif m := re.search(r"Triad:\s*(\d+)", line):
+                triad = float(m.group(1))
             elif "Solution Validates" in line and cpu_location and mem_location and bin_name:
                 loc = f"{cpu_location}_{mem_location}_{bin_name}"
                 for metric, val in (("copy", copy), ("scale", scale), ("add", add), ("triad", triad)):

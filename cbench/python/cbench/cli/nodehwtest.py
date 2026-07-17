@@ -147,21 +147,28 @@ def _load_targets(target_file: Path) -> dict[str, dict[str, float]]:
     targets: dict[str, dict[str, float]] = {}
     if not target_file.exists():
         return targets
-    for line in target_file.read_text().splitlines():
+    for lineno, line in enumerate(target_file.read_text().splitlines(), start=1):
         if line.startswith("#") or not line.strip():
             continue
         parts = line.split(",")
-        if len(parts) >= 5:
-            key = parts[0].strip()
-            try:
-                targets[key] = {
-                    "mean": float(parts[1]),
-                    "max": float(parts[2]),
-                    "min": float(parts[3]),
-                    "stddev": float(parts[4]),
-                }
-            except (ValueError, IndexError):
-                pass
+        if len(parts) < 5:
+            raise AssertionError(
+                f"Corrupt target values file {target_file}:{lineno}: "
+                f"expected >=5 comma-separated fields, got {len(parts)}: {line!r}"
+            )
+        key = parts[0].strip()
+        try:
+            targets[key] = {
+                "mean": float(parts[1]),
+                "max": float(parts[2]),
+                "min": float(parts[3]),
+                "stddev": float(parts[4]),
+            }
+        except ValueError as e:
+            raise AssertionError(
+                f"Corrupt target values file {target_file}:{lineno}: "
+                f"non-numeric field in {line!r}: {e}"
+            ) from e
     return targets
 
 
@@ -326,9 +333,17 @@ def start_jobs(
                     cmd_parts += shlex.split(batchargs)
                 cmd_parts.append(str(script_path))
                 try:
-                    subprocess.run(cmd_parts, shell=False, check=False)
-                except Exception as e:
-                    console.print(f"[yellow]Warning: could not submit {node}: {e}[/yellow]")
+                    result = subprocess.run(cmd_parts, shell=False, check=False)
+                except OSError as e:
+                    raise AssertionError(
+                        f"Failed to invoke batch submit command "
+                        f"{' '.join(cmd_parts)!r} for node {node}: {e}"
+                    ) from e
+                if result.returncode != 0:
+                    raise AssertionError(
+                        f"Batch submit for node {node} exited "
+                        f"{result.returncode}: {' '.join(cmd_parts)}"
+                    )
             else:
                 console.print(f"  [dim]Would submit: {script_path}[/dim]")
             submitted += 1
