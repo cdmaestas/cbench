@@ -71,8 +71,14 @@ def _validate_config(data: dict, source: Path) -> None:
     """Validate raw YAML data against _SCHEMA and raise ConfigError on failure."""
     try:
         import jsonschema
-    except ImportError:
-        return  # graceful degradation if jsonschema is somehow absent
+    except ImportError as e:
+        # jsonschema is a hard dependency (pyproject.toml); if it's missing the
+        # install is broken and silently skipping validation would let invalid
+        # cluster.yaml files through unchecked.
+        raise AssertionError(
+            "jsonschema is not installed — cluster.yaml validation cannot run. "
+            "Reinstall the package: pip install -e cbench/python"
+        ) from e
 
     validator = jsonschema.Draft7Validator(_SCHEMA)
     errors = sorted(validator.iter_errors(data), key=lambda e: list(e.absolute_path))

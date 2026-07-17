@@ -71,8 +71,12 @@ def _runcmd(
     with open(outfile, mode) as fh:
         use_shell = isinstance(cmd, str)
         result = subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd)
-    if result.returncode != 0 and log_fh:
-        _logmsg(log_fh, f"WARNING: command exited {result.returncode}: {display}")
+    if result.returncode != 0:
+        msg = f"WARNING: command exited {result.returncode}: {display}"
+        if log_fh:
+            _logmsg(log_fh, msg)
+        else:
+            console.print(f"[yellow]{msg}[/yellow]")
 
 
 # ---------------------------------------------------------------------------
@@ -500,8 +504,7 @@ def run_cmd(
     ident_dir.mkdir(parents=True, exist_ok=True)
 
     cbenchome = os.environ.get("CBENCHOME", ".")
-    binpath = binpath or os.path.join(cbenchome, "bin", "hwtests")
-    binpath_p = Path(binpath)
+    binpath_p = Path(binpath) if binpath else Path(cbenchome) / "bin" / "hwtests"
 
     logfile = destdir_p / f"snb.{hostname}.{ident}.log"
 
@@ -712,12 +715,12 @@ def run_cmd(
                     for tmp in fio_dir.glob("*"):
                         try:
                             tmp.unlink()
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            _logmsg(log, f"WARNING: could not remove fio temp file {tmp}: {e}")
                     try:
                         fio_dir.rmdir()
-                    except OSError:
-                        pass
+                    except OSError as e:
+                        _logmsg(log, f"WARNING: could not remove fio temp dir {fio_dir}: {e}")
             else:
                 _logmsg(log, "WARNING: fio not found on PATH or in binpath")
 
