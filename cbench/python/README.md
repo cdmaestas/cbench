@@ -96,7 +96,31 @@ print(db.export_json(cluster="mycluster"))
 python -m pytest tests/ -v --cov=cbench --cov-report=term-missing --cov-fail-under=80
 ```
 
-498 tests covering config loading, all 34 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, build, rm-failed, and the web dashboard/Prometheus endpoints. CI enforces ≥80% coverage.
+500 tests covering config loading, all 34 MPI parsers, parse filters, 27 nodehwtest hw_test parsers, the SQLite store, template substitution, sizing utilities, diag, snb, build, rm-failed, and the web dashboard/Prometheus endpoints. CI enforces ≥80% coverage.
+
+## Linting and git hooks
+
+Ruff is configured in `pyproject.toml` (correctness + security rules: F, E, B, S).
+Pre-commit hooks live in `.pre-commit-config.yaml` at the repo root:
+
+```bash
+pip install pre-commit
+pre-commit install --install-hooks -t pre-commit -t pre-push   # from the repo root
+```
+
+- **pre-commit**: ruff (with autofix), YAML checks, private-key detection, whitespace fixers
+- **pre-push**: the full pytest suite
+- **CI**: `.github/workflows/security.yml` runs ruff + bandit + pip-audit on every push/PR touching `cbench/python/`
+
+## Error behavior
+
+Failures are loud by design. Conditions that indicate corrupt state raise
+`AssertionError` instead of being silently skipped: corrupt `target_hw_values`
+files, malformed `parsed_at` timestamps in the results DB, failed batch
+submissions, and a missing `jsonschema` install (which would otherwise skip
+`cluster.yaml` validation entirely). Benchmark *output* parsing remains
+tolerant — unparseable lines in third-party benchmark output are skipped, as
+that output is inherently messy.
 
 ## Python version
 
