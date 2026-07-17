@@ -117,7 +117,7 @@ def diag_cmd(
         ident = ident or f"{cfg.cluster_name}1"
         base = Path(cbenchtest).resolve()
         ident_dir = (base / testset / ident).resolve()
-        if not str(ident_dir).startswith(str(base)):
+        if not ident_dir.is_relative_to(base):
             raise click.UsageError(
                 "Path traversal detected: testset/ident escapes CBENCHTEST"
             )

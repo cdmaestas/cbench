@@ -35,7 +35,7 @@ def _safe_path(base: str, *parts: str) -> Path:
     """Join parts onto base and raise UsageError if the result escapes base."""
     resolved = (Path(base).joinpath(*parts)).resolve()
     base_resolved = Path(base).resolve()
-    if not str(resolved).startswith(str(base_resolved)):
+    if not resolved.is_relative_to(base_resolved):
         raise click.UsageError(
             f"Path traversal detected: '{'/'.join(parts)}' escapes '{base}'"
         )
