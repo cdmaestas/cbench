@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cbench.builders import BenchmarkBuilder, BuildConfig
-from cbench.builders._util import console, run, require, git_clone, install_bins
+from cbench.builders._util import run, require, git_clone, install_bins
 
 _GIT_URL = "https://github.com/intel/mpi-benchmarks.git"
 

@@ -1,6 +1,5 @@
 """Tests for cbench.utils and the utils CLI subcommands."""
 
-import pytest
 from click.testing import CliRunner
 from cbench.cli.main import cli
 from cbench.utils import (
@@ -186,7 +185,7 @@ def test_cli_run_sizes_newline():
     result = runner.invoke(cli, ["utils", "run-sizes", "--maxprocs", "8", "--pof2", "--newline"])
     assert result.exit_code == 0
     lines = result.output.strip().splitlines()
-    assert all(is_power_of_two(int(l)) for l in lines)
+    assert all(is_power_of_two(int(ln)) for ln in lines)
 
 def test_cli_find_pq():
     result = runner.invoke(cli, ["utils", "find-pq", "--nprocs", "16"])

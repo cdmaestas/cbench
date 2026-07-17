@@ -8,7 +8,6 @@ Subcommands:
 
 from __future__ import annotations
 
-import math
 import os
 import re
 import shlex
@@ -352,22 +351,22 @@ def start_jobs(
         console.print(f"[green]{action} {submitted} nodehwtest batch jobs[/green]")
 
     elif remote:
-        # Run via pdsh — each node name is shell-quoted; env vars are quoted too
-        node_str = ",".join(shlex.quote(n) for n in sorted(nodes))
+        # Run via pdsh. No local shell is involved (argv list, shell=False);
+        # the remote command string is still shell-parsed by the remote side,
+        # so env var values are shell-quoted.
         env_prefix = (
             f"export CBENCHOME={shlex.quote(cbenchome)}; "
             f"export CBENCHTEST={shlex.quote(cbenchtest)};"
         )
-        remote_cmd = shlex.quote(f"{env_prefix} {node_hw_test_cmd}")
-        cmd = f"pdsh -w {node_str} {remote_cmd}"
+        argv = ["pdsh", "-w", ",".join(sorted(nodes)), f"{env_prefix} {node_hw_test_cmd}"]
         if dry_run:
-            console.print(f"[dim]Would run: {cmd}[/dim]")
+            console.print(f"[dim]Would run: {' '.join(shlex.quote(a) for a in argv)}[/dim]")
         else:
             if background:
-                subprocess.Popen(cmd, shell=True)
+                subprocess.Popen(argv)
                 console.print(f"[green]Backgrounded remote execution on {len(nodes)} nodes[/green]")
             else:
-                result = subprocess.run(cmd, shell=True)
+                result = subprocess.run(argv)
                 if result.returncode != 0:
                     console.print(f"[yellow]Warning: remote pdsh command exited {result.returncode}[/yellow]")
 
@@ -405,7 +404,7 @@ def _build_batch_script(cfg, node: str, jobname: str, nodecmd: str, ident: str, 
         lines += [
             f"#SBATCH --job-name={jobname}",
             f"#SBATCH -w {node}",
-            f"#SBATCH --nodes=1",
+            "#SBATCH --nodes=1",
             f"#SBATCH --time={cfg.default_walltime}",
         ]
     elif method in ("torque", "pbspro"):
@@ -476,7 +475,7 @@ def parse_cmd(
         console.print(f"[red]Identifier directory not found: {ident_dir}[/red]")
         raise SystemExit(1)
 
-    console.print(f"[green]Cbench nodehwtest output parser[/green]")
+    console.print("[green]Cbench nodehwtest output parser[/green]")
     console.print(f"  Parsing identifier: {ident}")
     if characterize:
         console.print("  Running CHARACTERIZE mode")
@@ -508,7 +507,6 @@ def parse_cmd(
         runs = node_runs[node]
         if not runs:
             continue
-        max_run = max(runs.keys())
 
         if only_run is not None:
             run_ids = [only_run] if only_run in runs else []
@@ -548,7 +546,7 @@ def parse_cmd(
     if characterize:
         # aggregate across all nodes
         all_vals: dict[str, list[float]] = {}
-        for node, metrics in nodehash.items():
+        for metrics in nodehash.values():
             for k, vals in metrics.items():
                 all_vals.setdefault(k, []).extend(vals)
 
@@ -615,7 +613,6 @@ def parse_cmd(
                 if t["stddev"] == 0:
                     continue
                 if delta >= 2 * t["stddev"]:
-                    sign = "+" if val > t["mean"] else "-"
                     pct = (delta / t["stddev"]) * 100
                     outliers.append((node, k, val, t["mean"], delta, pct, t["stddev"], len(vals)))
 
@@ -628,7 +625,7 @@ def parse_cmd(
                 tbl.add_column("Expected", justify="right")
                 tbl.add_column("Delta%", justify="right")
                 tbl.add_column("StdDev", justify="right")
-                for node, k, actual, good, delta, pct, stddev, n in outliers:
+                for node, k, actual, good, _delta, pct, stddev, _n in outliers:
                     tbl.add_row(
                         node, k,
                         f"{actual:.4f}", f"{good:.4f}",
@@ -651,7 +648,7 @@ def parse_cmd(
         vals = list(node_iterations.values())
         if len(vals) >= 2:
             mean = statistics.mean(vals)
-            console.print(f"\n[green]Iteration analysis:[/green]")
+            console.print("\n[green]Iteration analysis:[/green]")
             console.print(f"  Mean: {mean:.2f}  Min: {min(vals)}  Max: {max(vals)}")
 
     # -- store to DB --

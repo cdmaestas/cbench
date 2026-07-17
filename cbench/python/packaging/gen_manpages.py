@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("click-man is not installed. Run: pip install click-man>=0.8")
 
-from cbench.cli.main import cli
+from cbench.cli.main import cli  # noqa: E402 — deliberately after the click-man check
 
 write_man_pages("cbench", cli, target_dir=str(target))
 print(f"Man pages written to {target}/")

@@ -64,7 +64,7 @@ class ImbParser(BenchmarkParser):
             # Exact layout varies by benchmark; capture bandwidth (last column if present)
             parts = line.split()
             try:
-                msg_size = int(parts[0])
+                int(parts[0])  # validity check: first column must be a message size
                 lat_us = float(parts[2])          # t_min
                 bw_col = float(parts[-1]) if len(parts) >= 6 else 0.0
             except (IndexError, ValueError):

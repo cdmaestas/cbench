@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cbench.builders import BenchmarkBuilder, BuildConfig
-from cbench.builders._util import console, run, require, wget_tarball, install_bins
+from cbench.builders._util import console, run, require, install_bins
 
 _URL = "https://www.cs.virginia.edu/stream/FTP/Code/stream.c"
 
@@ -31,8 +31,8 @@ class StreamBuilder(BenchmarkBuilder):
             return dest
         console.print(f"  [cyan]wget[/cyan] {_URL}")
         if not dry_run:
-            import urllib.request
-            urllib.request.urlretrieve(_URL, src_c)
+            from cbench.builders._util import download
+            download(_URL, src_c)
         return dest
 
     def build(self, src: Path, prefix: Path, cfg: BuildConfig, *, dry_run: bool = False) -> list[str]:

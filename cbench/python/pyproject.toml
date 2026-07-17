@@ -24,3 +24,23 @@ web = ["flask>=2.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+# Correctness-focused rule set: pyflakes, pycodestyle errors, bugbear,
+# and the bandit-derived security rules. Style-only rules are intentionally
+# not enabled for this pre-existing codebase.
+select = ["F", "E", "B", "S"]
+ignore = [
+    "E501",   # long lines — legacy-parity code keeps some
+    "S603",   # subprocess without shell=True is our standard pattern
+    "S607",   # partial paths for cluster tools (sbatch, pdsh) are intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+# S101/S108: asserts and /tmp paths are fine in tests.
+# S105: benchmark fixtures named *_PASS trip the hardcoded-password rule.
+"tests/*" = ["S101", "S105", "S108"]
