@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -120,7 +119,7 @@ def diag_cmd(
         ident_dir = (base / testset / ident).resolve()
         if not str(ident_dir).startswith(str(base)):
             raise click.UsageError(
-                f"Path traversal detected: testset/ident escapes CBENCHTEST"
+                "Path traversal detected: testset/ident escapes CBENCHTEST"
             )
         if not ident_dir.exists():
             console.print(f"[red]Directory not found: {ident_dir}[/red]")

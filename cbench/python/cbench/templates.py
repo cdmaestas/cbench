@@ -8,7 +8,6 @@ Uses Jinja2 for substitution after converting ``TOKEN_HERE`` → ``{{ TOKEN }}``
 
 from __future__ import annotations
 
-import math
 import os
 import re
 from pathlib import Path

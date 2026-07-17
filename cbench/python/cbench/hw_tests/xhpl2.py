@@ -16,7 +16,7 @@ class Xhpl2HwTest(HwTest):
 
     def parse(self, lines: list[str]) -> dict:
         n = self.name
-        clean = [l for l in lines if not re.search(r"memfree\s+=\s+\d+\s+", l)]
+        clean = [ln for ln in lines if not re.search(r"memfree\s+=\s+\d+\s+", ln)]
 
         fail = 0
         max_gflops = 0.0
