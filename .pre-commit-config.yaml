@@ -28,7 +28,10 @@ repos:
     hooks:
       - id: pytest-full
         name: full pytest suite (pre-push)
-        entry: python -m pytest cbench/python/tests/ -q
+        # Prefer the repo venv, fall back to python3 on PATH. A bare `python`
+        # does not exist on macOS or many Linux distros, and the system python3
+        # generally has no pytest — so the venv is tried first.
+        entry: "bash -c 'PY=$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3); exec \"$PY\" -m pytest cbench/python/tests/ -q'"
         language: system
         pass_filenames: false
         stages: [pre-push]
