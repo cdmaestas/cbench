@@ -97,9 +97,15 @@ fpm-deb: stage | $(OUTDIR)
 
 # ---------------------------------------------------------------------------
 # native-rpm — requires rpmbuild; uses system Python packages for deps
+#
+# RPMBUILD_FLAGS lets callers pass extra rpmbuild options. When cross-building
+# on a non-RPM distro (e.g. Ubuntu in CI) the RPM database is empty, so the
+# BuildRequires can never be satisfied there and callers should pass
+# RPMBUILD_FLAGS=--nodeps. Left empty by default so real RHEL/Rocky builds
+# still get proper build-dependency checking.
 # ---------------------------------------------------------------------------
 native-rpm: | $(OUTDIR)
-	rpmbuild -bb \
+	rpmbuild -bb $(RPMBUILD_FLAGS) \
 	    --define "_rpmdir $(OUTDIR)" \
 	    --define "_builddir /tmp/cbench-rpmbuild-$(VERSION)" \
 	    --define "cbench_srcdir $(SRCDIR)" \

@@ -125,7 +125,10 @@ jobs:
 
       - name: Build RPM (native)
         working-directory: cbench/python/packaging
-        run: make native-rpm
+        # --nodeps: this is a cross-build on Ubuntu, where the RPM database is
+        # empty, so the spec's BuildRequires can never be satisfied. pip3 (the
+        # only thing %install actually needs) comes from setup-python above.
+        run: make native-rpm RPMBUILD_FLAGS=--nodeps
 
       - uses: actions/upload-artifact@v4
         with:
