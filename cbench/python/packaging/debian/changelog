@@ -5,4 +5,4 @@ cbench (2.0.0-1) unstable; urgency=medium
     snb, nodehwtest, serve, utils subcommands.
   * Installs to /usr/lib/cbench/ with /usr/bin/cbench wrapper.
 
- -- cdmaestas <cdmaestas@gmail.com>  Thu, 03 Jul 2026 00:00:00 +0000
+ -- cdmaestas <cdmaestas@gmail.com>  Fri, 03 Jul 2026 00:00:00 +0000

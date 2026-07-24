@@ -67,7 +67,7 @@ install -D -m 644 %{cbench_repodir}/CHANGELOG.md %{buildroot}/usr/share/doc/cben
 %endif
 
 %changelog
-* Thu Jul 03 2026 cdmaestas <cdmaestas@gmail.com> - 2.0.0-1
+* Fri Jul 03 2026 cdmaestas <cdmaestas@gmail.com> - 2.0.0-1
 - Initial v2.0 package release.
 - Python toolchain with build/gen-jobs/start-jobs/parse/query/snb/serve.
 - Man pages generated from Click CLI via click-man.
