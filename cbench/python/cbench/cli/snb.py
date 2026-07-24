@@ -70,9 +70,17 @@ def _runcmd(
     mode = "w" if overwrite else "a"
     with open(outfile, mode) as fh:
         use_shell = isinstance(cmd, str)
-        result = subprocess.run(cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd)
-    if result.returncode != 0 and log_fh:
-        _logmsg(log_fh, f"WARNING: command exited {result.returncode}: {display}")
+        # nosec B602 / noqa S602: shell=True only for str cmds, which are
+        # hardcoded by callers (see docstring); user-derived args use lists.
+        result = subprocess.run(  # noqa: S602 # nosec B602
+            cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd
+        )
+    if result.returncode != 0:
+        msg = f"WARNING: command exited {result.returncode}: {display}"
+        if log_fh:
+            _logmsg(log_fh, msg)
+        else:
+            console.print(f"[yellow]{msg}[/yellow]")
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +329,6 @@ def _collect_snb_metrics(
     _make("snb_linpack", linpack, {k: xhpl_units.get(k, "") for k in linpack})
 
     # npb
-    from cbench.parsers.npb import NpbParser
     npb = _parse_npb_out(outfile("npb"))
     _make("snb_npb", npb, {k: "Mop/s" for k in npb})
 
@@ -452,7 +459,6 @@ def run_cmd(
 ) -> None:
     """Run the single-node benchmark suite and save output files."""
     from cbench.config import load_config
-    from cbench.utils import is_power_of_two
 
     cfg = load_config(config)
 
@@ -493,15 +499,14 @@ def run_cmd(
 
     destdir_p = Path(destdir).resolve()
     ident_dir = (destdir_p / ident).resolve()
-    if not str(ident_dir).startswith(str(destdir_p)):
+    if not ident_dir.is_relative_to(destdir_p):
         raise click.UsageError(
             f"Path traversal detected: ident '{ident}' escapes destdir"
         )
     ident_dir.mkdir(parents=True, exist_ok=True)
 
     cbenchome = os.environ.get("CBENCHOME", ".")
-    binpath = binpath or os.path.join(cbenchome, "bin", "hwtests")
-    binpath_p = Path(binpath)
+    binpath_p = Path(binpath) if binpath else Path(cbenchome) / "bin" / "hwtests"
 
     logfile = destdir_p / f"snb.{hostname}.{ident}.log"
 
@@ -712,12 +717,12 @@ def run_cmd(
                     for tmp in fio_dir.glob("*"):
                         try:
                             tmp.unlink()
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            _logmsg(log, f"WARNING: could not remove fio temp file {tmp}: {e}")
                     try:
                         fio_dir.rmdir()
-                    except OSError:
-                        pass
+                    except OSError as e:
+                        _logmsg(log, f"WARNING: could not remove fio temp dir {fio_dir}: {e}")
             else:
                 _logmsg(log, "WARNING: fio not found on PATH or in binpath")
 
@@ -742,7 +747,7 @@ def run_cmd(
                     hpcc_dir.mkdir(exist_ok=True)
                     (hpcc_dir / "HPL.dat").write_text(hpl_dat)
                 else:
-                    _logmsg(log, f"DRYRUN: would write HPL.dat with N={n} P={p} Q={q} to {hpcc_dir}")
+                    _logmsg(log, f"DRYRUN: would write HPL.dat (sized for {numcores} cores) to {hpcc_dir}")
                 _runcmd(
                     [str(hpcc_bin)],
                     out("hpcc"), overwrite=True, dry_run=dry_run, log_fh=log,
@@ -799,7 +804,7 @@ def report_cmd(
     ident = ident or f"{cfg.cluster_name}1"
     destdir_p = Path(destdir).resolve()
     ident_dir = (destdir_p / ident).resolve()
-    if not str(ident_dir).startswith(str(destdir_p)):
+    if not ident_dir.is_relative_to(destdir_p):
         raise click.UsageError(
             f"Path traversal detected: ident '{ident}' escapes destdir"
         )
@@ -995,7 +1000,7 @@ def store_cmd(
     numcores = numcores or _detect_cores()
     destdir_p = Path(destdir).resolve()
     ident_dir = (destdir_p / ident).resolve()
-    if not str(ident_dir).startswith(str(destdir_p)):
+    if not ident_dir.is_relative_to(destdir_p):
         raise click.UsageError(f"Path traversal detected: ident '{ident}' escapes destdir")
     if not ident_dir.exists():
         console.print(f"[red]Directory not found: {ident_dir}[/red]")

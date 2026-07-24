@@ -290,8 +290,11 @@ def _prometheus_text(db) -> str:
             try:
                 dt = datetime.fromisoformat(row["parsed_at"].replace("Z", "+00:00"))
                 ts_ms = str(int(dt.timestamp() * 1000))
-            except ValueError:
-                pass
+            except ValueError as e:
+                raise AssertionError(
+                    f"Corrupt parsed_at timestamp {row['parsed_at']!r} in results DB "
+                    f"(benchmark={row['benchmark']}, ident={row['ident']}): {e}"
+                ) from e
         for metric_name, mv in row.get("metrics", {}).items():
             labels = ",".join([
                 f'benchmark="{_prom_label(row["benchmark"])}"',
@@ -316,8 +319,8 @@ def _build_html(no_cdn: bool, assets_dir: Optional[Path]) -> str:
             js_path = assets_dir / "chart.umd.min.js"
             if css_path.exists() and js_path.exists():
                 header = (
-                    f'  <link rel="stylesheet" href="/static/bootstrap.min.css">\n'
-                    f'  <script src="/static/chart.umd.min.js"></script>'
+                    '  <link rel="stylesheet" href="/static/bootstrap.min.css">\n'
+                    '  <script src="/static/chart.umd.min.js"></script>'
                 )
             else:
                 header = _HTML_MINIMAL_STYLE

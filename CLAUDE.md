@@ -32,7 +32,9 @@ cbench utils run-sizes --maxprocs 512 --pof2
 cbench nodehwtest gen-jobs --nodelist n[1-10] --ident run1
 ```
 
-There is no linter or formatter configured. CI runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 via `.github/workflows/test.yml` on pushes to `cbench/python/**`. Coverage report is uploaded as an artifact on the Python 3.12 run. Keep coverage above 80% — the CI gate enforces it.
+Ruff is the linter (`[tool.ruff]` in `cbench/python/pyproject.toml`; rules F/E/B/S, py39 target — run `ruff check .` from `cbench/python/`). Pre-commit hooks are configured in `.pre-commit-config.yaml` at the repo root (ruff + hygiene checks on commit, full pytest on push); install with `pre-commit install --install-hooks -t pre-commit -t pre-push`. Keep `ruff check` clean — vetted false positives are annotated in-line with `noqa`/`nosec` plus a justification comment rather than disabling rules globally.
+
+CI: `.github/workflows/test.yml` runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 on pushes to `cbench/python/**` (coverage artifact uploaded on the 3.12 run). `.github/workflows/security.yml` runs ruff + bandit + pip-audit on the same paths. Keep coverage above 80% — the CI gate enforces it.
 
 ## Python package architecture (`cbench/python/cbench/`)
 
@@ -93,9 +95,16 @@ These decisions are intentional — do not re-flag as vulnerabilities:
 - `send_from_directory(assets_dir, filename)` — Flask's `safe_join` prevents path traversal within the dir; the dir itself is operator-chosen at startup.
 - Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment.
 - Prometheus label values are escaped via `_prom_label()` in `cli/serve.py`.
-- Tarball downloads use a zip-slip guard (validates every member path before `extractall`).
+- Tarball downloads (`builders/_util.py:download()`) are https-only with a 120 s timeout; the zip-slip guard validates every member path *and* symlink/hardlink target with `Path.is_relative_to` before `extractall`.
+- All path-containment checks use `Path.is_relative_to` (never `str.startswith`, which has a `/a/b` vs `/a/bc` prefix-collision).
 - `cluster_name` in `cluster.yaml` is restricted to `[A-Za-z0-9_-]+` by JSON Schema validation.
 - `--node`/`--remote` hostname arguments reject `/`, `\\`, `..`, and spaces.
+- `snb.py:_runcmd()` accepts str (shell=True) only for hardcoded commands; user-derived args must be lists. Annotated `noqa: S602` / `nosec B602`.
+- Vetted scanner false positives (parameterized SQL in `db.py`, the validated `extractall`, the https-only `urlopen`) carry inline `noqa`+`nosec` markers with justifications — keep `ruff check` and `bandit` at zero findings rather than suppressing rules globally.
+
+## Error-handling policy
+
+Silent failures are converted to explicit errors: conditions indicating corrupt state (bad `target_hw_values` lines, malformed `parsed_at` DB timestamps, failed batch submissions, missing `jsonschema`) raise `AssertionError` at the point of failure. Benchmark-output parsers stay tolerant of unparseable lines by design — third-party benchmark output is messy; skipping a bad line there is not a silent failure.
 
 ## Adding a benchmark parser (checklist)
 

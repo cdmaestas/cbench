@@ -1,0 +1,37 @@
+# Pre-commit hooks for the cbench Python toolchain.
+# Install:  pip install pre-commit && pre-commit install --install-hooks -t pre-commit -t pre-push
+# The Perl toolchain (cbench/*.pl, perllib/) is legacy read-only code and is not linted.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        exclude: ^cbench/python/packaging/
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        files: ^cbench/python/.*\.py$
+      - id: trailing-whitespace
+        files: ^cbench/python/.*\.py$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        files: ^cbench/python/
+        args: ["--fix"]
+
+  - repo: local
+    hooks:
+      - id: pytest-full
+        name: full pytest suite (pre-push)
+        # Prefer the repo venv, fall back to python3 on PATH. A bare `python`
+        # does not exist on macOS or many Linux distros, and the system python3
+        # generally has no pytest — so the venv is tried first.
+        entry: "bash -c 'PY=$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3); exec \"$PY\" -m pytest cbench/python/tests/ -q'"
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

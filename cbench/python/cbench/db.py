@@ -179,6 +179,8 @@ class ResultsDB:
 
         with self._conn() as con:
             rows = con.execute(
+                # where_clause is assembled from hardcoded column snippets;
+                # all values are bound via ? placeholders.
                 f"""
                 SELECT r.*, m.metric, m.value, m.units
                 FROM runs r
@@ -186,7 +188,7 @@ class ResultsDB:
                 {where_clause}
                 ORDER BY r.parsed_at DESC
                 LIMIT ?
-                """,
+                """,  # noqa: S608 # nosec B608
                 params + [limit],
             ).fetchall()
 
@@ -243,6 +245,8 @@ class ResultsDB:
 
         with self._conn() as con:
             rows = con.execute(
+                # where_clause is assembled from hardcoded column snippets;
+                # all values are bound via ? placeholders.
                 f"""
                 SELECT r.ident, MIN(r.parsed_at) AS parsed_at,
                        AVG(m.value) AS value, m.units, COUNT(*) AS count
@@ -252,7 +256,7 @@ class ResultsDB:
                 GROUP BY r.ident
                 ORDER BY MIN(r.parsed_at) ASC
                 LIMIT ?
-                """,
+                """,  # noqa: S608 # nosec B608
                 params + [limit],
             ).fetchall()
 

@@ -18,9 +18,9 @@ target.mkdir(parents=True, exist_ok=True)
 try:
     from click_man.core import write_man_pages
 except ImportError:
-    sys.exit("click-man is not installed. Run: pip install click-man>=0.8")
+    sys.exit('click-man is not installed. Run: pip install "click-man>=0.4"')
 
-from cbench.cli.main import cli
+from cbench.cli.main import cli  # noqa: E402 — deliberately after the click-man check
 
 write_man_pages("cbench", cli, target_dir=str(target))
 print(f"Man pages written to {target}/")

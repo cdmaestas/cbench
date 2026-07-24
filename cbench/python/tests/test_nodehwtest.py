@@ -365,9 +365,7 @@ def test_parse_store_flag(tmp_path, monkeypatch):
     # May or may not parse metrics depending on the streams hw_test parser,
     # but the command must complete without error
     assert result.exit_code == 0, result.output
-    # DB is created if any metrics were stored
-    db_path = tmp_path / "cbench_results.db"
-    # No assertion on existence: the run file may yield no metrics
+    # No assertion on DB existence: the run file may yield no metrics
     # Just verify no traceback
     assert "Traceback" not in (result.output or "")
 

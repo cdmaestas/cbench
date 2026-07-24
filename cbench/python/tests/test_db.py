@@ -1,7 +1,5 @@
 """Tests for the SQLite results store."""
 
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -71,7 +69,6 @@ def test_summary(db):
 
 def test_cascade_delete(db):
     """Metrics are deleted when their run is deleted (FK cascade)."""
-    import sqlite3
     run_id = db.store(_make_result())
     with db._conn() as con:
         con.execute("DELETE FROM runs WHERE id = ?", (run_id,))

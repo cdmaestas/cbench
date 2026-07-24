@@ -1,7 +1,6 @@
 """Parser for Trilinos Epetra benchmark output."""
 
 from __future__ import annotations
-import re
 from cbench.parsers.base import BenchmarkParser, ParseResult
 
 _METRICS = ["SpMV", "SpMM2", "SpMM4", "SpMM8", "NORM", "DOT", "AXPY"]

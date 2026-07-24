@@ -1,6 +1,5 @@
 """Tests for template substitution logic."""
 
-import pytest
 
 from cbench.templates import _here_to_jinja, compute_walltime, RUN_SIZES
 from cbench.config import ClusterConfig

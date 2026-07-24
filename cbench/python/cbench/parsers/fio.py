@@ -109,7 +109,6 @@ class FioParser(BenchmarkParser):
                     return ParseResult(status="NOTICE", status_detail=line.strip())
 
         metrics: dict[str, float] = {}
-        run_status_seen = False
 
         # Track current direction context for clat/percentile lines
         current_dir: str = ""
@@ -160,7 +159,6 @@ class FioParser(BenchmarkParser):
             # Run status group — aggregate bandwidth (overrides per-job values)
             m = _RUN_STATUS_RE.match(line)
             if m:
-                run_status_seen = True
                 direction = m.group(1).lower()
                 bw = _bw_to_mib_s(m.group(2), m.group(3))
                 metrics[f"{direction}_bw_MiB_s"] = bw

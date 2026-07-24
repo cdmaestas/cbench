@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import re
 import importlib
-from typing import Iterator
 
 # Registry: name -> module attribute dict
 _MODULES: dict[str, str] = {
