@@ -117,15 +117,20 @@ native-rpm: | $(OUTDIR)
 # ---------------------------------------------------------------------------
 # native-deb — requires dpkg-buildpackage + dh-python
 # Copies debian/ into the source tree temporarily, builds, then cleans up.
+#
+# Note: do not pass --buildinfo-option=-O / --changes-option=-O here. Current
+# dpkg rejects -O supplied that way ("cannot write : No such file or
+# directory") and fails the build at dpkg-genchanges, after the .deb has
+# already been produced. The .changes/.buildinfo files land beside the .deb
+# and are removed below.
 # ---------------------------------------------------------------------------
 native-deb: | $(OUTDIR)
 	cp -r "$(PKGDIR)debian" "$(SRCDIR)/debian"
-	cd "$(SRCDIR)" && dpkg-buildpackage -us -uc -b \
-	    --buildinfo-option=-O \
-	    --changes-option=-O
+	cd "$(SRCDIR)" && dpkg-buildpackage -us -uc -b
 	rm -rf "$(SRCDIR)/debian"
 	mv "$(SRCDIR)"/../$(PACKAGE)_*.deb "$(OUTDIR)/" 2>/dev/null || \
 	    mv "$(SRCDIR)"/../$(PACKAGE)-*.deb "$(OUTDIR)/" 2>/dev/null || true
+	rm -f "$(SRCDIR)"/../$(PACKAGE)_*.changes "$(SRCDIR)"/../$(PACKAGE)_*.buildinfo
 	@echo "Built DEB in $(OUTDIR)/"
 
 $(OUTDIR):
