@@ -1,0 +1,41 @@
+name: Security
+
+on:
+  push:
+    paths:
+      - "cbench/python/**"
+      - ".github/workflows/security.yml"
+  pull_request:
+    paths:
+      - "cbench/python/**"
+      - ".github/workflows/security.yml"
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install ruff bandit pip-audit
+
+      - name: Ruff (lint + security rules)
+        working-directory: cbench/python
+        run: ruff check .
+
+      - name: Bandit (security static analysis)
+        working-directory: cbench/python
+        # B101 assert / B404 subprocess-import / B603 subprocess-without-shell
+        # are accepted patterns in this codebase; see pyproject [tool.ruff.lint].
+        run: bandit -r cbench -x tests -s B101,B404,B603,B607 -q
+
+      - name: pip-audit (dependency vulnerabilities)
+        run: |
+          pip install -e "cbench/python"
+          pip-audit --skip-editable

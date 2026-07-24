@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -51,8 +50,10 @@ def _scan_file(
     """Return list of (filename, error_type, src, dst) tuples for a single file."""
     try:
         text = path.read_text(errors="replace")
-    except OSError:
-        return []
+    except OSError as e:
+        # An unreadable file must not be reported as clean — surface it as a
+        # scan hit so it shows up in the diagnosis output.
+        return [(path.name, f"UNREADABLE ({e})", None, None)]
     hits = []
     for msg in apply_filters(filters, text):
         error_type, src, dst = _classify(msg)
@@ -116,9 +117,9 @@ def diag_cmd(
         ident = ident or f"{cfg.cluster_name}1"
         base = Path(cbenchtest).resolve()
         ident_dir = (base / testset / ident).resolve()
-        if not str(ident_dir).startswith(str(base)):
+        if not ident_dir.is_relative_to(base):
             raise click.UsageError(
-                f"Path traversal detected: testset/ident escapes CBENCHTEST"
+                "Path traversal detected: testset/ident escapes CBENCHTEST"
             )
         if not ident_dir.exists():
             console.print(f"[red]Directory not found: {ident_dir}[/red]")

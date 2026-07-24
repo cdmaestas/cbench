@@ -8,7 +8,6 @@ Subcommands:
 
 from __future__ import annotations
 
-import math
 import os
 import re
 import shlex
@@ -41,7 +40,7 @@ def _testset_path(cbenchtest: str) -> Path:
 def _ident_path(cbenchtest: str, ident: str) -> Path:
     base = _testset_path(cbenchtest)
     resolved = (base / ident).resolve()
-    if not str(resolved).startswith(str(base.resolve())):
+    if not resolved.is_relative_to(base.resolve()):
         raise click.UsageError(
             f"Path traversal detected: ident '{ident}' escapes nodehwtest directory"
         )
@@ -147,21 +146,28 @@ def _load_targets(target_file: Path) -> dict[str, dict[str, float]]:
     targets: dict[str, dict[str, float]] = {}
     if not target_file.exists():
         return targets
-    for line in target_file.read_text().splitlines():
+    for lineno, line in enumerate(target_file.read_text().splitlines(), start=1):
         if line.startswith("#") or not line.strip():
             continue
         parts = line.split(",")
-        if len(parts) >= 5:
-            key = parts[0].strip()
-            try:
-                targets[key] = {
-                    "mean": float(parts[1]),
-                    "max": float(parts[2]),
-                    "min": float(parts[3]),
-                    "stddev": float(parts[4]),
-                }
-            except (ValueError, IndexError):
-                pass
+        if len(parts) < 5:
+            raise AssertionError(
+                f"Corrupt target values file {target_file}:{lineno}: "
+                f"expected >=5 comma-separated fields, got {len(parts)}: {line!r}"
+            )
+        key = parts[0].strip()
+        try:
+            targets[key] = {
+                "mean": float(parts[1]),
+                "max": float(parts[2]),
+                "min": float(parts[3]),
+                "stddev": float(parts[4]),
+            }
+        except ValueError as e:
+            raise AssertionError(
+                f"Corrupt target values file {target_file}:{lineno}: "
+                f"non-numeric field in {line!r}: {e}"
+            ) from e
     return targets
 
 
@@ -326,9 +332,17 @@ def start_jobs(
                     cmd_parts += shlex.split(batchargs)
                 cmd_parts.append(str(script_path))
                 try:
-                    subprocess.run(cmd_parts, shell=False, check=False)
-                except Exception as e:
-                    console.print(f"[yellow]Warning: could not submit {node}: {e}[/yellow]")
+                    result = subprocess.run(cmd_parts, shell=False, check=False)
+                except OSError as e:
+                    raise AssertionError(
+                        f"Failed to invoke batch submit command "
+                        f"{' '.join(cmd_parts)!r} for node {node}: {e}"
+                    ) from e
+                if result.returncode != 0:
+                    raise AssertionError(
+                        f"Batch submit for node {node} exited "
+                        f"{result.returncode}: {' '.join(cmd_parts)}"
+                    )
             else:
                 console.print(f"  [dim]Would submit: {script_path}[/dim]")
             submitted += 1
@@ -337,22 +351,22 @@ def start_jobs(
         console.print(f"[green]{action} {submitted} nodehwtest batch jobs[/green]")
 
     elif remote:
-        # Run via pdsh — each node name is shell-quoted; env vars are quoted too
-        node_str = ",".join(shlex.quote(n) for n in sorted(nodes))
+        # Run via pdsh. No local shell is involved (argv list, shell=False);
+        # the remote command string is still shell-parsed by the remote side,
+        # so env var values are shell-quoted.
         env_prefix = (
             f"export CBENCHOME={shlex.quote(cbenchome)}; "
             f"export CBENCHTEST={shlex.quote(cbenchtest)};"
         )
-        remote_cmd = shlex.quote(f"{env_prefix} {node_hw_test_cmd}")
-        cmd = f"pdsh -w {node_str} {remote_cmd}"
+        argv = ["pdsh", "-w", ",".join(sorted(nodes)), f"{env_prefix} {node_hw_test_cmd}"]
         if dry_run:
-            console.print(f"[dim]Would run: {cmd}[/dim]")
+            console.print(f"[dim]Would run: {' '.join(shlex.quote(a) for a in argv)}[/dim]")
         else:
             if background:
-                subprocess.Popen(cmd, shell=True)
+                subprocess.Popen(argv)
                 console.print(f"[green]Backgrounded remote execution on {len(nodes)} nodes[/green]")
             else:
-                result = subprocess.run(cmd, shell=True)
+                result = subprocess.run(argv)
                 if result.returncode != 0:
                     console.print(f"[yellow]Warning: remote pdsh command exited {result.returncode}[/yellow]")
 
@@ -390,7 +404,7 @@ def _build_batch_script(cfg, node: str, jobname: str, nodecmd: str, ident: str, 
         lines += [
             f"#SBATCH --job-name={jobname}",
             f"#SBATCH -w {node}",
-            f"#SBATCH --nodes=1",
+            "#SBATCH --nodes=1",
             f"#SBATCH --time={cfg.default_walltime}",
         ]
     elif method in ("torque", "pbspro"):
@@ -461,7 +475,7 @@ def parse_cmd(
         console.print(f"[red]Identifier directory not found: {ident_dir}[/red]")
         raise SystemExit(1)
 
-    console.print(f"[green]Cbench nodehwtest output parser[/green]")
+    console.print("[green]Cbench nodehwtest output parser[/green]")
     console.print(f"  Parsing identifier: {ident}")
     if characterize:
         console.print("  Running CHARACTERIZE mode")
@@ -493,7 +507,6 @@ def parse_cmd(
         runs = node_runs[node]
         if not runs:
             continue
-        max_run = max(runs.keys())
 
         if only_run is not None:
             run_ids = [only_run] if only_run in runs else []
@@ -533,7 +546,7 @@ def parse_cmd(
     if characterize:
         # aggregate across all nodes
         all_vals: dict[str, list[float]] = {}
-        for node, metrics in nodehash.items():
+        for metrics in nodehash.values():
             for k, vals in metrics.items():
                 all_vals.setdefault(k, []).extend(vals)
 
@@ -565,14 +578,14 @@ def parse_cmd(
 
         if save_targets:
             tfile = (ident_dir / save_targets).resolve()
-            if not str(tfile).startswith(str(ident_dir.resolve())):
+            if not tfile.is_relative_to(ident_dir.resolve()):
                 raise click.UsageError(f"--save-targets path escapes the ident directory: {tfile}")
             _save_targets(tfile, targets, len(nodehash), total_iterations)
             console.print(f"[cyan]Saved target values to {tfile}[/cyan]")
     else:
         tfile_name = load_targets or "target_hw_values"
         tfile = (ident_dir / tfile_name).resolve()
-        if not str(tfile).startswith(str(ident_dir.resolve())):
+        if not tfile.is_relative_to(ident_dir.resolve()):
             raise click.UsageError(f"--load-targets path escapes the ident directory: {tfile}")
         targets = _load_targets(tfile)
         if targets:
@@ -600,7 +613,6 @@ def parse_cmd(
                 if t["stddev"] == 0:
                     continue
                 if delta >= 2 * t["stddev"]:
-                    sign = "+" if val > t["mean"] else "-"
                     pct = (delta / t["stddev"]) * 100
                     outliers.append((node, k, val, t["mean"], delta, pct, t["stddev"], len(vals)))
 
@@ -613,7 +625,7 @@ def parse_cmd(
                 tbl.add_column("Expected", justify="right")
                 tbl.add_column("Delta%", justify="right")
                 tbl.add_column("StdDev", justify="right")
-                for node, k, actual, good, delta, pct, stddev, n in outliers:
+                for node, k, actual, good, _delta, pct, stddev, _n in outliers:
                     tbl.add_row(
                         node, k,
                         f"{actual:.4f}", f"{good:.4f}",
@@ -636,7 +648,7 @@ def parse_cmd(
         vals = list(node_iterations.values())
         if len(vals) >= 2:
             mean = statistics.mean(vals)
-            console.print(f"\n[green]Iteration analysis:[/green]")
+            console.print("\n[green]Iteration analysis:[/green]")
             console.print(f"  Mean: {mean:.2f}  Min: {min(vals)}  Max: {max(vals)}")
 
     # -- store to DB --

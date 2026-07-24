@@ -1,9 +1,7 @@
 """Tests for cbench snb command."""
 
 import textwrap
-from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from cbench.cli.main import cli

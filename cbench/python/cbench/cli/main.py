@@ -19,7 +19,7 @@ from rich.table import Table
 from cbench.config import ClusterConfig, load_config
 from cbench import launchers, schedulers, templates
 from cbench.db import ParseResult, ResultsDB
-from cbench.parsers import REGISTRY, get_parser
+from cbench.parsers import get_parser
 from cbench.parse_filters import build_filter_set, apply_filters, AVAILABLE as FILTER_MODULES
 from cbench.cli.nodehwtest import nodehwtest_group
 from cbench.cli.utils_cmd import utils_group
@@ -35,7 +35,7 @@ def _safe_path(base: str, *parts: str) -> Path:
     """Join parts onto base and raise UsageError if the result escapes base."""
     resolved = (Path(base).joinpath(*parts)).resolve()
     base_resolved = Path(base).resolve()
-    if not str(resolved).startswith(str(base_resolved)):
+    if not resolved.is_relative_to(base_resolved):
         raise click.UsageError(
             f"Path traversal detected: '{'/'.join(parts)}' escapes '{base}'"
         )
@@ -515,10 +515,10 @@ def make_skel(
     for rtype in ("batch", "interactive"):
         try:
             raw = templates.build_job_template("skeleton", skelname, rtype, cfg)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             console.print(f"[yellow]No skeleton_{skelname}.in template found — "
                           f"check $CBENCHOME/templates/[/yellow]")
-            raise SystemExit(1)
+            raise SystemExit(1) from e
 
         script = templates.substitute(
             raw,
@@ -582,7 +582,7 @@ def rm_failed(
 
     By default runs in preview mode — pass --force to actually delete.
     """
-    cfg = _cfg(config)
+    _cfg(config)  # load for the side effect of validating cluster.yaml
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     ident_dir = _safe_path(cbenchtest, testset, ident)
     match_re = _safe_regex(match, "--match")
@@ -769,8 +769,11 @@ def query_cmd(
                 try:
                     dt = _dt.fromisoformat(row["parsed_at"].replace("Z", "+00:00"))
                     ts_ms = str(int(dt.timestamp() * 1000))
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    raise AssertionError(
+                        f"Corrupt parsed_at timestamp {row['parsed_at']!r} in results DB "
+                        f"(benchmark={row['benchmark']}, ident={row['ident']}): {e}"
+                    ) from e
             for m_name, mv in row.get("metrics", {}).items():
                 labels = ",".join([
                     f'benchmark="{_prom_label(row["benchmark"])}"',

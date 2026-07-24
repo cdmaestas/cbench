@@ -11,6 +11,9 @@ from pathlib import Path
 
 from rich.console import Console
 
+#: Timeout (seconds) for benchmark source downloads.
+DOWNLOAD_TIMEOUT = 120
+
 console = Console()
 
 
@@ -77,6 +80,15 @@ def git_pull(dest: Path, *, dry_run: bool) -> bool:
     return changed
 
 
+def download(url: str, dest: Path) -> None:
+    """Download *url* to *dest* with a timeout (urlretrieve has none)."""
+    if not url.startswith("https://"):
+        raise RuntimeError(f"Refusing non-https download URL: {url}")
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp:  # noqa: S310 # nosec B310 — https enforced above
+        with open(dest, "wb") as fh:
+            shutil.copyfileobj(resp, fh)
+
+
 def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Path:
     """Download a tarball to *dest_dir* and extract it.
 
@@ -90,7 +102,7 @@ def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Pat
     if not tarball.exists() or force:
         console.print(f"  [cyan]wget[/cyan] {url}")
         if not dry_run:
-            urllib.request.urlretrieve(url, tarball)
+            download(url, tarball)
     else:
         console.print(f"  [green]Already downloaded:[/green] {tarball}")
 
@@ -105,16 +117,24 @@ def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Pat
     with tarfile.open(tarball) as tf:
         top = Path(tf.getnames()[0].split("/")[0])
         console.print(f"  [cyan]tar x[/cyan] {tarball.name}")
-        # Validate every member stays inside dest_dir (prevents zip-slip)
+        # Validate every member stays inside dest_dir (prevents zip-slip).
+        # is_relative_to (not str.startswith) so /a/b does not match /a/bc.
         dest_resolved = dest_dir.resolve()
         for member in tf.getmembers():
             member_path = (dest_dir / member.name).resolve()
-            if not str(member_path).startswith(str(dest_resolved)):
+            if not member_path.is_relative_to(dest_resolved):
                 raise RuntimeError(
                     f"Refusing to extract tarball: member {member.name!r} "
                     f"escapes destination directory"
                 )
-        tf.extractall(dest_dir)
+            if member.issym() or member.islnk():
+                link_target = (member_path.parent / member.linkname).resolve()
+                if not link_target.is_relative_to(dest_resolved):
+                    raise RuntimeError(
+                        f"Refusing to extract tarball: link member {member.name!r} "
+                        f"targets {member.linkname!r} outside destination"
+                    )
+        tf.extractall(dest_dir)  # noqa: S202 # nosec B202 — members validated above
 
     return dest_dir / top
 

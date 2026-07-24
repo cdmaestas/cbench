@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -216,19 +214,56 @@ def test_wget_tarball_rejects_zip_slip(tmp_path):
     dest = tmp_path / "dest"
     dest.mkdir()
 
-    # Patch wget_tarball to skip download and use our crafted tarball
-    from unittest.mock import patch
-    import urllib.request
+    # Patch the download helper to skip the network and use our crafted tarball
+    import cbench.builders._util as util_mod
 
-    def fake_retrieve(url, dest_file):
+    def fake_download(url, dest_file):
         import shutil
         shutil.copy(str(tarball_path), dest_file)
 
     from cbench.builders._util import wget_tarball
-    with patch.object(urllib.request, "urlretrieve", side_effect=fake_retrieve):
+    with patch.object(util_mod, "download", side_effect=fake_download):
         import pytest as _pytest
         with _pytest.raises(RuntimeError, match="escapes destination"):
             wget_tarball("https://example.com/evil.tar.gz", dest, force=True, dry_run=False)
+
+
+def test_download_rejects_non_https(tmp_path):
+    from cbench.builders._util import download
+    import pytest as _pytest
+    with _pytest.raises(RuntimeError, match="non-https"):
+        download("http://example.com/x.tar.gz", tmp_path / "never-written")
+
+
+def test_wget_tarball_rejects_escaping_symlink(tmp_path):
+    """A symlink member pointing outside dest_dir must be rejected."""
+    import tarfile as tf_mod
+    import io
+
+    buf = io.BytesIO()
+    with tf_mod.open(fileobj=buf, mode="w:gz") as tf:
+        info = tf_mod.TarInfo(name="pkg/link")
+        info.type = tf_mod.SYMTYPE
+        info.linkname = "../../../etc/passwd"
+        tf.addfile(info)
+    buf.seek(0)
+
+    tarball_path = tmp_path / "evil-link.tar.gz"
+    tarball_path.write_bytes(buf.getvalue())
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    import cbench.builders._util as util_mod
+
+    def fake_download(url, dest_file):
+        import shutil
+        shutil.copy(str(tarball_path), dest_file)
+
+    from cbench.builders._util import wget_tarball
+    with patch.object(util_mod, "download", side_effect=fake_download):
+        import pytest as _pytest
+        with _pytest.raises(RuntimeError, match="link member"):
+            wget_tarball("https://example.com/evil-link.tar.gz", dest, force=True, dry_run=False)
 
 
 def test_build_lock_initially_empty(tmp_path):

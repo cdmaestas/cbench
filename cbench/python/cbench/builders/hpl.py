@@ -11,7 +11,6 @@ problem size) edit the HPL.dat that gen-jobs generates.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from cbench.builders import BenchmarkBuilder, BuildConfig
