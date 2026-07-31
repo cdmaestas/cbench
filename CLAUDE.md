@@ -11,6 +11,17 @@ Cbench is an HPC benchmarking framework. v2.0 adds a Python toolchain alongside 
 - `v2.0` — active development branch (Python toolchain)
 - `v1.3.0` — tag at the original Perl-only commit
 
+## Current work / session handoff
+
+Read this first — it's the pointer to "where things are right now" so a new session doesn't re-derive it.
+
+- **Active branch:** `v2.0` (all Python work lands here). `main` tracks behind; sync `v2.0` → `main` at release milestones.
+- **Current focus:** _Perl→Python port is feature-complete; repo is post-hardening and CI-green on `v2.0`. No work in flight._
+- **Open PRs / in flight:** _none._
+- **Detailed state:** richer per-session notes (in-flight work, next steps, gotchas, how to run things on this machine) live in Claude's **local memory dir** — not committed to the repo. At the start of a session, check that memory; a cold session can also be told "read session state."
+
+**Handoff protocol — before ending a session:** update the three lines above (focus / open PRs), and update `session-state.md` in the memory dir with what changed, what's next, and any gotchas found. Keep this CLAUDE.md section *short and stable* — it's a pointer, not a changelog. Durable architecture facts go in the sections below; transient "what I'm doing now" goes in memory.
+
 ## Python toolchain — development commands
 
 ```bash
