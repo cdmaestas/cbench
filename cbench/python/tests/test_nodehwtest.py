@@ -158,6 +158,61 @@ def test_iozone_parse():
 
 
 # ---------------------------------------------------------------------------
+# fio (iozone replacement — same four throughput metrics)
+# ---------------------------------------------------------------------------
+
+FIO_OUTPUT = textwrap.dedent("""\
+    seqwrite: (groupid=0, jobs=1): err= 0: pid=100: Mon Jan 1 00:00:00 2026
+      write: IOPS=125k, BW=512MB/s (512MB/s)(30.0GiB/60001msec)
+    seqread: (groupid=1, jobs=1): err= 0: pid=101: Mon Jan 1 00:01:00 2026
+      read: IOPS=150k, BW=614.4MB/s (644MB/s)(36.0GiB/60001msec)
+    randwrite: (groupid=2, jobs=1): err= 0: pid=102: Mon Jan 1 00:02:00 2026
+      write: IOPS=50.0k, BW=204.8MB/s (215MB/s)(12.0GiB/60001msec)
+    randread: (groupid=3, jobs=1): err= 0: pid=103: Mon Jan 1 00:03:00 2026
+      read: IOPS=62.5k, BW=256MB/s (268MB/s)(15.0GiB/60001msec)
+""").splitlines()
+
+
+def test_fio_parse():
+    hw = get_hw_test("fio")
+    data = hw.parse(FIO_OUTPUT)
+    assert data["fio_write"] == pytest.approx(512.0)
+    assert data["fio_read"] == pytest.approx(614.4)
+    assert data["fio_randomwrite"] == pytest.approx(204.8)
+    assert data["fio_randomread"] == pytest.approx(256.0)
+
+
+def test_fio_test_class_is_disk():
+    assert get_hw_test("fio").test_class == "disk"
+
+
+def test_fio_mib_unit_conversion():
+    """fio reporting MiB/s is converted to decimal MB/s."""
+    hw = get_hw_test("fio")
+    data = hw.parse([
+        "seqread: (groupid=0, jobs=1): err= 0: pid=1:",
+        "  read: IOPS=1k, BW=1000MiB/s (1049MB/s)(1.0GiB/1msec)",
+    ])
+    # 1000 MiB/s = 1000 * 1024^2 / 1e6 = 1048.576 MB/s
+    assert data["fio_read"] == pytest.approx(1048.576)
+    assert data["fio_randomread"] == 0.0
+
+
+def test_fio_randrw_job_maps_to_random():
+    """A mixed randrw job emits both read: and write: — both are random."""
+    hw = get_hw_test("fio")
+    data = hw.parse([
+        "randrw: (groupid=0, jobs=1): err= 0: pid=1:",
+        "  read: IOPS=10k, BW=100MB/s (100MB/s)(6.0GiB/60s)",
+        "  write: IOPS=10k, BW=50MB/s (50MB/s)(3.0GiB/60s)",
+    ])
+    assert data["fio_randomread"] == pytest.approx(100.0)
+    assert data["fio_randomwrite"] == pytest.approx(50.0)
+    assert data["fio_read"] == 0.0
+    assert data["fio_write"] == 0.0
+
+
+# ---------------------------------------------------------------------------
 # hpcc
 # ---------------------------------------------------------------------------
 
