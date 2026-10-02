@@ -38,6 +38,107 @@ def _detect_cores() -> int:
     return os.cpu_count() or 1
 
 
+# ---------------------------------------------------------------------------
+# node-aware fio helpers (see CLAUDE.md / session design)
+# ---------------------------------------------------------------------------
+
+_FIO_DIRECT_SIZE = "1g"  # historical fixed size used on the O_DIRECT path
+
+
+def _read_memtotal_bytes(meminfo_path: "str | Path" = Path("/proc/meminfo")) -> int:
+    """Return MemTotal in bytes from /proc/meminfo, or 0 if unavailable."""
+    try:
+        for line in Path(meminfo_path).read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                return int(line.split()[1]) * 1024  # kB -> bytes
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def _detect_fstype(
+    path: "str | Path",
+    mountinfo_path: "str | Path" = Path("/proc/self/mountinfo"),
+) -> str:
+    """Return the filesystem type for *path* by longest-mountpoint-prefix match
+    against mountinfo. Returns 'unknown' off-Linux or on any error."""
+    try:
+        target = os.path.realpath(str(path))
+        content = Path(mountinfo_path).read_text()
+    except OSError:
+        return "unknown"
+
+    best_mp = ""
+    best_fs = "unknown"
+    for line in content.splitlines():
+        # "<id> <par> <dev> <root> <mountpoint> <opts> [opt...] - <fstype> <src> <superopts>"
+        if " - " not in line:
+            continue
+        left, right = line.split(" - ", 1)
+        lfields = left.split()
+        rfields = right.split()
+        if len(lfields) < 5 or not rfields:
+            continue
+        mountpoint = lfields[4]
+        fstype = rfields[0]
+        if target == mountpoint or target.startswith(mountpoint.rstrip("/") + "/"):
+            if len(mountpoint) >= len(best_mp):
+                best_mp = mountpoint
+                best_fs = fstype
+    return best_fs
+
+
+def _supports_odirect(directory: "str | Path") -> bool:
+    """Probe whether O_DIRECT is usable for files in *directory*."""
+    flag = getattr(os, "O_DIRECT", None)
+    if flag is None:  # non-Linux (e.g. macOS dev)
+        return False
+    probe = Path(directory) / ".cbench_odirect_probe"
+    try:
+        fd = os.open(str(probe), os.O_WRONLY | os.O_CREAT | flag, 0o600)
+    except OSError:
+        return False
+    else:
+        os.close(fd)
+        return True
+    finally:
+        try:
+            os.unlink(str(probe))
+        except OSError:
+            pass
+
+
+def _fio_buffered_size_bytes(
+    mem_total_bytes: int, numjobs: int, free_bytes: int
+) -> tuple[int, bool]:
+    """Per-job fio file size for the buffered (non-O_DIRECT) path.
+
+    Targets 2x MemTotal aggregate to defeat the page cache, divided across
+    *numjobs*. If that would exceed 90% of free space, caps to fit and returns
+    caveat=True (the result may be cache-influenced).
+    """
+    numjobs = max(1, numjobs)
+    target_aggregate = 2 * mem_total_bytes
+    free_cap = int(free_bytes * 0.9)
+    caveat = target_aggregate > free_cap
+    aggregate = min(target_aggregate, free_cap)
+    per_job = max(aggregate // numjobs, 1)
+    return per_job, caveat
+
+
+def _fio_benchmark_name(fstype: str, path: "str | Path") -> str:
+    """Encode an fs target into a distinct benchmark name (node identity stays
+    in jobname). ('gpfs', '/gpfs/scratch') -> 'snb_fio_gpfs_scratch'."""
+    base = os.path.basename(str(path).rstrip("/")) or "root"
+    safe = re.sub(r"[^A-Za-z0-9]+", "_", f"{fstype}_{base}").strip("_")
+    return f"snb_fio_{safe}"
+
+
+# Marker written into the fio output file before each target's runs so the
+# collector can split one file into per-target results.
+_FIO_TARGET_MARKER = "### CBENCH FS-TARGET"
+
+
 def _logmsg(log_fh, msg: str) -> None:
     ts = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     line = f"{ts} {msg}"
@@ -213,12 +314,65 @@ def _parse_npb_out(outfile: Path) -> dict[str, float]:
 
 
 def _parse_fio_out(outfile: Path) -> dict[str, float]:
-    """Return fio metrics dict from an snb fio output file."""
+    """Return fio metrics dict from an snb fio output file (first/only target).
+
+    Back-compat helper used by the report text table; for per-target results
+    use _parse_fio_targets().
+    """
     if not outfile.exists():
         return {}
     from cbench.parsers.fio import FioParser
     result = FioParser().parse(outfile.read_text(errors="replace"))
     return result.metrics if result.status == "PASSED" else {}
+
+
+def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, dict[str, float]]]":
+    """Split a per-target fio output file into (benchmark, status_detail, metrics).
+
+    The run side writes a '### CBENCH FS-TARGET path=.. fstype=.. odirect=.. caveat=..'
+    marker before each target's fio output. If no markers are present (e.g. an
+    older single-target file) returns one ('snb_fio', '', metrics) entry.
+    """
+    if not outfile.exists():
+        return []
+    from cbench.parsers.fio import FioParser
+
+    text = outfile.read_text(errors="replace")
+    if _FIO_TARGET_MARKER not in text:
+        metrics = _parse_fio_out(outfile)
+        return [("snb_fio", "", metrics)] if metrics else []
+
+    results: list[tuple[str, str, dict[str, float]]] = []
+    header: "dict[str, str] | None" = None
+    buf: list[str] = []
+
+    def _flush() -> None:
+        if header is None:
+            return
+        parsed = FioParser().parse("\n".join(buf))
+        if parsed.status != "PASSED" or not parsed.metrics:
+            return
+        path = header.get("path", "")
+        fstype = header.get("fstype", "unknown")
+        detail = (
+            f"path={path} fstype={fstype} "
+            f"odirect={header.get('odirect', '?')} caveat={header.get('caveat', '0')}"
+        )
+        if header.get("caveat") == "1":
+            detail += " (result may be cache-influenced)"
+        results.append((_fio_benchmark_name(fstype, path), detail, parsed.metrics))
+
+    for line in text.splitlines():
+        if line.startswith(_FIO_TARGET_MARKER):
+            _flush()
+            header = dict(
+                re.findall(r"(\w+)=(\S+)", line[len(_FIO_TARGET_MARKER):])
+            )
+            buf = []
+        else:
+            buf.append(line)
+    _flush()
+    return results
 
 
 def _parse_hpcc_out(outfile: Path) -> dict[str, float]:
@@ -266,7 +420,12 @@ def _collect_snb_metrics(
 
     results = []
 
-    def _make(benchmark: str, metrics: dict[str, float], units: dict[str, str]) -> None:
+    def _make(
+        benchmark: str,
+        metrics: dict[str, float],
+        units: dict[str, str],
+        status_detail: str = "",
+    ) -> None:
         if metrics:
             results.append(DBResult(
                 cluster=cluster,
@@ -278,6 +437,7 @@ def _collect_snb_metrics(
                 ppn=numcores,
                 numnodes=1,
                 status="PASSED",
+                status_detail=status_detail,
                 metrics=metrics,
                 metric_units=units,
             ))
@@ -306,15 +466,20 @@ def _collect_snb_metrics(
             ms_units[key] = "MB/s"
     _make("snb_mpistreams", ms, ms_units)
 
-    # fio
-    fio = _parse_fio_out(outfile("fio"))
+    # fio — one result per --fs-target (benchmark name encodes the target)
     fio_units = {
         "read_bw_MiB_s": "MiB/s", "write_bw_MiB_s": "MiB/s",
         "read_iops": "IOPS", "write_iops": "IOPS",
         "read_lat_avg_us": "us", "write_lat_avg_us": "us",
         "read_lat_p99_us": "us", "write_lat_p99_us": "us",
     }
-    _make("snb_fio", fio, {k: fio_units.get(k, "") for k in fio})
+    for benchmark, detail, fio_metrics in _parse_fio_targets(outfile("fio")):
+        _make(
+            benchmark,
+            fio_metrics,
+            {k: fio_units.get(k, "") for k in fio_metrics},
+            status_detail=detail,
+        )
 
     # hpcc
     hpcc = _parse_hpcc_out(outfile("hpcc"))
@@ -388,6 +553,7 @@ def _build_remote_cmd(
     store: bool,
     config: Optional[str],
     remote_cbench: str = "cbench",
+    fs_target: "tuple[str, ...]" = (),
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
     import shlex as _shlex
@@ -401,6 +567,8 @@ def _build_remote_cmd(
         "--tests", tests,
         "--mpi-cmd", mpi_cmd,
     ]
+    for tgt in fs_target:
+        inner += ["--fs-target", tgt]
     if binpath:
         inner += ["--binpath", binpath]
     if config:
@@ -432,8 +600,11 @@ def _build_remote_cmd(
               help="Path to the cbench binary on the remote node")
 @click.option("--numcores", default=None, type=int,
               help="CPU core count (default: auto-detected)")
+@click.option("--fs-target", "fs_target", multiple=True, type=click.Path(),
+              help="Filesystem path to target for fio I/O tests. Repeatable. "
+                   "Required when fio is selected via --tests (fio is opt-in).")
 @click.option("--tests",
-              default="stream|cachebench|dgemm|mpistreams|linpack|npb|fio|hpcc",
+              default="stream|cachebench|dgemm|mpistreams|linpack|npb|hpcc",
               show_default=True,
               help="Pipe-separated regex of tests to run")
 @click.option("--binpath", default=None, envvar="CBENCH_BINPATH",
@@ -450,6 +621,7 @@ def run_cmd(
     remote: Optional[str],
     remote_cbench: str,
     numcores: Optional[int],
+    fs_target: tuple[str, ...],
     tests: str,
     binpath: Optional[str],
     mpi_cmd: str,
@@ -461,6 +633,14 @@ def run_cmd(
     from cbench.config import load_config
 
     cfg = load_config(config)
+
+    # fio is opt-in and needs an explicit filesystem to target.
+    if re.search(r"\bfio\b", tests) and not fs_target:
+        raise click.UsageError(
+            "fio is selected but no --fs-target was given. fio I/O tests must "
+            "target an explicit filesystem path, e.g. --fs-target /gpfs/scratch "
+            "(repeatable). Omit fio from --tests to run the rest of the suite."
+        )
 
     if remote:
         # Validate the remote node name before using it in a command
@@ -475,6 +655,7 @@ def run_cmd(
             destdir=str(Path(destdir).resolve()),
             numcores=numcores,
             tests=tests,
+            fs_target=fs_target,
             binpath=binpath,
             mpi_cmd=mpi_cmd,
             dry_run=dry_run,
@@ -678,53 +859,86 @@ def run_cmd(
         # ------------------------------------------------------------------
         if re.search(r"\bfio\b", tests):
             _logmsg(log, "Starting FIO storage I/O testing")
+            import shutil
             fio_bin = binpath_p.parent / "fio"
             if not fio_bin.exists():
-                import shutil
                 fio_found = shutil.which("fio")
                 fio_bin = Path(fio_found) if fio_found else None
-            if fio_bin:
-                fio_dir = ident_dir / "fio_tmp"
-                if not dry_run:
-                    fio_dir.mkdir(exist_ok=True)
-                run("true", "fio", overwrite=True)
-                # Sequential 1 MiB block read/write
-                _runcmd(
-                    [
-                        str(fio_bin),
-                        "--name=seq_rw", "--rw=rw", "--bs=1m",
-                        "--size=1g", "--numjobs=1", "--iodepth=8",
-                        "--ioengine=libaio", "--direct=1",
-                        "--directory", str(fio_dir),
-                        "--output-format=normal",
-                    ],
-                    out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
-                )
-                # Random 4 KiB block read/write
-                _runcmd(
-                    [
-                        str(fio_bin),
-                        "--name=rand_rw", "--rw=randrw", "--bs=4k",
-                        "--size=1g", "--numjobs=4", "--iodepth=32",
-                        "--ioengine=libaio", "--direct=1",
-                        "--directory", str(fio_dir),
-                        "--output-format=normal",
-                    ],
-                    out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
-                )
-                # Clean up temp files
-                if not dry_run:
-                    for tmp in fio_dir.glob("*"):
-                        try:
-                            tmp.unlink()
-                        except OSError as e:
-                            _logmsg(log, f"WARNING: could not remove fio temp file {tmp}: {e}")
-                    try:
-                        fio_dir.rmdir()
-                    except OSError as e:
-                        _logmsg(log, f"WARNING: could not remove fio temp dir {fio_dir}: {e}")
-            else:
+            if not fio_bin:
                 _logmsg(log, "WARNING: fio not found on PATH or in binpath")
+            else:
+                # one output file, one '### CBENCH FS-TARGET' section per target
+                run("true", "fio", overwrite=True)
+                for target in fs_target:
+                    tgt = Path(target).resolve()
+                    if not dry_run and not (tgt.is_dir() and os.access(tgt, os.W_OK)):
+                        _logmsg(log, f"WARNING: --fs-target not a writable directory, skipping: {tgt}")
+                        continue
+
+                    fstype = _detect_fstype(tgt)
+                    if fstype == "unknown":
+                        _logmsg(log, f"WARNING: could not determine filesystem type for {tgt}; labeling 'unknown'")
+
+                    fio_dir = tgt / f".cbench_fio.{ident}"
+                    if not dry_run:
+                        fio_dir.mkdir(parents=True, exist_ok=True)
+
+                    direct = _supports_odirect(fio_dir if not dry_run else tgt)
+                    caveat = False
+                    if direct:
+                        size_arg = _FIO_DIRECT_SIZE
+                    else:
+                        mem_total = _read_memtotal_bytes()
+                        free_bytes = shutil.disk_usage(str(tgt)).free if not dry_run else 100 * 1024**3
+                        if mem_total <= 0:
+                            size_arg = _FIO_DIRECT_SIZE
+                            caveat = True
+                            _logmsg(log, f"WARNING: O_DIRECT unavailable on {fstype} ({tgt}) and MemTotal unknown; "
+                                         f"buffered run at {size_arg} may be cache-influenced")
+                        else:
+                            per_job, caveat = _fio_buffered_size_bytes(mem_total, 4, free_bytes)
+                            size_arg = str(per_job)
+                            msg = (f"O_DIRECT unavailable on {fstype} ({tgt}); buffered fallback, "
+                                   f"per-job size={per_job} bytes")
+                            if caveat:
+                                msg += " (capped by free space — result may be cache-influenced)"
+                            _logmsg(log, "WARNING: " + msg)
+
+                    direct_flag = "1" if direct else "0"
+                    marker = (f"{_FIO_TARGET_MARKER} path={tgt} fstype={fstype} "
+                              f"odirect={direct_flag} caveat={int(caveat)}")
+                    if not dry_run:
+                        with open(out("fio"), "a") as fh:
+                            fh.write(marker + "\n")
+                    else:
+                        _logmsg(log, f"DRYRUN: {marker}")
+
+                    # Sequential 1 MiB read/write, then random 4 KiB read/write
+                    _runcmd(
+                        [str(fio_bin), "--name=seq_rw", "--rw=rw", "--bs=1m",
+                         f"--size={size_arg}", "--numjobs=1", "--iodepth=8",
+                         "--ioengine=libaio", f"--direct={direct_flag}",
+                         "--directory", str(fio_dir), "--output-format=normal"],
+                        out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
+                    )
+                    _runcmd(
+                        [str(fio_bin), "--name=rand_rw", "--rw=randrw", "--bs=4k",
+                         f"--size={size_arg}", "--numjobs=4", "--iodepth=32",
+                         "--ioengine=libaio", f"--direct={direct_flag}",
+                         "--directory", str(fio_dir), "--output-format=normal"],
+                        out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
+                    )
+
+                    if not dry_run:
+                        for tmp in fio_dir.glob("*"):
+                            try:
+                                tmp.unlink()
+                            except OSError as e:
+                                _logmsg(log, f"WARNING: could not remove fio temp file {tmp}: {e}")
+                        try:
+                            fio_dir.rmdir()
+                        except OSError as e:
+                            _logmsg(log, f"WARNING: could not remove fio temp dir {fio_dir}: {e}")
 
         # ------------------------------------------------------------------
         # hpcc — HPC Challenge (HPL + STREAM + DGEMM + FFT + RandomAccess)
