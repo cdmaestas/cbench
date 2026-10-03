@@ -6,9 +6,32 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from cbench.cli.main import cli
+from cbench.cli.main import cli, console
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _wide_console(monkeypatch):
+    """Pin the rich console width for every test in this module.
+
+    rm-failed prints absolute job directory paths. rich hard-wraps any line
+    exceeding the console width, breaking mid-token, so a long tmp_path can
+    split a job name across two lines ("xh\\npl-4ppn-32") and defeat the
+    substring assertions below. Whether that happens depends on the tmp_path
+    length relative to the terminal width, which is why these tests passed
+    locally but failed on CI runners (80 columns, longer
+    /tmp/pytest-of-runner/... paths).
+
+    Note this sets the width on the Console instance rather than the COLUMNS
+    env var: rich reads COLUMNS only when the Console is constructed, and
+    cbench builds its console at module import, so setting the env var from a
+    fixture is too late to have any effect.
+
+    This matters for the negative assertions too — a wrapped name would make
+    "not in output" pass for the wrong reason.
+    """
+    monkeypatch.setattr(console, "width", 200)
 
 _XHPL_PASS = textwrap.dedent("""\
     matrix A is randomly generated

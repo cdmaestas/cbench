@@ -5,6 +5,31 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Node-aware fio I/O testing in `cbench snb`.** New repeatable `--fs-target PATH`
+  option targets fio at explicit filesystem(s). For each target, snb detects the
+  filesystem type (gpfs/lustre/nfs/panfs/local, via `/proc/self/mountinfo`) and
+  probes O_DIRECT support; when O_DIRECT is unavailable it falls back to buffered
+  I/O sized to 2× RAM to defeat the page cache (capped to free space, with a
+  cache-influenced caveat recorded). Results are stored per target
+  (`benchmark = snb_fio_{fstype}_{basename}`) with provenance in `status_detail`.
+  The random-I/O job's `--numjobs` tracks node cores (`min(numcores, 16)`) so
+  each node is driven proportional to its core count; the sequential job stays
+  single-stream.
+- `fio` single-node `hw_test` parser (`hw_tests/fio.py`, `test_class=disk`) —
+  produces the same four throughput metrics as `iozone`
+  (`fio_read/write/randomread/randomwrite`), so fio can stand in for iozone.
+
+### Changed
+- **`fio` is no longer part of the default `cbench snb run` suite** — it is now
+  opt-in via `--tests` and, when selected, **requires** `--fs-target`. Existing
+  invocations that relied on fio running by default must add `fio` to `--tests`
+  and supply `--fs-target`. The rest of the suite is unaffected.
+
+---
+
 ## [2.0.0] — 2026-07-03
 
 ### Python toolchain (new)

@@ -55,6 +55,7 @@ from cbench.hw_tests import (  # noqa: E402, F401
     psnap,
     stride,
     topspin,
+    fio,
 )
 
 

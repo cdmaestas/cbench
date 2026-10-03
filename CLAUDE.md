@@ -11,6 +11,17 @@ Cbench is an HPC benchmarking framework. v2.0 adds a Python toolchain alongside 
 - `v2.0` — active development branch (Python toolchain)
 - `v1.3.0` — tag at the original Perl-only commit
 
+## Current work / session handoff
+
+Read this first — it's the pointer to "where things are right now" so a new session doesn't re-derive it.
+
+- **Active branch:** `v2.0` (all Python work lands here). `main` tracks behind; sync `v2.0` → `main` at release milestones.
+- **Current focus:** _Perl→Python port is feature-complete; repo is post-hardening and CI-green on `v2.0`. No work in flight._
+- **Open PRs / in flight:** _none._
+- **Detailed state:** richer per-session notes (in-flight work, next steps, gotchas, how to run things on this machine) live in Claude's **local memory dir** — not committed to the repo. At the start of a session, check that memory; a cold session can also be told "read session state."
+
+**Handoff protocol — before ending a session:** update the three lines above (focus / open PRs), and update `session-state.md` in the memory dir with what changed, what's next, and any gotchas found. Keep this CLAUDE.md section *short and stable* — it's a pointer, not a changelog. Durable architecture facts go in the sections below; transient "what I'm doing now" goes in memory.
+
 ## Python toolchain — development commands
 
 ```bash
@@ -32,7 +43,9 @@ cbench utils run-sizes --maxprocs 512 --pof2
 cbench nodehwtest gen-jobs --nodelist n[1-10] --ident run1
 ```
 
-There is no linter or formatter configured. CI runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 via `.github/workflows/test.yml` on pushes to `cbench/python/**`. Coverage report is uploaded as an artifact on the Python 3.12 run. Keep coverage above 80% — the CI gate enforces it.
+Ruff is the linter (`[tool.ruff]` in `cbench/python/pyproject.toml`; rules F/E/B/S, py39 target — run `ruff check .` from `cbench/python/`). Pre-commit hooks are configured in `.pre-commit-config.yaml` at the repo root (ruff + hygiene checks on commit, full pytest on push); install with `pre-commit install --install-hooks -t pre-commit -t pre-push`. Keep `ruff check` clean — vetted false positives are annotated in-line with `noqa`/`nosec` plus a justification comment rather than disabling rules globally.
+
+CI: `.github/workflows/test.yml` runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 on pushes to `cbench/python/**` (coverage artifact uploaded on the 3.12 run). `.github/workflows/security.yml` runs ruff + bandit + pip-audit on the same paths. Keep coverage above 80% — the CI gate enforces it.
 
 ## Python package architecture (`cbench/python/cbench/`)
 
@@ -73,7 +86,9 @@ Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkB
 To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`, set `name`, `description`, `source_url`, implement `fetch()` and `build()`, then import in `builders/__init__.py`.
 
 ### 9. Single-node benchmarks (`cli/snb.py`)
-`cbench snb run` executes stream, cachebench, dgemm, mpistreams, linpack, npb, fio, hpcc directly (no job scheduler). Linpack uses `_generate_hpl_dat()` to size HPL.dat to ~50% memory; output parsed by `XhplParser`. NPB runs `EP.B.x` and `CG.B.x`, appending to a single `.npb.out` file; output split by "NAS Parallel Benchmarks" sections and parsed by `NpbParser`. `--remote NODE` dispatches via ssh/pdsh using `remotecmd_method` from `cluster.yaml`; node name is validated (rejects `/`, `\\`, `..`, spaces). `--remote-cbench PATH` sets the cbench binary path on the remote.
+`cbench snb run` executes stream, cachebench, dgemm, mpistreams, linpack, npb, hpcc directly (no job scheduler). Linpack uses `_generate_hpl_dat()` to size HPL.dat to ~50% memory; output parsed by `XhplParser`. NPB runs `EP.B.x` and `CG.B.x`, appending to a single `.npb.out` file; output split by "NAS Parallel Benchmarks" sections and parsed by `NpbParser`. `--remote NODE` dispatches via ssh/pdsh using `remotecmd_method` from `cluster.yaml`; node name is validated (rejects `/`, `\\`, `..`, spaces). `--remote-cbench PATH` sets the cbench binary path on the remote.
+
+**Node-aware fio I/O (opt-in).** fio is **not** in the default `--tests` suite — select it explicitly, and it then **requires** one or more `--fs-target PATH` (repeatable; `UsageError` otherwise). For each target, snb detects the filesystem type (`_detect_fstype()` — longest-mountpoint-prefix match in `/proc/self/mountinfo`; `unknown` off-Linux) and probes O_DIRECT support (`_supports_odirect()` — syscall probe). With O_DIRECT it keeps the fixed `--size`; on the buffered fallback it sizes the file to 2× `MemTotal` ÷ numjobs (`_fio_buffered_size_bytes()`), capping to 90% of free space and flagging a cache-influenced caveat. The random-I/O job's `--numjobs` tracks node cores (`min(numcores, 16)`) so each node is driven proportional to its size; the sequential job stays single-stream (`numjobs=1`). Each target's fio output is written to the single `out("fio")` file preceded by a `### CBENCH FS-TARGET path=.. fstype=.. odirect=.. caveat=..` marker; `_parse_fio_targets()` splits it into one result per target with `benchmark = snb_fio_{fstype}_{basename}` (node identity stays in `jobname`) and the path/fstype/caveat recorded in `status_detail`. FS type can't be a metric — the `metrics.value` column is `REAL`-only.
 
 ### 10. Web dashboard (`cli/serve.py`)
 Flask app (optional `cbench[web]`). Routes: `/` HTML dashboard, `/api/summary`, `/api/results`, `/api/trend`, `/metrics` (Prometheus text format), `/static/<file>` (local assets). `--no-cdn` avoids CDN; `--assets-dir` serves local Bootstrap/Chart.js. Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment (XSS prevention). Prometheus label values are escaped via `_prom_label()` (`"` → `\"`, `\n` → `\\n`).
@@ -93,9 +108,16 @@ These decisions are intentional — do not re-flag as vulnerabilities:
 - `send_from_directory(assets_dir, filename)` — Flask's `safe_join` prevents path traversal within the dir; the dir itself is operator-chosen at startup.
 - Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment.
 - Prometheus label values are escaped via `_prom_label()` in `cli/serve.py`.
-- Tarball downloads use a zip-slip guard (validates every member path before `extractall`).
+- Tarball downloads (`builders/_util.py:download()`) are https-only with a 120 s timeout; the zip-slip guard validates every member path *and* symlink/hardlink target with `Path.is_relative_to` before `extractall`.
+- All path-containment checks use `Path.is_relative_to` (never `str.startswith`, which has a `/a/b` vs `/a/bc` prefix-collision).
 - `cluster_name` in `cluster.yaml` is restricted to `[A-Za-z0-9_-]+` by JSON Schema validation.
 - `--node`/`--remote` hostname arguments reject `/`, `\\`, `..`, and spaces.
+- `snb.py:_runcmd()` accepts str (shell=True) only for hardcoded commands; user-derived args must be lists. Annotated `noqa: S602` / `nosec B602`.
+- Vetted scanner false positives (parameterized SQL in `db.py`, the validated `extractall`, the https-only `urlopen`) carry inline `noqa`+`nosec` markers with justifications — keep `ruff check` and `bandit` at zero findings rather than suppressing rules globally.
+
+## Error-handling policy
+
+Silent failures are converted to explicit errors: conditions indicating corrupt state (bad `target_hw_values` lines, malformed `parsed_at` DB timestamps, failed batch submissions, missing `jsonschema`) raise `AssertionError` at the point of failure. Benchmark-output parsers stay tolerant of unparseable lines by design — third-party benchmark output is messy; skipping a bad line there is not a silent failure.
 
 ## Adding a benchmark parser (checklist)
 

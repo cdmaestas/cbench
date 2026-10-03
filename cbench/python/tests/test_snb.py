@@ -1,9 +1,7 @@
 """Tests for cbench snb command."""
 
 import textwrap
-from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from cbench.cli.main import cli
@@ -307,6 +305,8 @@ def test_snb_run_dry_run_no_binaries(tmp_path):
         "--ident", "run1",
         "--destdir", str(tmp_path),
         "--tests", "stream|cachebench|dgemm|mpistreams|fio|hpcc",
+        # fio is opt-in and requires an explicit target (see node-aware fio design)
+        "--fs-target", str(tmp_path),
         "--binpath", str(tmp_path / "nonexistent"),
         "--dry-run",
     ])
