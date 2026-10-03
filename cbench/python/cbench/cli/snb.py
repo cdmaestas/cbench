@@ -869,6 +869,10 @@ def run_cmd(
             else:
                 # one output file, one '### CBENCH FS-TARGET' section per target
                 run("true", "fio", overwrite=True)
+                # Random-I/O job count tracks node cores (1 job/core), capped so
+                # fat nodes don't spawn an absurd number of fio processes. The
+                # sequential job stays single-stream (numjobs=1) on purpose.
+                fio_numjobs = min(numcores, 16)
                 for target in fs_target:
                     tgt = Path(target).resolve()
                     if not dry_run and not (tgt.is_dir() and os.access(tgt, os.W_OK)):
@@ -896,7 +900,7 @@ def run_cmd(
                             _logmsg(log, f"WARNING: O_DIRECT unavailable on {fstype} ({tgt}) and MemTotal unknown; "
                                          f"buffered run at {size_arg} may be cache-influenced")
                         else:
-                            per_job, caveat = _fio_buffered_size_bytes(mem_total, 4, free_bytes)
+                            per_job, caveat = _fio_buffered_size_bytes(mem_total, fio_numjobs, free_bytes)
                             size_arg = str(per_job)
                             msg = (f"O_DIRECT unavailable on {fstype} ({tgt}); buffered fallback, "
                                    f"per-job size={per_job} bytes")
@@ -923,7 +927,7 @@ def run_cmd(
                     )
                     _runcmd(
                         [str(fio_bin), "--name=rand_rw", "--rw=randrw", "--bs=4k",
-                         f"--size={size_arg}", "--numjobs=4", "--iodepth=32",
+                         f"--size={size_arg}", f"--numjobs={fio_numjobs}", "--iodepth=32",
                          "--ioengine=libaio", f"--direct={direct_flag}",
                          "--directory", str(fio_dir), "--output-format=normal"],
                         out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,

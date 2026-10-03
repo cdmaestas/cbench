@@ -15,6 +15,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   I/O sized to 2× RAM to defeat the page cache (capped to free space, with a
   cache-influenced caveat recorded). Results are stored per target
   (`benchmark = snb_fio_{fstype}_{basename}`) with provenance in `status_detail`.
+  The random-I/O job's `--numjobs` tracks node cores (`min(numcores, 16)`) so
+  each node is driven proportional to its core count; the sequential job stays
+  single-stream.
 - `fio` single-node `hw_test` parser (`hw_tests/fio.py`, `test_class=disk`) —
   produces the same four throughput metrics as `iozone`
   (`fio_read/write/randomread/randomwrite`), so fio can stand in for iozone.

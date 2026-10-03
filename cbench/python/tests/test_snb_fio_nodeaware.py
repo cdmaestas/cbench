@@ -7,6 +7,7 @@ sizing, per-target benchmark naming) and the CLI gating (fio opt-in + required
 
 import errno
 import os
+import re
 
 import pytest
 from click.testing import CliRunner
@@ -187,6 +188,41 @@ def test_parse_fio_targets_round_trip(tmp_path):
     detail2, metrics2 = by_name["snb_fio_ext4_tmp"]
     assert "caveat=1" in detail2 and "cache-influenced" in detail2
     assert metrics2["read_bw_MiB_s"] == pytest.approx(2000.0)
+
+
+def _fio_dry_run_output(tmp_path, monkeypatch, numcores):
+    """Invoke `snb run` fio in dry-run with a faked fio binary; return output."""
+    import shutil
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/usr/bin/fio" if name == "fio" else None
+    )
+    # Pin console width so the long RUNCMD line isn't wrapped (rich reads width
+    # at Console construction, so set it on the instance — see rm_failed tests).
+    monkeypatch.setattr(snb.console, "width", 10000)
+    target = tmp_path / "target"
+    target.mkdir()
+    result = runner.invoke(cli, [
+        "snb", "run", "--tests", "fio",
+        "--fs-target", str(target),
+        "--numcores", str(numcores),
+        "--destdir", str(tmp_path / "out"), "--ident", "x",
+        "--dry-run",
+    ])
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
+def test_random_job_numjobs_tracks_numcores(tmp_path, monkeypatch):
+    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=7)
+    # random job uses numjobs = numcores
+    assert re.search(r"--name=rand_rw\b.*--numjobs=7\b", out)
+    # sequential job stays single-stream regardless of cores
+    assert re.search(r"--name=seq_rw\b.*--numjobs=1\b", out)
+
+
+def test_random_job_numjobs_capped_at_16(tmp_path, monkeypatch):
+    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=64)
+    assert re.search(r"--name=rand_rw\b.*--numjobs=16\b", out)
 
 
 def test_parse_fio_targets_no_marker_backcompat(tmp_path):
