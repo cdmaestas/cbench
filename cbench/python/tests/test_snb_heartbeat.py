@@ -54,3 +54,20 @@ def test_runcmd_still_reports_nonzero_exit(tmp_path):
     log = io.StringIO()
     snb._runcmd("exit 3", out, overwrite=True, log_fh=log, heartbeat=0.2)
     assert "exited 3" in log.getvalue()
+
+
+def test_heartbeat_flag_exposed_with_default():
+    default = next(p.default for p in snb.run_cmd.params if p.name == "heartbeat")
+    assert default == snb._HEARTBEAT_SECS
+
+
+def test_heartbeat_flag_forwarded_to_remote():
+    # remote dispatch must carry --heartbeat so the remote run honors it
+    cmd = snb._build_remote_cmd(
+        type("C", (), {"remotecmd_method": "ssh", "remotecmd_extraargs": ""})(),
+        remote_node="n1", ident="i", destdir="/d", numcores=4,
+        tests="fio", binpath=None, mpi_cmd="mpirun",
+        dry_run=True, store=False, config=None, heartbeat=5.0,
+    )
+    joined = " ".join(cmd)
+    assert "--heartbeat 5.0" in joined

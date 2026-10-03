@@ -607,6 +607,7 @@ def _build_remote_cmd(
     config: Optional[str],
     remote_cbench: str = "cbench",
     fs_target: "tuple[str, ...]" = (),
+    heartbeat: float = _HEARTBEAT_SECS,
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
     import shlex as _shlex
@@ -619,6 +620,7 @@ def _build_remote_cmd(
         "--numcores", str(numcores),
         "--tests", tests,
         "--mpi-cmd", mpi_cmd,
+        "--heartbeat", str(heartbeat),
     ]
     for tgt in fs_target:
         inner += ["--fs-target", tgt]
@@ -664,6 +666,8 @@ def _build_remote_cmd(
               help="Path to benchmark binary directory (default: $CBENCHOME/bin/hwtests)")
 @click.option("--mpi-cmd", default="mpirun", show_default=True,
               help="MPI launch command for mpistreams")
+@click.option("--heartbeat", default=_HEARTBEAT_SECS, show_default=True, type=float,
+              help="Seconds between 'still running' progress lines for long tests (<=0 disables)")
 @click.option("--dry-run", is_flag=True, help="Print commands without executing")
 @click.option("--store", is_flag=True, help="Store results in SQLite DB after running")
 @click.option("--config", default=None)
@@ -678,12 +682,18 @@ def run_cmd(
     tests: str,
     binpath: Optional[str],
     mpi_cmd: str,
+    heartbeat: float,
     dry_run: bool,
     store: bool,
     config: Optional[str],
 ) -> None:
     """Run the single-node benchmark suite and save output files."""
+    from functools import partial
+
     from cbench.config import load_config
+
+    # All test commands run through this partial so --heartbeat applies uniformly.
+    runcmd = partial(_runcmd, heartbeat=heartbeat)
 
     cfg = load_config(config)
 
@@ -711,6 +721,7 @@ def run_cmd(
             fs_target=fs_target,
             binpath=binpath,
             mpi_cmd=mpi_cmd,
+            heartbeat=heartbeat,
             dry_run=dry_run,
             store=store,
             config=config,
@@ -752,7 +763,7 @@ def run_cmd(
                      f"node={hostname} ident={ident} tests={tests}")
 
         def run(cmd: str, tag: str, overwrite: bool = False) -> None:
-            _runcmd(cmd, out(tag), overwrite=overwrite, dry_run=dry_run, log_fh=log)
+            runcmd(cmd, out(tag), overwrite=overwrite, dry_run=dry_run, log_fh=log)
 
         # Basic node info
         run("uname -s -r -m -p -i -o", "uname", overwrite=True)
@@ -775,7 +786,7 @@ def run_cmd(
             if stream_bins:
                 run("true", "streams", overwrite=True)
                 for b in stream_bins:
-                    _runcmd([str(b)], out("streams"), overwrite=False, dry_run=dry_run, log_fh=log)
+                    runcmd([str(b)], out("streams"), overwrite=False, dry_run=dry_run, log_fh=log)
             else:
                 _logmsg(log, f"WARNING: no stream-* binaries found in {binpath_p}")
 
@@ -786,7 +797,7 @@ def run_cmd(
             _logmsg(log, "Starting CACHEBENCH testing")
             cb = binpath_p / "cachebench"
             if cb.exists():
-                _runcmd([str(cb), "--lmbench"], out("cachebench"), overwrite=True, dry_run=dry_run, log_fh=log)
+                runcmd([str(cb), "--lmbench"], out("cachebench"), overwrite=True, dry_run=dry_run, log_fh=log)
             else:
                 _logmsg(log, f"WARNING: cachebench not found at {cb}")
 
@@ -867,7 +878,7 @@ def run_cmd(
                     (linpack_dir / "HPL.dat").write_text(hpl_content)
                 else:
                     _logmsg(log, f"DRYRUN: would write HPL.dat to {linpack_dir}")
-                _runcmd(
+                runcmd(
                     [str(xhpl_bin)],
                     out("linpack"), overwrite=True, dry_run=dry_run, log_fh=log,
                     cwd=linpack_dir,
@@ -899,7 +910,7 @@ def run_cmd(
                         break
                 if npb_bin:
                     found_any_npb = True
-                    _runcmd(
+                    runcmd(
                         [mpi_cmd, "-np", str(numcores), str(npb_bin)],
                         out("npb"), overwrite=first_npb, dry_run=dry_run, log_fh=log,
                     )
@@ -971,14 +982,14 @@ def run_cmd(
                         _logmsg(log, f"DRYRUN: {marker}")
 
                     # Sequential 1 MiB read/write, then random 4 KiB read/write
-                    _runcmd(
+                    runcmd(
                         [str(fio_bin), "--name=seq_rw", "--rw=rw", "--bs=1m",
                          f"--size={size_arg}", "--numjobs=1", "--iodepth=8",
                          "--ioengine=libaio", f"--direct={direct_flag}",
                          "--directory", str(fio_dir), "--output-format=normal"],
                         out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
                     )
-                    _runcmd(
+                    runcmd(
                         [str(fio_bin), "--name=rand_rw", "--rw=randrw", "--bs=4k",
                          f"--size={size_arg}", f"--numjobs={fio_numjobs}", "--iodepth=32",
                          "--ioengine=libaio", f"--direct={direct_flag}",
@@ -1019,7 +1030,7 @@ def run_cmd(
                     (hpcc_dir / "HPL.dat").write_text(hpl_dat)
                 else:
                     _logmsg(log, f"DRYRUN: would write HPL.dat (sized for {numcores} cores) to {hpcc_dir}")
-                _runcmd(
+                runcmd(
                     [str(hpcc_bin)],
                     out("hpcc"), overwrite=True, dry_run=dry_run, log_fh=log,
                     cwd=hpcc_dir,
