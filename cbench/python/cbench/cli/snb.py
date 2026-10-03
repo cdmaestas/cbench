@@ -14,6 +14,7 @@ import re
 import shlex
 import socket
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
@@ -147,6 +148,35 @@ def _logmsg(log_fh, msg: str) -> None:
     console.print(line)
 
 
+#: Interval (seconds) between "still running" heartbeats for long commands.
+_HEARTBEAT_SECS = 30.0
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m{s:02d}s" if m else f"{s}s"
+
+
+def _cmd_label(cmd: "str | list[str]") -> str:
+    """Short identifier for heartbeat lines (program name + fio --name if any)."""
+    if isinstance(cmd, str):
+        parts = cmd.split()
+        return parts[0] if parts else cmd
+    if not cmd:
+        return "?"
+    base = os.path.basename(cmd[0])
+    name = next((a.split("=", 1)[1] for a in cmd if a.startswith("--name=")), "")
+    return f"{base} {name}".strip()
+
+
+def _emit(log_fh, msg: str) -> None:
+    """Write to the log file if present, else to the console."""
+    if log_fh:
+        _logmsg(log_fh, msg)
+    else:
+        console.print(msg)
+
+
 def _runcmd(
     cmd: "str | list[str]",
     outfile: Path,
@@ -155,11 +185,16 @@ def _runcmd(
     dry_run: bool = False,
     log_fh=None,
     cwd: "Optional[Path]" = None,
+    heartbeat: float = _HEARTBEAT_SECS,
 ) -> None:
     """Run a command (string for trusted shell cmds, list for user-derived args).
 
     Strings are run with shell=True (only use for hardcoded commands).
     Lists are run with shell=False to prevent injection.
+
+    While the command runs, a "still running (elapsed)" heartbeat is emitted
+    every *heartbeat* seconds so a long test (fio, linpack, hpcc) is visibly
+    alive rather than indistinguishable from a hang. Set heartbeat<=0 to disable.
     """
     display = cmd if isinstance(cmd, str) else " ".join(shlex.quote(a) for a in cmd)
     arrow = ">" if overwrite else ">>"
@@ -169,15 +204,33 @@ def _runcmd(
     if dry_run:
         return
     mode = "w" if overwrite else "a"
+    label = _cmd_label(cmd)
     with open(outfile, mode) as fh:
         use_shell = isinstance(cmd, str)
         # nosec B602 / noqa S602: shell=True only for str cmds, which are
         # hardcoded by callers (see docstring); user-derived args use lists.
-        result = subprocess.run(  # noqa: S602 # nosec B602
+        proc = subprocess.Popen(  # noqa: S602 # nosec B602
             cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd
         )
-    if result.returncode != 0:
-        msg = f"WARNING: command exited {result.returncode}: {display}"
+        start = time.monotonic()
+        next_beat = start + heartbeat
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=1.0)
+                    break
+                except subprocess.TimeoutExpired:
+                    now = time.monotonic()
+                    if heartbeat > 0 and now >= next_beat:
+                        _emit(log_fh, f"... still running ({_fmt_elapsed(now - start)}): {label}")
+                        next_beat = now + heartbeat
+        except BaseException:
+            # Ctrl-C or other interruption: don't orphan the child.
+            proc.kill()
+            proc.wait()
+            raise
+    if proc.returncode != 0:
+        msg = f"WARNING: command exited {proc.returncode}: {display}"
         if log_fh:
             _logmsg(log_fh, msg)
         else:
