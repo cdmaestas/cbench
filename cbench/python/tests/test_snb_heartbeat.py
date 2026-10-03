@@ -1,6 +1,8 @@
 """Tests for the _runcmd progress heartbeat in cbench snb."""
 
 import io
+import subprocess
+from unittest.mock import Mock
 
 from cbench.cli import snb
 
@@ -24,14 +26,24 @@ def test_cmd_label_list_plain():
     assert snb._cmd_label(["/usr/bin/nodeperf2-nompi", "-n", "1000"]) == "nodeperf2-nompi"
 
 
-def test_runcmd_emits_heartbeat_for_long_command(tmp_path):
+def test_runcmd_emits_heartbeat_for_long_command(tmp_path, monkeypatch):
     out = tmp_path / "o.out"
     log = io.StringIO()
-    # ~1s command with a 0.2s heartbeat → several "still running" lines
-    snb._runcmd("sleep 1", out, overwrite=True, log_fh=log, heartbeat=0.2)
+    # Simulate two elapsed intervals without racing sleep against wait's timeout.
+    proc = Mock(returncode=0)
+    proc.wait.side_effect = [
+        subprocess.TimeoutExpired("benchmark", 1),
+        subprocess.TimeoutExpired("benchmark", 1),
+        0,
+    ]
+    monkeypatch.setattr(snb.subprocess, "Popen", Mock(return_value=proc))
+    monkeypatch.setattr(snb.time, "monotonic", Mock(side_effect=[0.0, 30.0, 60.0]))
+    snb._runcmd(["benchmark"], out, overwrite=True, log_fh=log, heartbeat=30)
     contents = log.getvalue()
-    assert "still running" in contents
-    assert "RUNCMD: sleep 1" in contents
+    assert contents.count("still running") == 2
+    assert "still running (30s): benchmark" in contents
+    assert "still running (1m00s): benchmark" in contents
+    assert "RUNCMD: benchmark" in contents
 
 
 def test_runcmd_no_heartbeat_for_fast_command(tmp_path):
