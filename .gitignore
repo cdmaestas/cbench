@@ -1,0 +1,17 @@
+# Python virtualenvs (Python < 3.13 venvs don't self-ignore)
+.venv/
+venv/
+
+# Python build/test artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+
+# packaging build outputs (cbench/python/packaging/Makefile)
+cbench/python/packaging/_stage/
+cbench/python/packaging/_dist/
+cbench/python/packaging/_manbuild/

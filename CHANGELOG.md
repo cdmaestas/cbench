@@ -25,6 +25,20 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   "still running (elapsed)" line every 30 s (tunable via `--heartbeat SECONDS`,
   `<=0` disables), so a long test (fio, linpack, hpcc) is visibly alive instead
   of indistinguishable from a hang.
+- **`cbench nodecheck` node precheck.** Probes every node in a pool (`--nodelist`
+  or Slurm `--partition`) via pdsh (`-R ssh` or `-R exec`) or ssh, collects
+  logical CPU count, MemTotal, CPU model, and each configured IO target's fstype
+  and free space, verifies the pool is homogeneous (CPUs exact, MemTotal within
+  2%, every target mounted with the same fstype, every node reachable), and
+  writes `$CBENCHTEST/nodefacts/<name>.json` for job generation. Exits nonzero on
+  failure; `--allow-heterogeneous` and `--ignore` cover mixed pools.
+- New `cluster.yaml` keys: `io_targets` (named IO target directories),
+  `remotecmd_rcmd` (`ssh`|`exec`), `remotecmd_exec_cmd` (exec template with `%h`).
+
+### Fixed
+- pdsh-style hostlists with more than one bracket group (e.g. `n[1-3],m[5-6]`,
+  as returned by `sinfo`) were expanded incorrectly by `nodehwtest`; hostlist
+  handling now lives in `cbench.hostlist`.
 
 ### Changed
 - **`fio` is no longer part of the default `cbench snb run` suite** — it is now
