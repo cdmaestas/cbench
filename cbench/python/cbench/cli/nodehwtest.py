@@ -372,25 +372,9 @@ def start_jobs(
 
 
 def _expand_pdsh(spec: str) -> list[str]:
-    """Minimally expand a pdsh-style node list like n[1-3,5] → [n1,n2,n3,n5]."""
-    nodes: list[str] = []
-    m = re.match(r"^([^\[]+)\[([^\]]+)\](.*)$", spec)
-    if not m:
-        # plain comma-separated list or single node
-        return [n.strip() for n in spec.split(",") if n.strip()]
-    prefix = m.group(1)
-    ranges = m.group(2)
-    suffix = m.group(3)
-    for part in ranges.split(","):
-        part = part.strip()
-        if "-" in part:
-            lo, hi = part.split("-", 1)
-            width = len(lo) if lo.startswith("0") else 0
-            for i in range(int(lo), int(hi) + 1):
-                nodes.append(f"{prefix}{str(i).zfill(width) if width else i}{suffix}")
-        else:
-            nodes.append(f"{prefix}{part}{suffix}")
-    return nodes
+    """Expand a pdsh-style node list like n[1-3,5],m[01-02] (see cbench.hostlist)."""
+    from cbench.hostlist import expand
+    return expand(spec)
 
 
 def _default_batch_cmd(cfg) -> str:

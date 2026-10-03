@@ -156,3 +156,48 @@ def test_all_valid_launch_methods(tmp_path):
         p = _write_yaml(tmp_path, f"joblaunch_method: {method}\n")
         cfg = load_config(p)
         assert cfg.joblaunch_method == method
+
+
+# ---------------------------------------------------------------------------
+# nodecheck-related keys: io_targets, remotecmd_rcmd, remotecmd_exec_cmd
+# ---------------------------------------------------------------------------
+
+def test_io_targets_accepted(tmp_path):
+    p = _write_yaml(tmp_path, "io_targets:\n  parallel: /gpfs/scratch\n  node-local: /tmp\n")
+    cfg = load_config(p)
+    assert cfg.io_targets == {"parallel": "/gpfs/scratch", "node-local": "/tmp"}
+
+
+def test_io_targets_relative_path_rejected(tmp_path):
+    p = _write_yaml(tmp_path, "io_targets:\n  parallel: scratch\n")
+    with pytest.raises(ConfigError, match="io_targets"):
+        load_config(p)
+
+
+def test_io_targets_bad_name_rejected(tmp_path):
+    p = _write_yaml(tmp_path, "io_targets:\n  'bad name': /tmp\n")
+    with pytest.raises(ConfigError, match="io_targets"):
+        load_config(p)
+
+
+def test_remotecmd_rcmd_validated(tmp_path):
+    assert load_config(_write_yaml(tmp_path, "remotecmd_rcmd: exec\n")).remotecmd_rcmd == "exec"
+    with pytest.raises(ConfigError, match="remotecmd_rcmd"):
+        load_config(_write_yaml(tmp_path, "remotecmd_rcmd: rsh\n"))
+
+
+def test_rcmd_defaults():
+    cfg = ClusterConfig()
+    assert cfg.remotecmd_rcmd == "ssh" and cfg.remotecmd_exec_cmd == "" and cfg.io_targets == {}
+
+
+def test_explicit_keys_tracks_file_keys(tmp_path):
+    cfg = load_config(_write_yaml(tmp_path, "cluster_name: zima\nmemory_per_node_mb: 7524\n"))
+    assert cfg.explicit_keys == {"cluster_name", "memory_per_node_mb"}
+    assert "procs_per_node" not in cfg.explicit_keys  # built-in default, not from file
+    assert ClusterConfig().explicit_keys == frozenset()
+
+
+def test_explicit_keys_is_not_a_yaml_key(tmp_path):
+    with pytest.raises(ConfigError, match="explicit_keys"):
+        load_config(_write_yaml(tmp_path, "explicit_keys: [cluster_name]\n"))

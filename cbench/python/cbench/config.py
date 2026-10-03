@@ -15,6 +15,7 @@ import yaml
 _VALID_BATCH_METHODS = ["slurm", "torque", "pbspro", "lsf", "moab", "local"]
 _VALID_LAUNCH_METHODS = ["openmpi", "mpiexec", "slurm", "alps", "yod"]
 _VALID_REMOTE_METHODS = ["pdsh", "ssh"]
+_VALID_RCMD_MODULES = ["ssh", "exec"]
 _VALID_FILTER_MODULES = ["openmpi", "slurm", "torque", "mvapich", "mpiexec", "cray", "misc"]
 
 _SCHEMA: dict = {
@@ -52,6 +53,16 @@ _SCHEMA: dict = {
         "batch_extraargs": {"type": "string"},
         "remotecmd_method": {"type": "string", "enum": _VALID_REMOTE_METHODS},
         "remotecmd_extraargs": {"type": "string"},
+        # pdsh rcmd module used by `cbench nodecheck` (pdsh -R <module>)
+        "remotecmd_rcmd": {"type": "string", "enum": _VALID_RCMD_MODULES},
+        # local command template for the pdsh exec module; must contain %h
+        "remotecmd_exec_cmd": {"type": "string"},
+        # named IO target directories, e.g. {parallel: /gpfs/scratch, node-local: /tmp}
+        "io_targets": {
+            "type": "object",
+            "propertyNames": {"pattern": r"^[A-Za-z0-9_\-]+$"},
+            "additionalProperties": {"type": "string", "pattern": r"^/"},
+        },
         "parse_filter_include": {
             "type": "array",
             "items": {"type": "string", "enum": _VALID_FILTER_MODULES},
@@ -122,6 +133,9 @@ class ClusterConfig:
     batch_extraargs: str = ""
     remotecmd_method: str = "pdsh"
     remotecmd_extraargs: str = "-f 700"
+    remotecmd_rcmd: str = "ssh"
+    remotecmd_exec_cmd: str = ""
+    io_targets: dict[str, str] = field(default_factory=dict)
     parse_filter_include: list[str] = field(
         default_factory=lambda: ["openmpi", "slurm", "mpiexec", "torque", "mvapich", "misc"]
     )
@@ -129,6 +143,9 @@ class ClusterConfig:
     nodehwtest_npb_longjobs: bool = False
     nodehwtest_stress_minutes: int = 120
     nodehwtest_local_filesystems: list[str] = field(default_factory=list)
+    # Keys that were explicitly present in the loaded cluster.yaml (vs built-in
+    # defaults). Not a YAML key — set by load_config(); the schema rejects it.
+    explicit_keys: frozenset = field(default_factory=frozenset, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         env_cluster = os.environ.get("CBENCHCLUSTER")
@@ -179,6 +196,8 @@ def load_config(path: Optional[str | Path] = None) -> ClusterConfig:
             if "max_ppn_procs" in data:
                 data["max_ppn_procs"] = {str(k): v for k, v in data["max_ppn_procs"].items()}
             _validate_config(data, candidate)
-            return ClusterConfig(**{k: v for k, v in data.items() if k in ClusterConfig.__dataclass_fields__})
+            cfg = ClusterConfig(**{k: v for k, v in data.items() if k in ClusterConfig.__dataclass_fields__})
+            cfg.explicit_keys = frozenset(data)
+            return cfg
 
     return ClusterConfig()
