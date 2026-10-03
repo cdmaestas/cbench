@@ -98,6 +98,12 @@ def test_build_pdsh_argv_exec_substitutes_template():
     assert argv[-3:-1] == ["sh", "-c"]
 
 
+@pytest.mark.parametrize("tmpl", ["ssh %h", "/usr/bin/ssh -o BatchMode=yes %h", "rsh %h"])
+def test_build_pdsh_argv_exec_rejects_shell_rejoining_launchers(tmpl):
+    with pytest.raises(nc.NodecheckError, match="remotecmd_rcmd: ssh"):
+        nc.build_pdsh_argv("zima1", "echo\n", rcmd="exec", exec_cmd=tmpl, extraargs="")
+
+
 def test_build_pdsh_argv_exec_requires_percent_h():
     with pytest.raises(nc.NodecheckError, match="%h"):
         nc.build_pdsh_argv("zima1", "echo\n", rcmd="exec", exec_cmd="srun -N1", extraargs="")

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -107,6 +108,15 @@ def build_pdsh_argv(
             raise NodecheckError(
                 "remotecmd_rcmd is 'exec' but remotecmd_exec_cmd does not contain %h "
                 "(e.g. 'srun -N1 -n1 -w %h'); without it every host would run locally"
+            )
+        # The exec template must pass argv through unchanged (srun, docker exec,
+        # env, ...). ssh/rsh re-join argv into a shell string, which splits the
+        # probe pipeline in the wrong place — and -R ssh already covers them.
+        first = os.path.basename(shlex.split(exec_cmd)[0]) if exec_cmd.strip() else ""
+        if first in {"ssh", "rsh", "mrsh"}:
+            raise NodecheckError(
+                f"remotecmd_exec_cmd starts with '{first}'; use remotecmd_rcmd: ssh instead "
+                "(exec templates must pass argv through, e.g. 'srun -N1 -n1 -w %h')"
             )
         argv += shlex.split(exec_cmd) + exec_command_suffix(script)
     else:
