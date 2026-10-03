@@ -14,6 +14,7 @@ import re
 import shlex
 import socket
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
@@ -147,6 +148,35 @@ def _logmsg(log_fh, msg: str) -> None:
     console.print(line)
 
 
+#: Interval (seconds) between "still running" heartbeats for long commands.
+_HEARTBEAT_SECS = 30.0
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m{s:02d}s" if m else f"{s}s"
+
+
+def _cmd_label(cmd: "str | list[str]") -> str:
+    """Short identifier for heartbeat lines (program name + fio --name if any)."""
+    if isinstance(cmd, str):
+        parts = cmd.split()
+        return parts[0] if parts else cmd
+    if not cmd:
+        return "?"
+    base = os.path.basename(cmd[0])
+    name = next((a.split("=", 1)[1] for a in cmd if a.startswith("--name=")), "")
+    return f"{base} {name}".strip()
+
+
+def _emit(log_fh, msg: str) -> None:
+    """Write to the log file if present, else to the console."""
+    if log_fh:
+        _logmsg(log_fh, msg)
+    else:
+        console.print(msg)
+
+
 def _runcmd(
     cmd: "str | list[str]",
     outfile: Path,
@@ -155,11 +185,16 @@ def _runcmd(
     dry_run: bool = False,
     log_fh=None,
     cwd: "Optional[Path]" = None,
+    heartbeat: float = _HEARTBEAT_SECS,
 ) -> None:
     """Run a command (string for trusted shell cmds, list for user-derived args).
 
     Strings are run with shell=True (only use for hardcoded commands).
     Lists are run with shell=False to prevent injection.
+
+    While the command runs, a "still running (elapsed)" heartbeat is emitted
+    every *heartbeat* seconds so a long test (fio, linpack, hpcc) is visibly
+    alive rather than indistinguishable from a hang. Set heartbeat<=0 to disable.
     """
     display = cmd if isinstance(cmd, str) else " ".join(shlex.quote(a) for a in cmd)
     arrow = ">" if overwrite else ">>"
@@ -169,15 +204,33 @@ def _runcmd(
     if dry_run:
         return
     mode = "w" if overwrite else "a"
+    label = _cmd_label(cmd)
     with open(outfile, mode) as fh:
         use_shell = isinstance(cmd, str)
         # nosec B602 / noqa S602: shell=True only for str cmds, which are
         # hardcoded by callers (see docstring); user-derived args use lists.
-        result = subprocess.run(  # noqa: S602 # nosec B602
+        proc = subprocess.Popen(  # noqa: S602 # nosec B602
             cmd, shell=use_shell, stdout=fh, stderr=subprocess.STDOUT, cwd=cwd
         )
-    if result.returncode != 0:
-        msg = f"WARNING: command exited {result.returncode}: {display}"
+        start = time.monotonic()
+        next_beat = start + heartbeat
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=1.0)
+                    break
+                except subprocess.TimeoutExpired:
+                    now = time.monotonic()
+                    if heartbeat > 0 and now >= next_beat:
+                        _emit(log_fh, f"... still running ({_fmt_elapsed(now - start)}): {label}")
+                        next_beat = now + heartbeat
+        except BaseException:
+            # Ctrl-C or other interruption: don't orphan the child.
+            proc.kill()
+            proc.wait()
+            raise
+    if proc.returncode != 0:
+        msg = f"WARNING: command exited {proc.returncode}: {display}"
         if log_fh:
             _logmsg(log_fh, msg)
         else:
@@ -554,6 +607,7 @@ def _build_remote_cmd(
     config: Optional[str],
     remote_cbench: str = "cbench",
     fs_target: "tuple[str, ...]" = (),
+    heartbeat: float = _HEARTBEAT_SECS,
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
     import shlex as _shlex
@@ -566,6 +620,7 @@ def _build_remote_cmd(
         "--numcores", str(numcores),
         "--tests", tests,
         "--mpi-cmd", mpi_cmd,
+        "--heartbeat", str(heartbeat),
     ]
     for tgt in fs_target:
         inner += ["--fs-target", tgt]
@@ -611,6 +666,8 @@ def _build_remote_cmd(
               help="Path to benchmark binary directory (default: $CBENCHOME/bin/hwtests)")
 @click.option("--mpi-cmd", default="mpirun", show_default=True,
               help="MPI launch command for mpistreams")
+@click.option("--heartbeat", default=_HEARTBEAT_SECS, show_default=True, type=float,
+              help="Seconds between 'still running' progress lines for long tests (<=0 disables)")
 @click.option("--dry-run", is_flag=True, help="Print commands without executing")
 @click.option("--store", is_flag=True, help="Store results in SQLite DB after running")
 @click.option("--config", default=None)
@@ -625,12 +682,18 @@ def run_cmd(
     tests: str,
     binpath: Optional[str],
     mpi_cmd: str,
+    heartbeat: float,
     dry_run: bool,
     store: bool,
     config: Optional[str],
 ) -> None:
     """Run the single-node benchmark suite and save output files."""
+    from functools import partial
+
     from cbench.config import load_config
+
+    # All test commands run through this partial so --heartbeat applies uniformly.
+    runcmd = partial(_runcmd, heartbeat=heartbeat)
 
     cfg = load_config(config)
 
@@ -658,6 +721,7 @@ def run_cmd(
             fs_target=fs_target,
             binpath=binpath,
             mpi_cmd=mpi_cmd,
+            heartbeat=heartbeat,
             dry_run=dry_run,
             store=store,
             config=config,
@@ -699,7 +763,7 @@ def run_cmd(
                      f"node={hostname} ident={ident} tests={tests}")
 
         def run(cmd: str, tag: str, overwrite: bool = False) -> None:
-            _runcmd(cmd, out(tag), overwrite=overwrite, dry_run=dry_run, log_fh=log)
+            runcmd(cmd, out(tag), overwrite=overwrite, dry_run=dry_run, log_fh=log)
 
         # Basic node info
         run("uname -s -r -m -p -i -o", "uname", overwrite=True)
@@ -722,7 +786,7 @@ def run_cmd(
             if stream_bins:
                 run("true", "streams", overwrite=True)
                 for b in stream_bins:
-                    _runcmd([str(b)], out("streams"), overwrite=False, dry_run=dry_run, log_fh=log)
+                    runcmd([str(b)], out("streams"), overwrite=False, dry_run=dry_run, log_fh=log)
             else:
                 _logmsg(log, f"WARNING: no stream-* binaries found in {binpath_p}")
 
@@ -733,7 +797,7 @@ def run_cmd(
             _logmsg(log, "Starting CACHEBENCH testing")
             cb = binpath_p / "cachebench"
             if cb.exists():
-                _runcmd([str(cb), "--lmbench"], out("cachebench"), overwrite=True, dry_run=dry_run, log_fh=log)
+                runcmd([str(cb), "--lmbench"], out("cachebench"), overwrite=True, dry_run=dry_run, log_fh=log)
             else:
                 _logmsg(log, f"WARNING: cachebench not found at {cb}")
 
@@ -814,7 +878,7 @@ def run_cmd(
                     (linpack_dir / "HPL.dat").write_text(hpl_content)
                 else:
                     _logmsg(log, f"DRYRUN: would write HPL.dat to {linpack_dir}")
-                _runcmd(
+                runcmd(
                     [str(xhpl_bin)],
                     out("linpack"), overwrite=True, dry_run=dry_run, log_fh=log,
                     cwd=linpack_dir,
@@ -846,7 +910,7 @@ def run_cmd(
                         break
                 if npb_bin:
                     found_any_npb = True
-                    _runcmd(
+                    runcmd(
                         [mpi_cmd, "-np", str(numcores), str(npb_bin)],
                         out("npb"), overwrite=first_npb, dry_run=dry_run, log_fh=log,
                     )
@@ -918,14 +982,14 @@ def run_cmd(
                         _logmsg(log, f"DRYRUN: {marker}")
 
                     # Sequential 1 MiB read/write, then random 4 KiB read/write
-                    _runcmd(
+                    runcmd(
                         [str(fio_bin), "--name=seq_rw", "--rw=rw", "--bs=1m",
                          f"--size={size_arg}", "--numjobs=1", "--iodepth=8",
                          "--ioengine=libaio", f"--direct={direct_flag}",
                          "--directory", str(fio_dir), "--output-format=normal"],
                         out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
                     )
-                    _runcmd(
+                    runcmd(
                         [str(fio_bin), "--name=rand_rw", "--rw=randrw", "--bs=4k",
                          f"--size={size_arg}", f"--numjobs={fio_numjobs}", "--iodepth=32",
                          "--ioengine=libaio", f"--direct={direct_flag}",
@@ -966,7 +1030,7 @@ def run_cmd(
                     (hpcc_dir / "HPL.dat").write_text(hpl_dat)
                 else:
                     _logmsg(log, f"DRYRUN: would write HPL.dat (sized for {numcores} cores) to {hpcc_dir}")
-                _runcmd(
+                runcmd(
                     [str(hpcc_bin)],
                     out("hpcc"), overwrite=True, dry_run=dry_run, log_fh=log,
                     cwd=hpcc_dir,

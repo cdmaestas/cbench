@@ -21,6 +21,10 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 - `fio` single-node `hw_test` parser (`hw_tests/fio.py`, `test_class=disk`) —
   produces the same four throughput metrics as `iozone`
   (`fio_read/write/randomread/randomwrite`), so fio can stand in for iozone.
+- **Progress heartbeat for `cbench snb run`.** Each running test now emits a
+  "still running (elapsed)" line every 30 s (tunable via `--heartbeat SECONDS`,
+  `<=0` disables), so a long test (fio, linpack, hpcc) is visibly alive instead
+  of indistinguishable from a hang.
 
 ### Changed
 - **`fio` is no longer part of the default `cbench snb run` suite** — it is now
