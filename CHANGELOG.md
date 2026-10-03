@@ -34,6 +34,16 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   failure; `--allow-heterogeneous` and `--ignore` cover mixed pools.
 - New `cluster.yaml` keys: `io_targets` (named IO target directories),
   `remotecmd_rcmd` (`ssh`|`exec`), `remotecmd_exec_cmd` (exec template with `%h`).
+- **Node-aware IO sizing in `gen-jobs`** (`--nodefacts NAME|PATH`). IOR throughput
+  jobs size `-b` so each node writes at least 2× its RAM (rounded up to a multiple
+  of the transfer size); bonnie++ gets explicit `-s`/`-r` so its 3 concurrent
+  instances write 2× RAM in aggregate. Sizes that won't fit the target's free
+  space are capped with a gen-time warning and a `CBENCH CAVEAT:` line. IOR and
+  mdtest run on `io_targets.parallel`, bonnie on `io_targets.node-local`.
+- **Runtime space preflight for IO jobs**: sized IO jobs check free space on their
+  target immediately before running and exit with `CBENCH NOTICE: insufficient
+  space` instead of failing mid-run with ENOSPC.
+- `cbench utils find-n --nodefacts` sizes HPL N from the smallest node's MemTotal.
 
 ### Fixed
 - pdsh-style hostlists with more than one bracket group (e.g. `n[1-3],m[5-6]`,
@@ -41,6 +51,18 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **`gen-jobs` for the `io` and `iometadata` testsets now needs a memory source**:
+  `--nodefacts` (from `cbench nodecheck`) or `memory_per_node_mb` set explicitly in
+  cluster.yaml. The built-in default is no longer used to size IO jobs.
+- **bonnie++ writes 2× RAM in aggregate instead of ~6×.** It previously relied on
+  bonnie++'s own per-process default (2× detected RAM) times 3 concurrent
+  instances; results are not directly comparable with older runs.
+- **IOR `io_ior*` block size now scales with node memory** (was a fixed 1024m), so
+  runs on large-memory nodes write more and take longer.
+- **HPL N from `compute_n` / `find-n` is about 2% smaller**: N is now a true floor.
+  The Perl `compute_N` inflated N by 2%; this intentionally diverges from it.
+- Metadata testsets (`iometadata`) generated with node facts use the measured CPU
+  count as the top ppn level and skip ppn levels above it.
 - **`fio` is no longer part of the default `cbench snb run` suite** — it is now
   opt-in via `--tests` and, when selected, **requires** `--fs-target`. Existing
   invocations that relied on fio running by default must add `fio` to `--tests`

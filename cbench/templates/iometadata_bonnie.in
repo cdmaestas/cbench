@@ -7,10 +7,19 @@
 
 cbench_check_for_bin CBENCHTEST_BIN_HERE/bonnie++
 
+# run on the configured node-local IO target, if any (cluster.yaml io_targets)
+IO_TARGET_DIR="IO_TARGET_DIR_HERE"
+if [ -n "$IO_TARGET_DIR" ]; then
+	mkdir -p "$IO_TARGET_DIR" && cd "$IO_TARGET_DIR" || {
+		cbench_echo "CBENCH NOTICE: cannot use IO target $IO_TARGET_DIR"; exit 1; }
+fi
 cbench_runin_tempdir
 
 bonnie="CBENCHTEST_BIN_HERE/bonnie++"
-opts="-d ."
+# -s (per-instance file size) and -r (per-instance RAM) are computed by gen-jobs
+# so the 3 concurrent instances write 2x the node's RAM in aggregate, capped to
+# the target's free space. See cbench/python/cbench/iosizing.py.
+opts="-d . -s BONNIE_SIZE_MB_HERE -r BONNIE_RAM_MB_HERE"
 
 # when running as root, bonnie++ will complain. so you need to
 # give it the -u option with a userid that has read/write permissions
@@ -24,6 +33,7 @@ if [ NUM_NODES_HERE -ne 1 ]; then
         exit
 fi
 
+cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 
 CMD="$bonnie $opts -p3"
 cbench_run_cmd $CMD

@@ -127,8 +127,15 @@ def test_compute_n_basic():
     # total_mem = 4 * 2048 * 1024^2 bytes
     import math
     total_bytes = 4 * 2048 * 1024 * 1024
-    expected = int(math.sqrt(total_bytes / 8) * 0.5 * 1.02)
+    expected = math.floor(math.sqrt(total_bytes / 8) * 0.5)  # floor, no 2% inflation
     assert nvals[0] == expected
+
+
+def test_compute_n_never_exceeds_requested_memory():
+    total_bytes = 4 * 2048 * 1024 * 1024
+    for factor in (0.25, 0.5, 0.8, 0.99, 1.0):
+        n = compute_n(4, 1, 2048, [factor])[0]
+        assert n * n * 8 <= (factor ** 2) * total_bytes
 
 def test_compute_n_multiple_factors():
     nvals = compute_n(4, 1, 2048, [0.5, 0.6, 0.7])

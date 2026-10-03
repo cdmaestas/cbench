@@ -7,12 +7,13 @@
 
 cbench_check_for_bin CBENCHTEST_BIN_HERE/IOR.posix
 
-# FIXME: we should calculate the blocksize, -b, parameter such that
-# the aggregate filesize is either some multiple of memory per node
-# or a filesize set in cluster.def
-ALLARGS="-b 1024m -C -i 4 -t 128m -v -v -r -R -w -W -e -d 30 -g "
+# The block size, -b, is computed by gen-jobs so the aggregate written is at
+# least 2x each node's RAM (rounded up to a multiple of -t), capped to the
+# target's free space. See cbench/python/cbench/iosizing.py.
+ALLARGS="-b IOR_BLOCKSIZE_HERE -C -i 4 -t 128m -v -v -r -R -w -W -e -d 30 -g "
 TESTDIR="TESTDIR_HERE/$JOBID"
 mkdir -p $TESTDIR
+cbench_io_preflight "TESTDIR_HERE" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 PSFILE=`/bin/mktemp $TESTDIR/posix.nto1.XXXXXX`
 PPFILE=`/bin/mktemp $TESTDIR/posix.nton.XXXXXX`
 
