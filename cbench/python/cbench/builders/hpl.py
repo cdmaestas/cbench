@@ -5,8 +5,9 @@ HPL requires a BLAS library.  Pass --blas-lib to cbench build, e.g.:
   cbench build hpl --blas-lib "-L/opt/intel/mkl/lib/intel64 -lmkl_rt"
 
 The builder generates a minimal Make.linux_MPI setup file targeting the
-system MPI wrappers.  For production tuning (block size, process grid,
-problem size) edit the HPL.dat that gen-jobs generates.
+system MPI wrappers.  `cbench gen-jobs` writes a per-job HPL.dat (N from node
+memory, P x Q from the proc count; see cbench/hplsizing.py); tune block size and
+the other algorithm knobs in templates/xhpl_dat.in.
 """
 
 from __future__ import annotations
