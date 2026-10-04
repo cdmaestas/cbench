@@ -505,13 +505,12 @@ def parse_cmd(
 
         numnodes = max(1, math.ceil(numprocs / ppn_val))
 
-        # Find stdout file
-        stdout_files = list(job_dir.glob("*.o*")) + list(job_dir.glob("slurm-*.out"))
-        if not stdout_files:
+        # Find stdout file (newest run when the job has been run more than once)
+        stdout_file, stderr_file = _job_output_files(job_dir)
+        if stdout_file is None:
             continue
-        stdout = stdout_files[0].read_text(errors="replace")
-        stderr_files = list(job_dir.glob("*.e*"))
-        stderr = stderr_files[0].read_text(errors="replace") if stderr_files else ""
+        stdout = stdout_file.read_text(errors="replace")
+        stderr = stderr_file.read_text(errors="replace") if stderr_file else ""
 
         # Run parse filters on combined output first
         filter_errors: list[str] = []
@@ -579,6 +578,26 @@ def parse_cmd(
         f"[red]{summary.get('ERROR', 0)} ERROR[/red]  "
         f"[yellow]{summary.get('OTHER', 0)} OTHER[/yellow]"
     )
+
+
+def _job_output_files(job_dir: Path) -> tuple[Optional[Path], Optional[Path]]:
+    """(stdout, stderr) of a job's most recent run.
+
+    A job dir collects one ``<job>.o<id>`` (or ``slurm-<id>.out``) per run and
+    may hold stray files, so take the newest stdout rather than whichever the
+    directory listing returns first. stderr is the matching ``.e<id>`` when it
+    exists, else the newest ``*.e*``.
+    """
+    stdouts = [f for f in (*job_dir.glob("*.o*"), *job_dir.glob("slurm-*.out")) if f.is_file()]
+    if not stdouts:
+        return None, None
+    stdout = max(stdouts, key=lambda f: (f.stat().st_mtime, f.name))
+    m = re.search(r"\.o([^.]*)$", stdout.name)
+    paired = stdout.with_name(stdout.name[: m.start()] + ".e" + m.group(1)) if m else None
+    if paired is not None and paired.is_file():
+        return stdout, paired
+    stderrs = [f for f in job_dir.glob("*.e*") if f.is_file()]
+    return stdout, (max(stderrs, key=lambda f: (f.stat().st_mtime, f.name)) if stderrs else None)
 
 
 def _caveat_lines(stdout: str) -> list[str]:
@@ -760,13 +779,12 @@ def rm_failed(
             continue
         benchmark = parts[0]
 
-        stdout_files = list(job_dir.glob("*.o*")) + list(job_dir.glob("slurm-*.out"))
-        if not stdout_files:
+        stdout_file, stderr_file = _job_output_files(job_dir)
+        if stdout_file is None:
             # No output file — treat as not-started, not an error
             continue
-        stdout = stdout_files[0].read_text(errors="replace")
-        stderr_files = list(job_dir.glob("*.e*"))
-        stderr = stderr_files[0].read_text(errors="replace") if stderr_files else ""
+        stdout = stdout_file.read_text(errors="replace")
+        stderr = stderr_file.read_text(errors="replace") if stderr_file else ""
 
         parser = get_parser(benchmark)
         if parser is None:

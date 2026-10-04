@@ -57,7 +57,7 @@ The package is structured around four independent layers:
 ### 2. Benchmark output parsers (`parsers/`)
 Auto-registration via `__init_subclass__`: any subclass of `BenchmarkParser` that sets `names = [...]` is added to `REGISTRY` automatically. Each parser gets a `stdout: str` and returns a `ParseResult(status, metrics)`. Status values: `PASSED`, `ERROR(...)`, `NOTICE`, `NOTSTARTED`, `NO_PARSER`, `FILTER_ERROR`.
 
-To add a new parser: create `parsers/mybench.py`, subclass `BenchmarkParser`, set `names`, import it in `parsers/__init__.py`. Job directories are named `<benchmark>-<ppn>ppn-<np>`; `get_parser()` tries an exact `names` match, then each parser's `alias_spec` regex (full match, ported from Perl `alias_spec()`), e.g. IOR's `(ior|ios).*` catches `ior1mNtoN`. `cbench parse` appends any `CBENCH CAVEAT:` lines from job output to `status_detail`.
+To add a new parser: create `parsers/mybench.py`, subclass `BenchmarkParser`, set `names`, import it in `parsers/__init__.py`. Job directories are named `<benchmark>-<ppn>ppn-<np>`; `get_parser()` tries an exact `names` match, then each parser's `alias_spec` regex (full match, ported from Perl `alias_spec()`), e.g. IOR's `(ior|ios).*` catches `ior1mNtoN`. `cbench parse` appends any `CBENCH CAVEAT:` lines from job output to `status_detail`, and reads each job's newest run (`_job_output_files()`: newest `*.o*`/`slurm-*.out` plus its matching `.e<id>`).
 
 ### 3. Parse filters (`parse_filters/`)
 Seven modules (openmpi, slurm, torque, mvapich, mpiexec, cray, misc) each expose a `FILTERS: dict[str, str]` mapping regex patterns to message templates (`$1`, `$2` for capture groups). `build_filter_set(names)` merges them; `apply_filters(filters, text)` scans line-by-line and returns matched error strings. Wired into `cbench parse` via `--customparse` or `parse_filter_include` in `cluster.yaml`.
@@ -128,6 +128,7 @@ gen-jobs specifics:
 - It generates fio once per testset (`_SINGLE_INSTANCE`, `fio-<ppn>ppn-1`).
 - `iosizing.fio_tokens()` needs a CPU count (facts or explicit `procs_per_node`) and warns at gen time if the node-local target is short.
 - The job probes O_DIRECT itself and falls back to buffered I/O with a `CBENCH CAVEAT`.
+- The job script prints `Cbench fio: profile=…` at start and `Cbench fio: finished` at end. `FioParser` returns `ERROR(STARTED)` for output with the first and not the second (snb output has neither).
 - `fileop` is in `_DEFAULT_SKIP` (the Perl tools still use its template), so it is generated only via `--match`, which filters job names (Perl parity).
 
 ### 13. HPL input files in gen-jobs (`hplsizing.py`)

@@ -70,6 +70,11 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **`cbench parse` / `rm-failed` read an arbitrary output file** when a job directory
+  held more than one `*.o*` (re-runs, stray files). They now use the newest run's
+  stdout and its matching `.e<id>` stderr.
+- **An unfinished gen-jobs fio job parsed as PASSED** from partial output. The job
+  now prints an end line, and output without it is `ERROR(STARTED)`.
 - **fio average latency was never parsed** from fio 3.x output, which prints
   `clat` fields as min/max/avg/stdev instead of min/avg/stdev/max. Affects
   `snb` fio and the `fio` parser.
