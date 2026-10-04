@@ -452,6 +452,11 @@ def parse_cmd(
             else:
                 status = parsed.status
                 status_detail = parsed.status_detail
+            # gen-jobs writes a CBENCH CAVEAT line when it had to shrink a run
+            # (e.g. IO capped to free space); keep it with the result.
+            caveats = _caveat_lines(stdout)
+            if caveats:
+                status_detail = "; ".join(filter(None, [status_detail, *caveats]))
             result = ParseResult(
                 cluster=cfg.cluster_name, testset=testset, ident=ident,
                 jobname=jobname, benchmark=benchmark,
@@ -471,6 +476,7 @@ def parse_cmd(
             "numprocs": numprocs,
             "ppn": ppn_val,
             "status": result.status,
+            "status_detail": result.status_detail,
             "metrics": result.metrics,
         })
 
@@ -488,6 +494,16 @@ def parse_cmd(
         f"[red]{summary.get('ERROR', 0)} ERROR[/red]  "
         f"[yellow]{summary.get('OTHER', 0)} OTHER[/yellow]"
     )
+
+
+def _caveat_lines(stdout: str) -> list[str]:
+    """Unique ``CBENCH CAVEAT:`` lines from job output, in order."""
+    seen: dict[str, None] = {}
+    for line in stdout.splitlines():
+        idx = line.find("CBENCH CAVEAT:")
+        if idx >= 0:
+            seen.setdefault(line[idx:].strip(), None)
+    return list(seen)
 
 
 def _render_table(results: list[dict], testset: str, ident: str) -> None:

@@ -1,0 +1,20 @@
+IOR-4.1.0+dev: MPI Coordinated Test of Parallel I/O
+Began               : Sat Oct  3 19:41:36 2026
+Command line        : /home/user/zimatest/bin/ior -a POSIX -b 2m -C -i 4 -t 1m -v -v -r -R -w -W -e -d 30 -g -o /gpfs/zimafs1/user/276194135087463737/posix.nto1.mRWYpb
+access              : single-shared-file
+access    bw(MiB/s)  IOPS       Latency(s)  block(KiB) xfer(KiB)  open(s)    wr/rd(s)   close(s)   total(s)   iter
+write     51.23      51.80      0.077214    2048.00    1024.00    0.001215   0.154427   0.000434   0.156160   0
+read      977.52     2482.20    0.001599    2048.00    1024.00    0.004787   0.003223   0.000156   0.008184   0
+write     73.79      77.73      0.050171    2048.00    1024.00    0.005199   0.102924   0.000250   0.108409   1
+read      422.00     2464.52    0.001622    2048.00    1024.00    0.004983   0.003246   0.010707   0.018957   1
+write     120.41     123.56     0.031244    2048.00    1024.00    0.001336   0.064748   0.000320   0.066441   2
+read      1936.09    2503.88    0.001590    2048.00    1024.00    0.000715   0.003195   0.000143   0.004132   2
+write     74.33      75.88      0.052704    2048.00    1024.00    0.001370   0.105432   0.000786   0.107635   3
+read      2133.96    2494.57    0.001602    2048.00    1024.00    0.000299   0.003207   0.000228   0.003749   3
+Max Write: 120.41 MiB/sec (126.26 MB/sec)
+Max Read:  2133.96 MiB/sec (2237.62 MB/sec)
+Summary of all tests:
+Operation   Max(MiB)   Min(MiB)  Mean(MiB)     StdDev   Max(OPs)   Min(OPs)  Mean(OPs)     StdDev    Mean(s) Stonewall(s) Stonewall(MiB) Test# #Tasks tPN reps fPP reord reordoff reordrand seed segcnt   blksiz    xsize aggs(MiB)   API RefNum
+write         120.41      51.23      79.94      25.16     120.41      51.23      79.94      25.16    0.10966         NA            NA     0      4   4    4   0     1        1         0    0      1  2097152  1048576       8.0 POSIX      0
+read         2133.96     422.00    1367.40     699.43    2133.96     422.00    1367.40     699.43    0.00876         NA            NA     0      4   4    4   0     1        1         0    0      1  2097152  1048576       8.0 POSIX      0
+Finished            : Sat Oct  3 19:45:36 2026

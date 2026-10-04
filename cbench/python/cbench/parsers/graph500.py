@@ -7,6 +7,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 
 class Graph500Parser(BenchmarkParser):
     names = ["graph500"]
+    alias_spec = r"mpi_one_sided|mpi_simple"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"
