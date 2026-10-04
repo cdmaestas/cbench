@@ -55,6 +55,12 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **`cbench snb` fio could fill its target.** The O_DIRECT path wrote
+  1 GiB × (numjobs + 1) with no free-space check, and the buffered path's
+  sequential file stayed on disk during the random run, beyond the space it was
+  sized for. fio now empties the target between runs, and an O_DIRECT target that
+  cannot hold numjobs × 1 GiB in 90% of its free space is skipped with a warning
+  and stored as a `NOTICE` result explaining why.
 - **Linpack and HPCC jobs from `gen-jobs` could not run**: no HPL.dat/hpccinf.txt
   was generated, and the binary path was doubled (`<bin>//<bin>/xhpl`; `xhpl2` and
   `xhplintel` rendered as an empty name).
