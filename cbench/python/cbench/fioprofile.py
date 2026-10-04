@@ -4,7 +4,7 @@ One fio invocation per job, each printing one group-reported block named after
 the job, so the parser can tell them apart:
 
   seq_rw      sequential read/write at the profile's block size (bandwidth)
-  rand_rw     4 KiB random read/write, numjobs = min(cores, 16)  (IOPS, latency)
+  rand_rw     4 KiB random read/write, numjobs = IO threads (IOPS, latency)
   md_create   fio filecreate engine  (file creates/s)    \\  fio >= 3.23;
   md_stat     fio filestat engine    (stats/s)            >  skipped with a
   md_delete   fio filedelete engine  (deletes/s)         /   caveat otherwise
@@ -38,15 +38,15 @@ DATA_SIZE_BYTES = 256 * 1024 ** 2
 BUFFERED_FALLBACK_SIZE = "1g"
 BUFFERED_FALLBACK_SIZE_BYTES = 1024 ** 3
 RAND_BS = "4k"
-MAX_NUMJOBS = 16
 MD_NRFILES = 1000                # files per metadata job
 MD_ENGINES = ("filecreate", "filestat", "filedelete")
 DEFAULT_RUNTIME_S = 300
 
 
-def numjobs(cpus: int) -> int:
-    """Random-I/O and metadata job count: one per core, capped."""
-    return max(1, min(int(cpus), MAX_NUMJOBS))
+def numjobs(threads: int) -> int:
+    """Random-I/O and metadata job count: the IO thread count
+    (``iosizing.io_threads`` / ``cap_threads``), at least 1."""
+    return max(1, int(threads))
 
 
 def seq_block_size(profile: str, fstype: Optional[str], override: str = "") -> tuple[str, str]:

@@ -129,11 +129,12 @@ def test_ior_requires_memory():
 # bonnie
 # ---------------------------------------------------------------------------
 
-def test_bonnie_uncapped_splits_2x_ram_over_three_instances():
+def test_bonnie_uncapped_splits_2x_ram_over_one_instance_per_cpu():
     nv = iosizing.resolve_node_values(_cfg(), _facts(local_free=100_000_000))
-    t = iosizing.bonnie_tokens(nv, testset="iometadata", benchmark="bonnie")
-    assert t["BONNIE_SIZE_MB"] == "5018"   # ceil(2 * 7526.1 / 3): IO rounds up
-    assert t["BONNIE_RAM_MB"] == "2508"    # floor(7526.1 / 3): memory rounds down
+    t = iosizing.bonnie_tokens(nv, _cfg(), testset="iometadata", benchmark="bonnie")
+    assert t["BONNIE_INSTANCES"] == "4"    # io_threads: zima type A's 4 CPUs
+    assert t["BONNIE_SIZE_MB"] == "3764"   # ceil(2 * 7526.1 / 4): IO rounds up
+    assert t["BONNIE_RAM_MB"] == "1881"    # floor(7526.1 / 4): memory rounds down
     assert int(t["BONNIE_SIZE_MB"]) >= 2 * int(t["BONNIE_RAM_MB"])  # bonnie++ requires it
     assert t["IO_CAVEAT"] == "" and t["IO_TARGET_DIR"] == "/tmp"
 
@@ -141,7 +142,7 @@ def test_bonnie_uncapped_splits_2x_ram_over_three_instances():
 def test_bonnie_capped_on_zima_type_a_tmp():
     # zima's real case: /tmp has 7.25 GiB free, 2x RAM needs 14.7 GiB
     nv = iosizing.resolve_node_values(_cfg(), _facts())
-    t = iosizing.bonnie_tokens(nv, testset="iometadata", benchmark="bonnie")
+    t = iosizing.bonnie_tokens(nv, _cfg(), testset="iometadata", benchmark="bonnie")
     size, ram = int(t["BONNIE_SIZE_MB"]), int(t["BONNIE_RAM_MB"])
     assert int(t["IO_REQUIRED_KB"]) <= 0.9 * 7606080
     assert size >= 2 * ram
@@ -267,7 +268,13 @@ def test_genjobs_bonnie_capped_and_warned(genv):
     assert 'IO_TARGET_DIR="/tmp"' in s
     assert re.search(r'cbench_io_preflight "\$PWD" "\d+" "bonnie\+\+ size capped', s)
     # bonnie++ 2.x: -y takes an argument (s = semaphore); a bare -y exits immediately
-    assert s.count("-y s") == 3 and not re.search(r"-y\s*\"", s)
+    assert "-y s" in s and not re.search(r"-y\s*\"", s)
+    # one instance per IO thread (4 CPUs), sharing a -p semaphore of that size
+    assert "instances=4\n" in s and '-p$instances"' in s
+    assert "for i in $(seq 1 $instances)" in s
+    # single-node, so generated once rather than per ppn x size
+    assert sorted(p.name for p in (genv.tmp / "iometadata" / "t1").iterdir()
+                  if p.name.startswith("bonnie")) == ["bonnie-1ppn-1"]
 
 
 def test_genjobs_metadata_ppn_from_facts(genv):

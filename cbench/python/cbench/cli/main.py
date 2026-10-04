@@ -60,8 +60,9 @@ def _db_path(cbenchtest: str) -> Path:
 #: testset -> benchmarks gen-jobs skips unless selected with --match
 #: (fileop: superseded by fio, which also covers data IOPS).
 _DEFAULT_SKIP: dict[str, set[str]] = {"iometadata": {"fileop"}}
-#: single-node, non-MPI benchmarks generated once (numprocs 1), not per ppn x size
-_SINGLE_INSTANCE = {"fio"}
+#: single-node, non-MPI benchmarks generated once (numprocs 1), not per ppn x size;
+#: they size their own concurrency from the IO thread count
+_SINGLE_INSTANCE = {"fio", "bonnie"}
 
 
 def _cfg(config: Optional[str]) -> ClusterConfig:
@@ -92,7 +93,13 @@ cli.add_command(serve_cmd)
 # ---------------------------------------------------------------------------
 
 @cli.command("gen-jobs")
-@click.option("--testset", required=True, help="Testset name (e.g. bandwidth, linpack)")
+@click.option("--testset", default=None, help="Testset name (e.g. bandwidth, linpack)")
+@click.option("--profile", default=None, metavar="NAME",
+              help="Generate an IO profile (e.g. io-default) instead of a testset; jobs go "
+                   "under <cbenchtest>/<profile>/<ident>/")
+@click.option("--group", "groups", multiple=True, metavar="GROUP",
+              help="Profile group(s) to generate (repeatable, or 'all'; default: the "
+                   "profile's default groups, e.g. node-local)")
 @click.option("--ident", required=True, help="Run identifier (e.g. mycluster-run1)")
 @click.option("--ppn", default=None, help="Comma-separated PPN values to generate (default: all from config)")
 @click.option("--maxprocs", default=None, type=int, help="Limit max number of processes")
@@ -106,8 +113,12 @@ cli.add_command(serve_cmd)
 @click.option("--nodefacts", default=None, metavar="NAME|PATH",
               help="Node facts from `cbench nodecheck` (name under <cbenchtest>/nodefacts/ or a "
                    ".json path); sizes IO tests from the real compute nodes")
+@click.option("--fio-runtime", type=click.IntRange(min=1), default=None, metavar="SECONDS",
+              help="Time cap per fio data job (default: cluster.yaml fio_runtime_s, else 300)")
 def gen_jobs(
-    testset: str,
+    testset: Optional[str],
+    profile: Optional[str],
+    groups: tuple[str, ...],
     ident: str,
     ppn: Optional[str],
     maxprocs: Optional[int],
@@ -117,38 +128,72 @@ def gen_jobs(
     cbenchtest: Optional[str],
     match: Optional[str],
     nodefacts: Optional[str],
+    fio_runtime: Optional[int],
 ) -> None:
-    """Generate batch and/or interactive job scripts for a testset."""
-    from cbench import hplsizing, iosizing
+    """Generate batch and/or interactive job scripts for a testset or IO profile."""
+    from cbench import hplsizing, iosizing, profiles
     from cbench.nodecheck import NodecheckError, load_facts
 
+    if bool(testset) == bool(profile):
+        raise click.UsageError("pass exactly one of --testset or --profile")
+    if groups and not profile:
+        raise click.UsageError("--group only applies with --profile")
+
     cfg = _cfg(config)
+    if fio_runtime:
+        cfg.fio_runtime_s = fio_runtime
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
+    match_re = _safe_regex(match, "--match")
 
     # Determine which PPN values to use
     ppn_values = [int(p) for p in ppn.split(",")] if ppn else cfg.ppn_levels
 
-    # Determine which benchmarks have templates
-    benchmark_templates: list[str] = []
-    for tfile in sorted(templates_dir.glob(f"{testset}_*.in")):
-        bench = tfile.stem[len(testset) + 1:]
-        benchmark_templates.append(bench)
+    # Members to generate: (home testset whose template is used, template
+    # benchmark, benchmark name in the job name). Jobs are written under
+    # out_ts — the testset, or the profile acting as a virtual testset.
+    members: list[tuple[str, str, str]] = []
+    if profile:
+        try:
+            prof = profiles.get_profile(profile)
+            selected = profiles.select_groups(prof, groups)
+        except profiles.ProfileError as exc:
+            raise click.UsageError(str(exc)) from exc
+        out_ts = profile
+        used: list[str] = []
+        for gname in selected:
+            group = prof.groups[gname]
+            if group.target not in cfg.io_targets:
+                console.print(f"[yellow]WARNING: skipping group '{gname}': io_targets.{group.target} "
+                              f"is not set in cluster.yaml[/yellow]")
+                continue
+            if not group.members:
+                console.print(f"[yellow]WARNING: group '{gname}' has no benchmarks yet[/yellow]")
+                continue
+            members += [(m.home, m.benchmark, profiles.job_benchmark(m, group)) for m in group.members]
+            used.append(gname)
+        if not members:
+            raise click.ClickException(f"profile '{profile}': nothing to generate for groups "
+                                       f"{', '.join(selected)}")
+        console.print(f"Profile {profile}: generating groups {', '.join(used)}")
+    else:
+        out_ts = testset
+        members = [(testset, t.stem[len(testset) + 1:], t.stem[len(testset) + 1:])
+                   for t in sorted(templates_dir.glob(f"{testset}_*.in"))]
+        if not members:
+            console.print(f"[red]No templates found for testset '{testset}' in {templates_dir}[/red]")
+            raise SystemExit(1)
 
-    if not benchmark_templates:
-        console.print(f"[red]No templates found for testset '{testset}' in {templates_dir}[/red]")
-        raise SystemExit(1)
-
-    # Benchmarks superseded in the Python toolchain stay available (the Perl
-    # tools still use their templates) but only run when --match selects them.
-    match_re = _safe_regex(match, "--match")
-    default_skip = _DEFAULT_SKIP.get(testset, set())
-    if not match_re:
-        skipped_default = [b for b in benchmark_templates if b in default_skip]
-        benchmark_templates = [b for b in benchmark_templates if b not in default_skip]
-        if skipped_default:
-            console.print(f"Skipping {', '.join(skipped_default)} by default "
-                          f"(superseded; select with --match)")
+        # Benchmarks superseded in the Python toolchain stay available (the Perl
+        # tools still use their templates) but only run when --match selects them.
+        default_skip = _DEFAULT_SKIP.get(testset, set())
+        if not match_re:
+            skipped_default = [m[1] for m in members if m[1] in default_skip]
+            members = [m for m in members if m[1] not in default_skip]
+            if skipped_default:
+                console.print(f"Skipping {', '.join(skipped_default)} by default "
+                              f"(superseded; select with --match)")
+    benchmark_templates = [bench for _home, bench, _out in members]
 
     # Node-aware IO: resolve node values up front and fail BEFORE rendering
     # anything if an IO template needs values we don't have (an unset token
@@ -162,31 +207,36 @@ def gen_jobs(
         for w in fact_warnings:
             console.print(f"[yellow]WARNING: {w}[/yellow]")
     nv = iosizing.resolve_node_values(cfg, facts)
+    if nv.cpus:
+        iosizing.io_threads(nv, cfg)  # surfaces io_threads_basis fallback warnings now
     for w in nv.warnings:
         console.print(f"[yellow]WARNING: {w}[/yellow]")
-    sized = [b for b in benchmark_templates if iosizing.needs_io_sizing(testset, b)]
+    sized = [b for home, b, _o in members if iosizing.needs_io_sizing(home, b)]
     if sized and not nv.mem_io_kb:
         raise click.ClickException(
-            f"testset '{testset}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
+            f"testset '{out_ts}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
             "NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly in cluster.yaml"
         )
-    if "fio" in benchmark_templates and not nv.cpus:
+    threaded = [b for b in benchmark_templates if b in _SINGLE_INSTANCE]
+    if threaded and not nv.cpus:
         raise click.ClickException(
-            f"testset '{testset}' sizes fio's job count from node CPUs: pass --nodefacts NAME "
-            "(run `cbench nodecheck` first) or set procs_per_node explicitly in cluster.yaml"
+            f"testset '{out_ts}' sizes {', '.join(threaded)} concurrency from node CPUs: pass "
+            "--nodefacts NAME (run `cbench nodecheck` first) or set procs_per_node explicitly "
+            "in cluster.yaml"
         )
     if sized:
         console.print(f"Node-aware IO sizing from {nv.source}: MemTotal {nv.mem_io_kb} kB (IO)")
     if not ppn and nv.cpus and any(b.startswith("mdtest") for b in benchmark_templates):
-        ppn_values = iosizing.ppn_levels_for_metadata(ppn_values, cfg.procs_per_node, nv.cpus)
-        console.print(f"Metadata ppn levels from {nv.source} ({nv.cpus} CPUs/node): {ppn_values}")
+        threads = iosizing.io_threads(nv, cfg)
+        ppn_values = iosizing.ppn_levels_for_metadata(ppn_values, cfg.procs_per_node, threads)
+        console.print(f"Metadata ppn levels from {nv.source} ({threads} IO threads/node): {ppn_values}")
     # Linpack/HPCC: HPL.dat / hpccinf.txt are memory-sized (MIN MemTotal).
     hpl_benches = [b for b in benchmark_templates if hplsizing.input_spec(b)]
     hpl_mem_mb = (nv.mem_nonio_kb or 0) // 1024
-    hpl_factors = hplsizing.mem_util_factors(cfg, testset)
+    hpl_factors = hplsizing.mem_util_factors(cfg, out_ts)
     if hpl_benches and not hpl_mem_mb:
         raise click.ClickException(
-            f"testset '{testset}' sizes {', '.join(hpl_benches)} (HPL N) from node memory: pass "
+            f"testset '{out_ts}' sizes {', '.join(hpl_benches)} (HPL N) from node memory: pass "
             "--nodefacts NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly "
             "in cluster.yaml"
         )
@@ -212,26 +262,26 @@ def gen_jobs(
             walltime = templates.compute_walltime(numprocs, valid_sizes, cfg)
             launch_cmd = launchers.build_launch_cmd(numprocs, ppn_val, numnodes, cfg)
 
-            for bench in benchmark_templates:
-                jobname = f"{bench}-{ppn_val}ppn-{numprocs}"
+            for home, bench, out_bench in members:
+                jobname = f"{out_bench}-{ppn_val}ppn-{numprocs}"
                 if match_re and not match_re.search(jobname):
                     continue
                 # single-node, non-MPI benchmarks: one job, not one per ppn x size
                 if bench in _SINGLE_INSTANCE:
-                    if numprocs != 1 or bench in single_done:
+                    if numprocs != 1 or out_bench in single_done:
                         continue
-                    single_done.add(bench)
+                    single_done.add(out_bench)
                 try:
                     if bench == "fio":
-                        io_extra, warning = iosizing.fio_tokens(nv, cfg, testset=testset,
+                        io_extra, warning = iosizing.fio_tokens(nv, cfg, testset=home,
                                                                 benchmark=bench)
                         if warning:
                             gen_warnings.add(f"{jobname}: {warning}")
-                    elif iosizing.needs_io_sizing(testset, bench) and bench.startswith("ior"):
+                    elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
                         io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
-                                                       testset=testset, benchmark=bench)
-                    elif iosizing.needs_io_sizing(testset, bench):
-                        io_extra = iosizing.bonnie_tokens(nv, testset=testset, benchmark=bench)
+                                                       testset=home, benchmark=bench)
+                    elif iosizing.needs_io_sizing(home, bench):
+                        io_extra = iosizing.bonnie_tokens(nv, cfg, testset=home, benchmark=bench)
                     elif iosizing.target_name_for(bench):
                         io_extra = iosizing.target_tokens(nv, bench)
                     else:
@@ -257,7 +307,7 @@ def gen_jobs(
                                 "MEM_UTIL_FACTORS": ",".join(str(f) for f in hpl_factors)}
                 for rtype in run_types:
                     try:
-                        raw = templates.build_job_template(testset, bench, rtype, cfg)
+                        raw = templates.build_job_template(home, bench, rtype, cfg)
                     except FileNotFoundError as exc:
                         console.print(f"[yellow]Skipping {jobname}/{rtype}: {exc}[/yellow]")
                         continue
@@ -269,8 +319,8 @@ def gen_jobs(
                         numnodes=numnodes,
                         walltime=walltime,
                         jobname=jobname,
-                        benchmark=bench,
-                        testset=testset,
+                        benchmark=out_bench,
+                        testset=out_ts,
                         ident=ident,
                         run_type=rtype,
                         launch_cmd=launch_cmd,
@@ -281,7 +331,7 @@ def gen_jobs(
 
                     ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
                     script_name = f"{jobname}{ext}"
-                    job_dir = _safe_path(cbenchtest, testset, ident, jobname)
+                    job_dir = _safe_path(cbenchtest, out_ts, ident, jobname)
 
                     if dry_run:
                         console.rule(f"{job_dir}/{script_name}")
@@ -294,7 +344,7 @@ def gen_jobs(
                     total += 1
 
                 if hpl_input is not None:
-                    input_path = _safe_path(cbenchtest, testset, ident, jobname, hpl_spec.filename)
+                    input_path = _safe_path(cbenchtest, out_ts, ident, jobname, hpl_spec.filename)
                     if dry_run:
                         console.rule(str(input_path))
                         console.print(hpl_input)
@@ -311,7 +361,7 @@ def gen_jobs(
     for c in sorted(caveats):
         console.print(f"[yellow]WARNING (capacity cap): {c}[/yellow]")
     action = "Would generate" if dry_run else "Generated"
-    console.print(f"[green]{action} {total} job script(s) for testset '{testset}', ident '{ident}'[/green]")
+    console.print(f"[green]{action} {total} job script(s) for testset '{out_ts}', ident '{ident}'[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +373,9 @@ def gen_jobs(
 @click.option("--ident", required=True)
 @click.option("--batch", "mode", flag_value="batch", default=True)
 @click.option("--interactive", "mode", flag_value="interactive")
+@click.option("--echo-output", is_flag=True,
+              help="With --interactive: also stream each job's output to the terminal "
+                   "(sets CBENCH_ECHO_OUTPUT=YES; output still goes to the job's .o file)")
 @click.option("--throttledbatch", "throttle", default=None, type=int,
               help="Keep N jobs running+queued at a time")
 @click.option("--match", default=None, help="Regex to filter job names")
@@ -339,6 +392,7 @@ def start_jobs(
     testset: str,
     ident: str,
     mode: str,
+    echo_output: bool,
     throttle: Optional[int],
     match: Optional[str],
     exclude: Optional[str],
@@ -351,6 +405,8 @@ def start_jobs(
     cbenchtest: Optional[str],
 ) -> None:
     """Submit jobs from a generated testset/ident directory."""
+    if echo_output and mode != "interactive":
+        raise click.UsageError("--echo-output only applies with --interactive")
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     ident_dir = _safe_path(cbenchtest, testset, ident)
@@ -362,7 +418,9 @@ def start_jobs(
     match_re = _safe_regex(match, "--match")
     exclude_re = _safe_regex(exclude, "--exclude")
 
-    ext = schedulers.extension(cfg)
+    # gen-jobs writes batch scripts with the scheduler's extension and
+    # interactive scripts as .sh; run the kind that was asked for
+    ext = ".sh" if mode == "interactive" else schedulers.extension(cfg)
     # Discover job scripts matching *-*ppn-* pattern
     scripts: list[Path] = sorted(ident_dir.glob(f"**/*-*ppn-*{ext}"))
 
@@ -417,7 +475,9 @@ def start_jobs(
                 if dry_run:
                     console.print(f"[dim]Would run:[/dim] bash {script}")
                 else:
-                    subprocess.run(["bash", str(script)], shell=False, check=False)
+                    env = {**os.environ, "CBENCH_ECHO_OUTPUT": "YES"} if echo_output else None
+                    console.print(f"[bold]Running {script.parent.name}[/bold]")
+                    subprocess.run(["bash", str(script)], shell=False, check=False, env=env)
             else:
                 cmd = schedulers.submit_cmd(str(script), cfg)
                 if dry_run:

@@ -8,6 +8,23 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- `gen-jobs --fio-runtime SECONDS` sets the fio time cap for one generation, so
+  cluster.yaml doesn't need editing.
+- `start-jobs --interactive --echo-output` streams each job's output to the terminal
+  as it runs. It sets `CBENCH_ECHO_OUTPUT=YES`, and output still goes to the job's
+  `.o` file.
+- **IO profiles:** `cbench gen-jobs --profile io-default [--group node-local|parallel|gpfs|all]`
+  generates a bundle of IO benchmarks into one testset directory
+  (`$CBENCHTEST/io-default/<ident>/`), which you then start and parse with
+  `--testset io-default`.
+  - `node-local` (fio, bonnie) is the default group.
+  - `parallel` (ior, mdtest) is opt-in.
+  - Groups whose `io_targets` entry is missing are skipped.
+  - Job names carry the group, for example `fio-local-1ppn-1`.
+- **One IO thread rule for every IO benchmark:** all CPUs on the smallest node, with an
+  optional `io_threads_max` cap and `io_threads_basis: logical|physical`.
+- `cbench nodecheck` records physical cores (facts schema v2; v1 files still load) and
+  flags nodes whose SMT setting differs.
 - **fio is the default node-local IOPS and metadata test.** gen-jobs `iometadata` now
   generates one `fio` job instead of `fileop`, which is skipped by default; select it with
   the new `gen-jobs --match REGEX`. snb and gen-jobs share one fio job set:
@@ -70,6 +87,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **`start-jobs --interactive` ran the batch scripts.** It looked for scripts with the
+  scheduler's extension (e.g. `.slurm`) instead of the `.sh` interactive scripts
+  that gen-jobs writes.
 - **`cbench parse` / `rm-failed` read an arbitrary output file** when a job directory
   held more than one `*.o*` (re-runs, stray files). They now use the newest run's
   stdout and its matching `.e<id>` stderr.
@@ -104,6 +124,13 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **fio jobs and bonnie instances now follow the IO thread rule.** fio previously used at
+  most 16 jobs and bonnie always ran 3 instances; both now use every CPU unless
+  `io_threads_max` is set. bonnie's per-instance `-s`/`-r` shrink to match, so the total
+  stays 2× RAM, and results on nodes with other than 3 CPUs aren't comparable with
+  earlier runs.
+- **gen-jobs generates bonnie once per testset** (`bonnie-1ppn-1`) instead of once per
+  ppn × size, like fio.
 - **snb fio metrics renamed and corrected.** The old `read_iops`/`write_iops` were
   the *sequential* job's IOPS from its first job block, and the bandwidth came from
   the last run. Results are now reported per job: `seq_{read,write}_bw_MiB_s`,

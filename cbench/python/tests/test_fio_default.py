@@ -51,9 +51,9 @@ def test_unknown_profile_rejected():
         fioprofile.seq_block_size("bogus", None)
 
 
-@pytest.mark.parametrize("cpus, n", [(1, 1), (4, 4), (16, 16), (64, 16), (0, 1)])
-def test_numjobs_tracks_cores_capped(cpus, n):
-    assert fioprofile.numjobs(cpus) == n
+@pytest.mark.parametrize("threads, n", [(1, 1), (4, 4), (64, 64), (0, 1)])
+def test_numjobs_is_the_io_thread_count(threads, n):
+    assert fioprofile.numjobs(threads) == n
 
 
 def test_data_jobs_are_time_based_and_group_reported():
@@ -330,8 +330,12 @@ def test_genjobs_fio_profile_from_target_fstype_and_config(genv):
     assert "seqbs=16m\n" in s and "runtime=120\n" in s
 
 
-def test_genjobs_fio_numjobs_capped(genv):
-    res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64))
+def test_genjobs_fio_numjobs_all_cpus_unless_capped(genv):
+    res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64, local_free=10**9))
+    assert res.exit_code == 0, res.output
+    assert "numjobs=64\n" in genv.script("fio-1ppn-1")
+    res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64, local_free=10**9),
+                   cfg_extra="io_threads_max: 16\n")
     assert res.exit_code == 0, res.output
     assert "numjobs=16\n" in genv.script("fio-1ppn-1")
 

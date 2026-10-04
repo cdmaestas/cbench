@@ -71,6 +71,8 @@ Used exclusively by `cbench nodehwtest parse`. Same auto-registration pattern as
 ### 6. CLI (`cli/`)
 Six subgroups wired into `cli/main.py`:
 - `gen-jobs` / `start-jobs` / `parse` / `query` — MPI benchmark workflow
+- `gen-jobs --profile` — IO profile bundles (§15); `gen-jobs --fio-runtime` overrides `fio_runtime_s`
+- `start-jobs --interactive` runs the `.sh` scripts gen-jobs writes; `--echo-output` sets `CBENCH_ECHO_OUTPUT=YES` so `cbench_functions` tees job output to the terminal
 - `nodehwtest gen-jobs` / `start-jobs` / `parse` — single-node hw test workflow
 - `snb run` / `report` / `store` / `compare` — single-node benchmark suite
 - `build run` / `build all` / `build list` / `build check` / `build update` — benchmark builder framework
@@ -130,6 +132,24 @@ gen-jobs specifics:
 - The job probes O_DIRECT itself and falls back to buffered I/O with a `CBENCH CAVEAT`.
 - The job script prints `Cbench fio: profile=…` at start and `Cbench fio: finished` at end. `FioParser` returns `ERROR(STARTED)` for output with the first and not the second (snb output has neither).
 - `fileop` is in `_DEFAULT_SKIP` (the Perl tools still use its template), so it is generated only via `--match`, which filters job names (Perl parity).
+
+### 15. IO profiles and the IO thread rule (`profiles.py`, `iosizing.io_threads`)
+`gen-jobs --profile NAME [--group G ...]` treats a profile as a *virtual testset*: each member renders from its home template (`<home>_<bench>.in`), but every job goes under `$CBENCHTEST/<profile>/<ident>/`, so `start-jobs`, `parse` and `query` take `--testset <profile>` unchanged.
+
+Groups in `io-default`:
+- `node-local`: fio, bonnie. This is the default group; iozone joins in PR B.
+- `parallel`: ior1mNtoN, mdtest.
+- `gpfs`: gpfsperf, from PR B.
+
+`--group all` selects every group. A group whose `io_targets` key is unset is skipped with a warning. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
+
+**`io_threads(nv, cfg)`** is the single concurrency rule for every IO benchmark:
+- What it sets: fio `--numjobs`, bonnie instances (`BONNIE_INSTANCES`, with sizes split across them), and the mdtest top ppn level. iozone and gpfsperf threads join in PR B.
+- The count: all CPUs on the smallest node. `io_threads_basis: logical` (the default) or `physical` uses physical cores from nodecheck facts v2, falling back to logical with a warning.
+- The cap: `io_threads_max` if set. There is no built-in cap.
+- snb applies the same rule locally (`_detect_physical_cores()`, `cap_threads`).
+
+nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core id pairs) and `aggregate.cores`; v1 files still load. A physical-core mismatch at equal logical count (SMT differs) counts as heterogeneous. fio and bonnie are `_SINGLE_INSTANCE`: one job per testset or profile, not one per ppn × size.
 
 ### 13. HPL input files in gen-jobs (`hplsizing.py`)
 Port of Perl `xhpl_gen_innerloop`/`hpcc_gen_innerloop`. For `xhpl`, `xhpl2`, `xhplintel` (→ `HPL.dat` from `templates/xhpl_dat.in`) and `hpcc` (→ `hpccinf.txt` from `hpccinf_txt.in`), gen-jobs writes the input file into each job dir (job scripts `cd` there). N: one per `memory_util_factors` entry via `compute_n()`, from the MIN MemTotal (`--nodefacts`) or explicit `memory_per_node_mb` — same no-silent-defaults rule and fail-before-render check as IO. `shakedown` uses a single 0.45 factor (and `MEM_UTIL_FACTORS` is overridden so the job echoes it). P×Q: `utils.compute_pq()` (Perl `compute_PQ`: square, else first Q in (√n, 3√n] dividing n); a proc count with no grid is skipped with a warning (none of `RUN_SIZES` hit this). `XHPL_BIN`/`XHPL2_BIN`/`XHPLINTEL_BIN`/`HPCC_BIN` are bare binary names — templates prefix `CBENCHTEST_BIN_HERE/`.

@@ -224,6 +224,7 @@ def test_start_jobs_dry_run_interactive(tmp_path):
     job_dir = tmp_path / "bw" / "run1" / "xhpl-4ppn-16"
     job_dir.mkdir(parents=True)
     (job_dir / "xhpl-4ppn-16.slurm").write_text("#!/bin/bash\n")
+    (job_dir / "xhpl-4ppn-16.sh").write_text("#!/bin/bash\n")
 
     result = runner.invoke(cli, [
         "start-jobs",
@@ -234,7 +235,28 @@ def test_start_jobs_dry_run_interactive(tmp_path):
         "--cbenchtest", str(tmp_path),
     ])
     assert result.exit_code == 0, result.output
-    assert "run" in result.output.lower() or "job" in result.output.lower()
+    # the interactive script, not the batch one
+    assert "Would run:" in result.output and "xhpl-4ppn-16.sh" in result.output
+    assert ".slurm" not in result.output
+
+
+def test_start_jobs_interactive_echo_output_sets_env(tmp_path):
+    job_dir = tmp_path / "bw" / "run1" / "x-1ppn-1"
+    job_dir.mkdir(parents=True)
+    out = tmp_path / "env.txt"
+    (job_dir / "x-1ppn-1.sh").write_text(f'#!/bin/bash\necho "$CBENCH_ECHO_OUTPUT" > {out}\n')
+    for flag, expected in ((["--echo-output"], "YES"), ([], "")):
+        result = runner.invoke(cli, ["start-jobs", "--testset", "bw", "--ident", "run1",
+                                     "--interactive", "--delay", "0", "--cbenchtest",
+                                     str(tmp_path), *flag])
+        assert result.exit_code == 0, result.output
+        assert out.read_text().strip() == expected
+
+
+def test_start_jobs_echo_output_needs_interactive(tmp_path):
+    result = runner.invoke(cli, ["start-jobs", "--testset", "bw", "--ident", "run1",
+                                 "--echo-output", "--cbenchtest", str(tmp_path)])
+    assert result.exit_code != 0 and "--echo-output only applies" in result.output
 
 
 def test_start_jobs_dry_run_match_filter(tmp_path):

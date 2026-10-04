@@ -11,8 +11,12 @@ __all__ = ["BenchmarkParser", "ParseResult", "REGISTRY", "get_parser"]
 
 
 def get_parser(name: str) -> "BenchmarkParser | None":
-    """Parser for benchmark *name*: an exact ``names`` match, else an ``alias_spec`` match."""
+    """Parser for benchmark *name*: an exact ``names`` match, else an
+    ``alias_spec`` match, else the same lookup with a trailing ``-<qualifier>``
+    removed (IO profile job names such as ``fio-local``; see cbench.profiles)."""
     cls = REGISTRY.get(name)
     if cls is None:
         cls = next((c for rx, c in ALIASES if rx.fullmatch(name)), None)
+    if cls is None and "-" in name:
+        return get_parser(name.rsplit("-", 1)[0])
     return cls() if cls else None
