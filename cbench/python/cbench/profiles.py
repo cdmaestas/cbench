@@ -62,6 +62,13 @@ PROFILES: dict[str, Profile] = {
         },
         default_groups=("node-local",),
     ),
+    "io500": Profile(
+        description="IO500 on the parallel target, one job per node count at ppn = IO threads",
+        groups={
+            "parallel": Group("parallel", "parallel", (Member("io500", "io500"),)),
+        },
+        default_groups=("parallel",),
+    ),
 }
 
 

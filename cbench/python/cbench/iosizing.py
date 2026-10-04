@@ -37,6 +37,7 @@ _TARGET_FOR = {
     "ior": "parallel", "mdtest": "parallel",
     "bonnie": "node-local", "fio": "node-local", "iozone": "node-local",
     "gpfsperf": "gpfs",
+    "io500": "parallel",
 }
 
 
@@ -358,6 +359,12 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dic
         "IO_CAVEAT": _shell_safe(caveat),
     }
     return {**tokens, **target_tokens(nv, benchmark)}
+
+
+def io500_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
+    """IO500 runs for a fixed time (the stonewall), so only the target and the
+    stonewall are set; a stonewall under 300 s makes IO500 flag the run [INVALID]."""
+    return {"IO500_STONEWALL": str(cfg.io500_stonewall_s), **target_tokens(nv, benchmark)}
 
 
 def target_tokens(nv: NodeValues, benchmark: str) -> dict:

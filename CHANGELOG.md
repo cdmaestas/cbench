@@ -8,6 +8,12 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **io500 profile:** `cbench gen-jobs --profile io500` runs IO500 on the parallel target.
+  - It generates one job per node count (1, 2, 4, … up to `max_nodes`) at ppn equal to
+    the IO thread count.
+  - Each job writes its own `io500.ini`; the stonewall is set by `io500_stonewall_s`
+    (default 300) or `gen-jobs --io500-stonewall`.
+  - A new `io500` builder clones IO500 and runs its `prepare.sh`.
 - **iozone in the `io-default` profile's `node-local` group**, run in iozone's throughput
   mode with one thread per IO thread. Each thread writes its share of 2× RAM, and
   the record size comes from the fio profile. A new `iozone` parser reads the
@@ -98,6 +104,10 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **The io500 parser never matched current IO500 output.** IO500 prints `[SCORE ]` and
+  `kiops`, so every real run parsed as `ERROR(INCOMPLETE)`. It now reads both
+  formats and records IO500's `[INVALID]` flag, for example when the stonewall is
+  under 300 s.
 - **`start-jobs --interactive` ran the batch scripts.** It looked for scripts with the
   scheduler's extension (e.g. `.slurm`) instead of the `.sh` interactive scripts
   that gen-jobs writes.

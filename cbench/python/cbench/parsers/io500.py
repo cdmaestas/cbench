@@ -10,9 +10,14 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 _RESULT_RE = re.compile(
     r"\[RESULT\]\s+([\w-]+)\s+([\d.]+)\s+(GiB/s|kIOPS)\s*:\s*time\s+([\d.]+)\s+seconds"
 )
-# [SCORE] Bandwidth 1.234 GiB/s : IOPS 12345.67 kIOPS : TOTAL 123.456
+# Current io500 (src/main.c):
+#   [SCORE ] Bandwidth 1.234000 GiB/s : IOPS 12.345000 kiops : TOTAL 3.900000 [INVALID]
+# Older releases printed "[SCORE]" and "kIOPS". [SCOREX] (extended score) is not
+# the official score and is ignored.
 _SCORE_RE = re.compile(
-    r"\[SCORE\]\s+Bandwidth\s+([\d.]+)\s+GiB/s\s*:\s*IOPS\s+([\d.]+)\s+kIOPS\s*:\s*TOTAL\s+([\d.]+)"
+    r"\[SCORE ?\]\s+Bandwidth\s+([\d.]+)\s+GiB/s\s*:\s*IOPS\s+([\d.]+)\s+kiops\s*:"
+    r"\s*TOTAL\s+([\d.]+)(\s*\[INVALID\])?",
+    re.IGNORECASE,
 )
 
 
@@ -28,6 +33,7 @@ class Io500Parser(BenchmarkParser):
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         metrics: dict[str, float] = {}
         score_found = False
+        invalid = False
 
         for line in stdout.splitlines():
             if "CBENCH NOTICE" in line:
@@ -39,6 +45,7 @@ class Io500Parser(BenchmarkParser):
                 metrics["iops_kIOPS"] = float(m.group(2))
                 metrics["score"] = float(m.group(3))
                 score_found = True
+                invalid = bool(m.group(4))
                 continue
 
             m = _RESULT_RE.search(line)
@@ -52,7 +59,12 @@ class Io500Parser(BenchmarkParser):
                 metrics[f"{phase}_{suffix}"] = value
 
         if score_found:
-            return ParseResult(status="PASSED", metrics=metrics)
+            # io500 marks a run [INVALID] when it breaks the list rules, most
+            # often a stonewall shorter than 300 s (io500_stonewall_s); the
+            # numbers are real but not comparable with official submissions
+            detail = ("io500 flagged the run [INVALID] (not rules-compliant, e.g. stonewall "
+                      "< 300 s)" if invalid else "")
+            return ParseResult(status="PASSED", metrics=metrics, status_detail=detail)
 
         if metrics:
             # Partial run — some results but no final score
