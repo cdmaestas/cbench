@@ -34,11 +34,12 @@ _JOB_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# clat average line following a read/write block
-# "   clat (usec): min=2, avg=12.34, stdev=5.67, max=1234"
+# clat average line following a read/write block. fio 3.x orders the fields
+# min/max/avg/stdev; older fio printed min/avg/stdev/max:
+# "     clat (usec): min=51, max=210385, avg=19706.47, stdev=21431.33"
 # "   clat (msec): min=1, avg=5.23, stdev=1.00, max=50"
 _CLAT_RE = re.compile(
-    r"^\s*clat\s+\((\w+)\):\s+min=[\d.]+,\s+avg=([\d.]+)"
+    r"^\s*clat\s+\((\w+)\):.*?\bavg=\s*([\d.]+)"
 )
 
 # Percentile line — we grab the 99.00th value

@@ -409,3 +409,20 @@ def test_snb_report_shows_each_target_with_new_metrics(tmp_path, monkeypatch):
     assert "profile=hpc seq_bs=8m" in out and "skipped: insufficient space" in out
     assert out.count("rand_read_iops") == 2 and "12500.0" in out
     assert "create_ops" in out
+
+
+def test_parser_reads_avg_latency_in_fio3_field_order():
+    """fio 3.x prints clat min/max/avg/stdev (real zima fio-3.35 output)."""
+    text = (
+        "rand_rw: (groupid=0, jobs=4): err= 0: pid=1: Sat Oct  3 21:03:00 2026\n"
+        "  read: IOPS=1621, BW=6487KiB/s (6643kB/s)(190MiB/30017msec)\n"
+        "    slat (usec): min=4, max=410, avg=21.62, stdev=12.15\n"
+        "    clat (usec): min=51, max=210385, avg=19706.47, stdev=21431.33\n"
+        "     lat (usec): min=104, max=210410, avg=19728.43, stdev=21431.13\n"
+        "  write: IOPS=1630, BW=6522KiB/s (6679kB/s)(191MiB/30017msec)\n"
+        "    clat (msec): min=1, max=650, avg=58.79, stdev=60.12\n"
+    )
+    m = FioParser().parse(text).metrics
+    assert m["rand_read_lat_avg_us"] == pytest.approx(19706.47)   # clat, not slat/lat
+    assert m["rand_write_lat_avg_us"] == pytest.approx(58790.0)   # msec -> usec
+    assert m["rand_read_bw_MiB_s"] == pytest.approx(6487 / 1024)

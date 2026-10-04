@@ -70,6 +70,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **fio average latency was never parsed** from fio 3.x output, which prints
+  `clat` fields as min/max/avg/stdev instead of min/avg/stdev/max. Affects
+  `snb` fio and the `fio` parser.
 - **`cbench snb` fio could fill its target.** The O_DIRECT path wrote
   1 GiB × (numjobs + 1) with no free-space check, and the buffered path's
   sequential file stayed on disk during the random run, beyond the space it was
