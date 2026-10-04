@@ -51,6 +51,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **RPM and DEB packages now recommend Open MPI** (RPM `Recommends: openmpi-devel`;
+  DEB `Recommends: openmpi-bin, libopenmpi-dev`), needed to build and run the MPI
+  benchmarks (IOR, mdtest, IMB, OSU, HPL, …). It is a weak dependency: installed
+  by default, but sites on another MPI can skip it (`--setopt=install_weak_deps=False`
+  / `--no-install-recommends`). Both formats also recommend `environment-modules`
+  for the `module` command (Lmod sites already have one; a conflicting weak
+  dependency is skipped, not fatal). On RHEL, Open MPI installs outside PATH: use
+  `module load mpi/openmpi-x86_64` or add `/usr/lib64/openmpi/bin` to PATH.
 - **`gen-jobs` for the `io` and `iometadata` testsets now needs a memory source**:
   `--nodefacts` (from `cbench nodecheck`) or `memory_per_node_mb` set explicitly in
   cluster.yaml. The built-in default is no longer used to size IO jobs.

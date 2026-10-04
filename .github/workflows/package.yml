@@ -79,6 +79,19 @@ jobs:
         working-directory: cbench/python/packaging
         run: make fpm-${{ matrix.type }}
 
+      # Keep RPM/DEB metadata in parity: both must recommend Open MPI.
+      - name: Verify MPI recommends (fpm ${{ matrix.type }})
+        working-directory: cbench/python/packaging
+        env:
+          PKG_TYPE: ${{ matrix.type }}
+        run: |
+          if [ "$PKG_TYPE" = rpm ]; then
+            rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec
+          else
+            rec=$(dpkg-deb -f $(find _dist -name '*.deb') Recommends); echo "$rec"
+            echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules'
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: cbench-fpm-${{ matrix.type }}
@@ -129,6 +142,10 @@ jobs:
         # empty, so the spec's BuildRequires can never be satisfied. pip3 (the
         # only thing %install actually needs) comes from setup-python above.
         run: make native-rpm RPMBUILD_FLAGS=--nodeps
+
+      - name: Verify MPI recommends (native RPM)
+        working-directory: cbench/python/packaging
+        run: rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec
 
       - uses: actions/upload-artifact@v4
         with:
@@ -183,6 +200,12 @@ jobs:
       - name: Build DEB (native)
         working-directory: cbench/python/packaging
         run: make native-deb
+
+      - name: Verify MPI recommends (native DEB)
+        working-directory: cbench/python/packaging
+        run: |
+          rec=$(dpkg-deb -f $(find _dist -name '*.deb') Recommends); echo "$rec"
+          echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules'
 
       - uses: actions/upload-artifact@v4
         with:
