@@ -13,7 +13,8 @@ Rules (settled in design):
     explicitly — the built-in defaults would silently mis-size jobs.
 
 Template tokens produced (all via substitute(extra=...)):
-  IOR_BLOCKSIZE   IOR -b value, e.g. "3840m"
+  IOR_TRANSFER    IOR -t value from the IO profile, e.g. "8m"
+  IOR_BLOCKSIZE   IOR -b value, a multiple of -t, e.g. "3840m"
   BONNIE_INSTANCES concurrent bonnie++ instances (= IO threads)
   BONNIE_SIZE_MB  bonnie++ -s per instance (MiB)
   BONNIE_RAM_MB   bonnie++ -r per instance (MiB)
@@ -29,7 +30,6 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
-IOR_TRANSFER_MIB = 128      # matches `-t 128m` in io_ior1mNtoN.in
 CAPACITY_FRACTION = 0.9
 
 # Which io_targets entry each benchmark writes to.
@@ -186,10 +186,16 @@ def _free_cap_kb(nv: NodeValues, target: Optional[str]) -> tuple[Optional[int], 
     return int(free * CAPACITY_FRACTION), t.get("shared")
 
 
-def ior_tokens(nv: NodeValues, *, ppn: int, numprocs: int, testset: str, benchmark: str) -> dict:
-    """IOR -b so each node writes >= 2x RAM, rounded up to a multiple of -t."""
+def ior_tokens(nv: NodeValues, cfg, *, ppn: int, numprocs: int, testset: str,
+               benchmark: str) -> dict:
+    """IOR -t from the IO profile (auto on a parallel filesystem -> hpc, 8m) and
+    -b so each node writes >= 2x RAM, rounded up to a multiple of -t."""
+    from cbench import fioprofile
+
     mem_kb = _require_mem(nv, testset, benchmark)
-    t = IOR_TRANSFER_MIB
+    target_fs = nv.targets.get(target_name_for(benchmark) or "", {}).get("fstype")
+    profile, transfer = fioprofile.seq_block_size(cfg.io_profile, target_fs, cfg.io_seq_bs)
+    t = _block_mib(transfer)
     want_mib = 2 * mem_kb / 1024 / ppn
     b_mib = max(t, math.ceil(want_mib / t) * t)
     caveat = ""
@@ -205,6 +211,8 @@ def ior_tokens(nv: NodeValues, *, ppn: int, numprocs: int, testset: str, benchma
         )
         b_mib = capped
     tokens = {
+        "IOR_TRANSFER": f"{t}m",
+        "IOR_PROFILE": profile,
         "IOR_BLOCKSIZE": f"{b_mib}m",
         "IO_REQUIRED_KB": str(b_mib * divisor * 1024),
         "IO_CAVEAT": _shell_safe(caveat),
@@ -263,7 +271,7 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
     njobs = fioprofile.numjobs(io_threads(nv, cfg))
     target = target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype")
-    profile, seq_bs = fioprofile.seq_block_size(cfg.fio_profile, fstype, cfg.fio_seq_bs)
+    profile, seq_bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
     need_kb = fioprofile.peak_bytes(njobs) // 1024
     warning = ""
     cap_kb, _shared = _free_cap_kb(nv, target)
@@ -300,7 +308,7 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
     n = io_threads(nv, cfg)
     target = target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype")
-    profile, bs = fioprofile.seq_block_size(cfg.fio_profile, fstype, cfg.fio_seq_bs)
+    profile, bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
     rec = _block_mib(bs)
     size = max(rec, math.ceil(2 * mem_kb / 1024 / n / rec) * rec)   # MiB per thread
     caveat = ""
@@ -331,7 +339,7 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dic
     n = io_threads(nv, cfg)
     target = target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype") or "gpfs"
-    profile, bs = fioprofile.seq_block_size(cfg.fio_profile, fstype, cfg.fio_seq_bs)
+    profile, bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
     rec = _block_mib(bs)
     size = max(rec, math.ceil(2 * mem_kb / 1024 / rec) * rec)   # MiB, whole file
     caveat = ""

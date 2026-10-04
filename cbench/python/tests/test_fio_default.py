@@ -83,15 +83,29 @@ def test_has_metadata_engines():
 # config
 # ---------------------------------------------------------------------------
 
-def test_config_fio_keys(tmp_path):
+def test_config_io_profile_keys(tmp_path):
     f = tmp_path / "cluster.yaml"
-    f.write_text("fio_runtime_s: 60\nfio_profile: streaming\nfio_seq_bs: 2m\n")
+    f.write_text("fio_runtime_s: 60\nio_profile: streaming\nio_seq_bs: 2m\n")
     cfg = load_config(f)
-    assert (cfg.fio_runtime_s, cfg.fio_profile, cfg.fio_seq_bs) == (60, "streaming", "2m")
-    assert ClusterConfig().fio_runtime_s == 300 and ClusterConfig().fio_profile == "auto"
+    assert (cfg.fio_runtime_s, cfg.io_profile, cfg.io_seq_bs) == (60, "streaming", "2m")
+    assert ClusterConfig().fio_runtime_s == 300 and ClusterConfig().io_profile == "auto"
 
 
-@pytest.mark.parametrize("bad", ["fio_profile: fast", "fio_runtime_s: 0", "fio_seq_bs: 8MB"])
+def test_config_deprecated_fio_profile_alias(tmp_path):
+    f = tmp_path / "cluster.yaml"
+    f.write_text("fio_profile: hpc\nfio_seq_bs: 2m\n")
+    with pytest.warns(DeprecationWarning, match="is deprecated") as rec:
+        cfg = load_config(f)
+    assert {str(w.message).split(": ")[-1] for w in rec} == {
+        "fio_profile is deprecated, use io_profile", "fio_seq_bs is deprecated, use io_seq_bs"}
+    assert (cfg.io_profile, cfg.io_seq_bs) == ("hpc", "2m")
+    f.write_text("fio_profile: hpc\nio_profile: ai\n")
+    with pytest.raises(ConfigError, match="not both"):
+        load_config(f)
+
+
+@pytest.mark.parametrize("bad", ["io_profile: fast", "fio_profile: fast", "fio_runtime_s: 0",
+                                 "io_seq_bs: 8MB"])
 def test_config_fio_keys_validated(tmp_path, bad):
     f = tmp_path / "cluster.yaml"
     f.write_text(bad + "\n")
@@ -208,7 +222,7 @@ def test_snb_fio_profile_and_runtime_flags(tmp_path, monkeypatch):
 
 def test_snb_cluster_yaml_profile(tmp_path, monkeypatch):
     cfg = tmp_path / "cluster.yaml"
-    cfg.write_text("fio_profile: ai\nfio_runtime_s: 30\n")
+    cfg.write_text("io_profile: ai\nfio_runtime_s: 30\n")
     out = _snb_dry(tmp_path, monkeypatch, fstype="gpfs", config=cfg)
     assert re.search(r"--name=seq_rw\b.*--bs=1m\b.*--runtime=30\b", out)
 
@@ -257,9 +271,9 @@ def test_remote_dispatch_forwards_fio_options():
         ClusterConfig(remotecmd_method="ssh", remotecmd_extraargs=""), remote_node="n1",
         ident="x", destdir="/d", numcores=4, tests="fio", binpath=None, mpi_cmd="mpirun",
         dry_run=True, store=False, config=None, fs_target=("/t",),
-        fio_profile="hpc", fio_runtime=60,
+        io_profile="hpc", fio_runtime=60,
     )
-    assert "--fio-profile hpc" in cmd[-1] and "--fio-runtime 60" in cmd[-1]
+    assert "--io-profile hpc" in cmd[-1] and "--fio-runtime 60" in cmd[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +339,7 @@ def test_genjobs_fio_profile_from_target_fstype_and_config(genv):
     res = genv.run("--nodefacts", "typeA", facts=_facts(local_fstype="gpfs"))
     assert res.exit_code == 0, res.output
     assert "seqbs=8m\n" in genv.script("fio-4ppn-4")
-    res = genv.run("--nodefacts", "typeA", cfg_extra="fio_profile: streaming\nfio_runtime_s: 120\n")
+    res = genv.run("--nodefacts", "typeA", cfg_extra="io_profile: streaming\nfio_runtime_s: 120\n")
     s = genv.script("fio-4ppn-4")
     assert "seqbs=16m\n" in s and "runtime=120\n" in s
 
@@ -430,3 +444,11 @@ def test_parser_reads_avg_latency_in_fio3_field_order():
     assert m["rand_read_lat_avg_us"] == pytest.approx(19706.47)   # clat, not slat/lat
     assert m["rand_write_lat_avg_us"] == pytest.approx(58790.0)   # msec -> usec
     assert m["rand_read_bw_MiB_s"] == pytest.approx(6487 / 1024)
+
+
+def test_snb_io_profile_flag_and_fio_alias(tmp_path, monkeypatch):
+    out = _snb_dry(tmp_path, monkeypatch, "--io-profile", "ai")
+    assert re.search(r"--name=seq_rw\b.*--bs=1m\b", out)
+    (tmp_path / "b").mkdir()
+    out = _snb_dry(tmp_path / "b", monkeypatch, "--fio-profile", "hpc")   # deprecated alias
+    assert re.search(r"--name=seq_rw\b.*--bs=8m\b", out)

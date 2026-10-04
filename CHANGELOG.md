@@ -47,8 +47,8 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   run starts.
 - **fio workload profiles** set the sequential block size: `ai` 1m, `general` 4m,
   `hpc` 8m, `streaming` 16m. `auto` (the default) picks `hpc` on parallel
-  filesystems and `general` elsewhere. Set it with cluster.yaml `fio_profile` or
-  `snb run --fio-profile`; `fio_seq_bs` sets an exact size. The profile used is
+  filesystems and `general` elsewhere. Set it with cluster.yaml `io_profile` or
+  `snb run --io-profile`; `io_seq_bs` sets an exact size. The profile used is
   recorded with each result.
 - Packages now `Recommend` `fio` (RPM and DEB).
 - **Node-aware fio I/O testing in `cbench snb`.** New repeatable `--fs-target PATH`
@@ -135,6 +135,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **IOR `io_ior*` transfer size follows the IO profile.** It was a fixed `-t 128m`; it's now
+  the profile's block size, which is `-t 8m` on parallel filesystems with the default
+  `auto`. `-b` rounds up to a multiple of it, and `iosanity` keeps `-t 1m`. IOR results
+  aren't directly comparable with runs at `-t 128m`.
+- **`fio_profile` / `fio_seq_bs` renamed to `io_profile` / `io_seq_bs`**, and snb's
+  `--fio-profile` to `--io-profile`, since the setting now drives iozone, gpfsperf and
+  IOR as well. The old names still work: cluster.yaml prints a deprecation warning,
+  and setting both is an error.
 - **The gpfsperf parser handles several operations in one output.** When there's more
   than one, metrics are prefixed `<op>_<pattern>_` (for example `read_rand_iops`).
   Before, each operation overwrote the last. A single operation keeps the old names.

@@ -676,7 +676,7 @@ def _build_remote_cmd(
     remote_cbench: str = "cbench",
     fs_target: "tuple[str, ...]" = (),
     heartbeat: float = _HEARTBEAT_SECS,
-    fio_profile: Optional[str] = None,
+    io_profile: Optional[str] = None,
     fio_runtime: Optional[int] = None,
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
@@ -694,8 +694,8 @@ def _build_remote_cmd(
     ]
     for tgt in fs_target:
         inner += ["--fs-target", tgt]
-    if fio_profile:
-        inner += ["--fio-profile", fio_profile]
+    if io_profile:
+        inner += ["--io-profile", io_profile]
     if fio_runtime:
         inner += ["--fio-runtime", str(fio_runtime)]
     if binpath:
@@ -732,10 +732,11 @@ def _build_remote_cmd(
 @click.option("--fs-target", "fs_target", multiple=True, type=click.Path(),
               help="Filesystem path to target for fio I/O tests. Repeatable. "
                    "Required when fio is selected via --tests (fio is opt-in).")
-@click.option("--fio-profile", type=click.Choice(fioprofile.PROFILE_CHOICES), default=None,
-              help="fio sequential block size profile: ai 1m, general 4m, hpc 8m, streaming 16m; "
-                   "auto = hpc on a parallel filesystem, else general (default: cluster.yaml "
-                   "fio_profile, else auto)")
+@click.option("--io-profile", "--fio-profile", "io_profile",
+              type=click.Choice(fioprofile.PROFILE_CHOICES), default=None,
+              help="IO workload profile setting the fio sequential block size: ai 1m, general "
+                   "4m, hpc 8m, streaming 16m; auto = hpc on a parallel filesystem, else general "
+                   "(default: cluster.yaml io_profile, else auto). --fio-profile is an alias.")
 @click.option("--fio-runtime", type=click.IntRange(min=1), default=None, metavar="SECONDS",
               help="Time cap per fio job (default: cluster.yaml fio_runtime_s, else 300)")
 @click.option("--tests",
@@ -759,7 +760,7 @@ def run_cmd(
     remote_cbench: str,
     numcores: Optional[int],
     fs_target: tuple[str, ...],
-    fio_profile: Optional[str],
+    io_profile: Optional[str],
     fio_runtime: Optional[int],
     tests: str,
     binpath: Optional[str],
@@ -801,7 +802,7 @@ def run_cmd(
             numcores=numcores,
             tests=tests,
             fs_target=fs_target,
-            fio_profile=fio_profile,
+            io_profile=io_profile,
             fio_runtime=fio_runtime,
             binpath=binpath,
             mpi_cmd=mpi_cmd,
@@ -1026,7 +1027,7 @@ def run_cmd(
                 if cfg.io_threads_basis == "physical" and not explicit_numcores:
                     io_cpus = _detect_physical_cores() or numcores
                 fio_numjobs = fioprofile.numjobs(iosizing.cap_threads(io_cpus, cfg))
-                fio_profile = fio_profile or cfg.fio_profile
+                io_profile = io_profile or cfg.io_profile
                 fio_runtime = fio_runtime or cfg.fio_runtime_s
                 # metadata engines (filecreate/filestat/filedelete) need fio >= 3.23
                 if dry_run:
@@ -1093,7 +1094,7 @@ def run_cmd(
                                 msg += " (capped by free space — result may be cache-influenced)"
                             _logmsg(log, "WARNING: " + msg)
 
-                    profile, seq_bs = fioprofile.seq_block_size(fio_profile, fstype, cfg.fio_seq_bs)
+                    profile, seq_bs = fioprofile.seq_block_size(io_profile, fstype, cfg.io_seq_bs)
                     marker = (f"{_FIO_TARGET_MARKER} path={tgt} fstype={fstype} "
                               f"odirect={int(direct)} caveat={int(caveat)} profile={profile} "
                               f"seq_bs={seq_bs} runtime_s={fio_runtime} md={int(fio_md)}")

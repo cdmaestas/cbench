@@ -269,7 +269,7 @@ def gen_jobs(
             elif bench == "gpfsperf":
                 io_extra = iosizing.gpfsperf_tokens(nv, cfg, testset=home, benchmark=bench)
             elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
-                io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
+                io_extra = iosizing.ior_tokens(nv, cfg, ppn=ppn_val, numprocs=numprocs,
                                                testset=home, benchmark=bench)
             elif iosizing.needs_io_sizing(home, bench):
                 io_extra = iosizing.bonnie_tokens(nv, cfg, testset=home, benchmark=bench)

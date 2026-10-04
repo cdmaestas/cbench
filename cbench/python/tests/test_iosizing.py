@@ -88,25 +88,41 @@ def test_heterogeneous_facts_warn_about_conservative_values():
 # IOR
 # ---------------------------------------------------------------------------
 
-def _ior(nv, ppn, np_):
-    return iosizing.ior_tokens(nv, ppn=ppn, numprocs=np_, testset="io", benchmark="ior1mNtoN")
+def _ior(nv, ppn, np_, cfg=None):
+    return iosizing.ior_tokens(nv, cfg or _cfg(), ppn=ppn, numprocs=np_, testset="io",
+                               benchmark="ior1mNtoN")
 
 
 def test_ior_blocksize_rounds_up_to_multiple_of_transfer():
     nv = iosizing.resolve_node_values(_cfg(), _facts())
     t = _ior(nv, 4, 4)
-    # 2 * 7526.1 MiB / 4 ranks = 3763.1 -> next multiple of 128m = 3840m
-    assert t["IOR_BLOCKSIZE"] == "3840m"
+    # parallel target is GPFS -> io_profile auto -> hpc -> -t 8m
+    assert (t["IOR_TRANSFER"], t["IOR_PROFILE"]) == ("8m", "hpc")
+    # 2 * 7526.1 MiB / 4 ranks = 3763.1 -> next multiple of 8m = 3768m
+    assert t["IOR_BLOCKSIZE"] == "3768m"
     assert t["IO_CAVEAT"] == ""
     assert t["TESTDIR"] == GPFS and t["IO_TARGET_DIR"] == GPFS
-    assert int(t["IO_REQUIRED_KB"]) == 3840 * 4 * 1024  # shared fs: whole job
+    assert int(t["IO_REQUIRED_KB"]) == 3768 * 4 * 1024  # shared fs: whole job
+
+
+@pytest.mark.parametrize("cfg_kw, transfer", [
+    ({"io_profile": "streaming"}, "16m"),
+    ({"io_profile": "ai"}, "1m"),
+    ({"io_seq_bs": "2m"}, "2m"),
+])
+def test_ior_transfer_follows_io_profile(cfg_kw, transfer):
+    cfg = ClusterConfig(io_targets={"parallel": GPFS, "node-local": "/tmp"}, **cfg_kw)
+    nv = iosizing.resolve_node_values(cfg, _facts())
+    t = _ior(nv, 4, 4, cfg)
+    assert t["IOR_TRANSFER"] == transfer
+    assert int(t["IOR_BLOCKSIZE"][:-1]) % int(transfer[:-1]) == 0
 
 
 def test_ior_each_node_writes_at_least_twice_ram():
     nv = iosizing.resolve_node_values(_cfg(), _facts())
     for ppn in (1, 2, 3, 4):
         b = int(_ior(nv, ppn, ppn)["IOR_BLOCKSIZE"][:-1])
-        assert b % 128 == 0
+        assert b % 8 == 0
         assert b * ppn * 1024 >= 2 * 7706776
 
 
@@ -116,7 +132,7 @@ def test_ior_capped_to_free_space_with_caveat():
                                       _facts(targets=targets))
     t = _ior(nv, 4, 8)  # 2 nodes x 4 ppn on a shared fs
     b = int(t["IOR_BLOCKSIZE"][:-1])
-    assert b % 128 == 0 and int(t["IO_REQUIRED_KB"]) <= 9_000_000
+    assert b % 8 == 0 and int(t["IO_REQUIRED_KB"]) <= 9_000_000
     assert "capped" in t["IO_CAVEAT"] and "cache-influenced" in t["IO_CAVEAT"]
 
 
@@ -251,9 +267,9 @@ def test_genjobs_io_ior_sized_from_facts(genv):
     res = genv.run("--testset", "io", "--ppn", "4", "--maxprocs", "4", "--nodefacts", "typeA")
     assert res.exit_code == 0, res.output
     s = genv.script("io", "ior1mNtoN-4ppn-4")
-    assert "-b 3840m " in s
+    assert "-b 3768m " in s and "-t 8m " in s
     assert f'TESTDIR="{GPFS}/$JOBID"' in s
-    assert f'cbench_io_preflight "{GPFS}" "{3840 * 4 * 1024}" ""' in s
+    assert f'cbench_io_preflight "{GPFS}" "{3768 * 4 * 1024}" ""' in s
     assert "_HERE" not in s
 
 
