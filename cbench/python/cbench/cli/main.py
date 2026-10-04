@@ -93,6 +93,9 @@ cli.add_command(serve_cmd)
 @click.option("--dry-run", is_flag=True, help="Print generated scripts without writing")
 @click.option("--config", default=None, help="Path to cluster.yaml")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST", help="CBENCHTEST directory")
+@click.option("--nodefacts", default=None, metavar="NAME|PATH",
+              help="Node facts from `cbench nodecheck` (name under <cbenchtest>/nodefacts/ or a "
+                   ".json path); sizes IO tests from the real compute nodes")
 def gen_jobs(
     testset: str,
     ident: str,
@@ -102,8 +105,12 @@ def gen_jobs(
     dry_run: bool,
     config: Optional[str],
     cbenchtest: Optional[str],
+    nodefacts: Optional[str],
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset."""
+    from cbench import iosizing
+    from cbench.nodecheck import NodecheckError, load_facts
+
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
@@ -121,6 +128,33 @@ def gen_jobs(
         console.print(f"[red]No templates found for testset '{testset}' in {templates_dir}[/red]")
         raise SystemExit(1)
 
+    # Node-aware IO: resolve node values up front and fail BEFORE rendering
+    # anything if an IO template needs values we don't have (an unset token
+    # would otherwise render as an empty string, e.g. a broken `-b ` for IOR).
+    facts = None
+    if nodefacts:
+        try:
+            facts, fact_warnings = load_facts(cbenchtest, nodefacts)
+        except NodecheckError as exc:
+            raise click.ClickException(str(exc)) from exc
+        for w in fact_warnings:
+            console.print(f"[yellow]WARNING: {w}[/yellow]")
+    nv = iosizing.resolve_node_values(cfg, facts)
+    for w in nv.warnings:
+        console.print(f"[yellow]WARNING: {w}[/yellow]")
+    sized = [b for b in benchmark_templates if iosizing.needs_io_sizing(testset, b)]
+    if sized and not nv.mem_io_kb:
+        raise click.ClickException(
+            f"testset '{testset}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
+            "NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly in cluster.yaml"
+        )
+    if sized:
+        console.print(f"Node-aware IO sizing from {nv.source}: MemTotal {nv.mem_io_kb} kB (IO)")
+    if not ppn and nv.cpus and any(b.startswith("mdtest") for b in benchmark_templates):
+        ppn_values = iosizing.ppn_levels_for_metadata(ppn_values, cfg.procs_per_node, nv.cpus)
+        console.print(f"Metadata ppn levels from {nv.source} ({nv.cpus} CPUs/node): {ppn_values}")
+    caveats: set[str] = set()
+
     run_types = ["batch", "interactive"] if run_type == "both" else [run_type]
     total = 0
 
@@ -137,6 +171,20 @@ def gen_jobs(
 
             for bench in benchmark_templates:
                 jobname = f"{bench}-{ppn_val}ppn-{numprocs}"
+                try:
+                    if iosizing.needs_io_sizing(testset, bench) and bench.startswith("ior"):
+                        io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
+                                                       testset=testset, benchmark=bench)
+                    elif iosizing.needs_io_sizing(testset, bench):
+                        io_extra = iosizing.bonnie_tokens(nv, testset=testset, benchmark=bench)
+                    elif iosizing.target_name_for(bench):
+                        io_extra = iosizing.target_tokens(nv, bench)
+                    else:
+                        io_extra = {}
+                except iosizing.IOSizingError as exc:
+                    raise click.ClickException(str(exc)) from exc
+                if io_extra.get("IO_CAVEAT"):
+                    caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
                 for rtype in run_types:
                     try:
                         raw = templates.build_job_template(testset, bench, rtype, cfg)
@@ -158,6 +206,7 @@ def gen_jobs(
                         launch_cmd=launch_cmd,
                         cfg=cfg,
                         cbenchtest=cbenchtest,
+                        extra=io_extra,
                     )
 
                     ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
@@ -174,6 +223,8 @@ def gen_jobs(
 
                     total += 1
 
+    for c in sorted(caveats):
+        console.print(f"[yellow]WARNING (capacity cap): {c}[/yellow]")
     action = "Would generate" if dry_run else "Generated"
     console.print(f"[green]{action} {total} job script(s) for testset '{testset}', ident '{ident}'[/green]")
 

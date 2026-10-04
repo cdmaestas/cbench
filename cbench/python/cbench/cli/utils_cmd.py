@@ -109,19 +109,38 @@ def find_pq_cmd(nprocs: int, delta: int, decent_only: bool) -> None:
               help="Memory per node in MB (overrides cluster config)")
 @click.option("--util", default=None,
               help="Comma-separated utilization factors e.g. 0.5,0.6,0.7")
+@click.option("--nodefacts", default=None, metavar="NAME|PATH",
+              help="Use the MIN MemTotal from `cbench nodecheck` facts (ignored if --memory given)")
+@click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 @click.option("--config", default=None)
 def find_n_cmd(
     nprocs: int,
     ppn: int,
     memory: Optional[int],
     util: Optional[str],
+    nodefacts: Optional[str],
+    cbenchtest: Optional[str],
     config: Optional[str],
 ) -> None:
     """Compute HPL problem size N for each memory utilization factor."""
     from cbench.config import load_config
     cfg = load_config(config)
 
-    mem_mb = memory if memory is not None else cfg.memory_per_node_mb
+    if memory is not None:
+        mem_mb = memory
+    elif nodefacts:
+        from cbench.nodecheck import NodecheckError, load_facts
+        try:
+            facts, warnings = load_facts(cbenchtest or ".", nodefacts)
+        except NodecheckError as exc:
+            raise click.ClickException(str(exc)) from exc
+        for w in warnings:
+            click.echo(f"WARNING: {w}", err=True)
+        # memory-sized: MIN MemTotal across nodes, rounded down to whole MB
+        mem_mb = facts["aggregate"]["memtotal_kb"]["min"] // 1024
+        click.echo(f"memory per node = {mem_mb} MB (min MemTotal from nodefacts '{facts['name']}')")
+    else:
+        mem_mb = cfg.memory_per_node_mb
     factors = (
         [float(x) for x in util.split(",")]
         if util
