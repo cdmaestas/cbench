@@ -143,8 +143,9 @@ def compute_n(
     total_bytes = memory_per_node_mb * numnodes * 1024 * 1024
     results: list[int] = []
     for factor in memory_util_factors:
-        n = math.sqrt(total_bytes / 8) * factor
-        n = int(n * 1.02)
+        # Memory-sized benchmarks round DOWN (never exceed the requested share
+        # of RAM). The Perl compute_N inflated N by 2% here; dropped on purpose.
+        n = math.floor(math.sqrt(total_bytes / 8) * factor)
         results.append(n)
     return results
 

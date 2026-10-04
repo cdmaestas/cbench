@@ -17,6 +17,33 @@ cbench_echo "Cbench jobid: $JOBID"
 # make sure we are where we expect to be.
 cd "TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE"
 
+# Fail fast if an IO test's target lacks the space it needs. Checked right
+# before the run: the free space nodecheck saw at generation time is only a
+# snapshot. Defined here (not in cbench_functions) so it always ships with the
+# generated script and can never be missing.
+#   usage: cbench_io_preflight DIR REQUIRED_KB [CAVEAT]
+cbench_io_preflight()
+{
+	local dir="$1" need_kb="$2" caveat="$3" have_kb
+	if [ -n "$caveat" ]; then
+		cbench_echo "CBENCH CAVEAT: $caveat"
+	fi
+	if [ -z "$need_kb" ]; then
+		return 0
+	fi
+	mkdir -p "$dir" 2>/dev/null
+	have_kb=$(df -Pk "$dir" 2>/dev/null | awk 'NR==2{print $4}')
+	if [ -z "$have_kb" ]; then
+		cbench_echo "CBENCH NOTICE: cannot determine free space on $dir"
+		exit 1
+	fi
+	if [ "$have_kb" -lt "$need_kb" ]; then
+		cbench_echo "CBENCH NOTICE: insufficient space on $dir: need ${need_kb} kB, have ${have_kb} kB"
+		exit 1
+	fi
+	cbench_echo "Cbench IO preflight: $dir has ${have_kb} kB free, job needs ${need_kb} kB"
+}
+
 # set OMP_NUM_THREADS appropriate to the job
 export OMP_NUM_THREADS=NUM_THREADS_PER_PROCESS_HERE
 cbench_echo "Cbench OMP_NUM_THREADS: $OMP_NUM_THREADS"
