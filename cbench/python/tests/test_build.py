@@ -473,3 +473,15 @@ def test_update_source_absent_dir(tmp_path):
     srcdir.mkdir()
     changed = builder.update_source(srcdir, dry_run=False)
     assert changed is False
+
+
+def test_bonnie_builds_as_gnu_cxx14(tmp_path, monkeypatch):
+    """bonnie++ 2.00a fails under C++17 (GCC >= 11): 'reference to data is ambiguous'."""
+    import cbench.builders.bonnie as bonnie_mod
+    calls = []
+    monkeypatch.setattr(bonnie_mod, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(bonnie_mod, "install_bins", lambda *a, **kw: ["bonnie++", "zcav"])
+    get_builder("bonnie").build(tmp_path, tmp_path / "pfx", BuildConfig(), dry_run=False)
+    configure = calls[0]
+    assert configure[0] == "./configure"
+    assert any(a.startswith("CXXFLAGS=") and "-std=gnu++14" in a for a in configure)
