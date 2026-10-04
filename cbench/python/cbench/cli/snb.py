@@ -160,6 +160,14 @@ def _fio_benchmark_name(fstype: str, path: "str | Path") -> str:
     return f"snb_fio_{safe}"
 
 
+# `snb report` row order for fio metrics (cbench.fioprofile job set first)
+_FIO_REPORT_ORDER = (
+    "seq_read_bw_MiB_s", "seq_write_bw_MiB_s",
+    "rand_read_iops", "rand_write_iops", "rand_read_bw_MiB_s", "rand_write_bw_MiB_s",
+    "rand_read_lat_avg_us", "rand_write_lat_avg_us", "rand_read_lat_p99_us", "rand_write_lat_p99_us",
+    "create_ops", "stat_ops", "delete_ops",
+)
+
 # Marker written into the fio output file before each target's runs so the
 # collector can split one file into per-target results.
 _FIO_TARGET_MARKER = "### CBENCH FS-TARGET"
@@ -1272,20 +1280,22 @@ def report_cmd(
     # ------------------------------------------------------------------
     # fio
     # ------------------------------------------------------------------
-    fio_metrics = _parse_fio_out(out("fio"))
-    if fio_metrics:
+    fio_targets = _parse_fio_targets(out("fio"))
+    if fio_targets:
         any_results = True
         console.rule("[bold]FIO I/O Results")
-        tbl = Table(box=None, padding=(0, 2))
-        tbl.add_column("Metric")
-        tbl.add_column("Value", justify="right")
-        for key in ("read_bw_MiB_s", "write_bw_MiB_s",
-                    "read_iops", "write_iops",
-                    "read_lat_avg_us", "write_lat_avg_us",
-                    "read_lat_p99_us", "write_lat_p99_us"):
-            if key in fio_metrics:
-                tbl.add_row(key, f"{fio_metrics[key]:.1f}")
-        console.print(tbl)
+        for benchmark, status, detail, metrics in fio_targets:
+            console.print(f"[bold]{benchmark}[/bold]  {status}  [dim]{detail}[/dim]")
+            if not metrics:
+                continue
+            tbl = Table(box=None, padding=(0, 2))
+            tbl.add_column("Metric")
+            tbl.add_column("Value", justify="right")
+            ordered = [k for k in _FIO_REPORT_ORDER if k in metrics]
+            ordered += sorted(k for k in metrics if k not in _FIO_REPORT_ORDER)
+            for key in ordered:
+                tbl.add_row(key, f"{metrics[key]:.1f}")
+            console.print(tbl)
 
     # ------------------------------------------------------------------
     # hpcc

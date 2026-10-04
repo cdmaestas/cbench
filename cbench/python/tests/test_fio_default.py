@@ -384,3 +384,25 @@ def test_fio_tokens_needs_cpus():
     nv = iosizing.NodeValues(cpus=None, mem_io_kb=1, mem_nonio_kb=1)
     with pytest.raises(iosizing.IOSizingError):
         iosizing.fio_tokens(nv, ClusterConfig(), testset="iometadata", benchmark="fio")
+
+
+def test_snb_report_shows_each_target_with_new_metrics(tmp_path, monkeypatch):
+    monkeypatch.setattr(snb.console, "width", 10000)
+    d = tmp_path / "x"
+    d.mkdir()
+    (d / "n1.snb.fio.out").write_text(
+        "### CBENCH FS-TARGET path=/tmp fstype=xfs odirect=1 caveat=0 profile=general "
+        "seq_bs=4m runtime_s=30 md=1\n" + _JOBSET
+        + "### CBENCH FS-TARGET path=/gpfs/s fstype=gpfs odirect=1 caveat=0 profile=hpc "
+        "seq_bs=8m runtime_s=30 md=1\n" + _JOBSET
+        + "### CBENCH FS-TARGET path=/scratch fstype=ext4 odirect=1 skipped=insufficient_space "
+        "need_kb=16777216 usable_kb=1000\n"
+    )
+    res = CliRunner().invoke(cli, ["snb", "report", "--ident", "x", "--destdir", str(tmp_path),
+                                   "--node", "n1"])
+    assert res.exit_code == 0, res.output
+    out = res.output
+    assert "snb_fio_xfs_tmp" in out and "snb_fio_gpfs_s" in out and "snb_fio_ext4_scratch" in out
+    assert "profile=hpc seq_bs=8m" in out and "skipped: insufficient space" in out
+    assert out.count("rand_read_iops") == 2 and "12500.0" in out
+    assert "create_ops" in out
