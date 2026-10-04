@@ -104,6 +104,12 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **Rebuilding a tarball-based benchmark failed with `Permission denied`** (seen with
+  iozone, whose tarball has read-only files): the source was re-extracted over the
+  previous tree on every build.
+  - An already-extracted tree is now reused.
+  - `--force` removes it first, read-only files included.
+  - Extraction uses Python's `filter="data"` where available.
 - **The io500 parser never matched current IO500 output.** IO500 prints `[SCORE ]` and
   `kiops`, so every real run parsed as `ERROR(INCOMPLETE)`. It now reads both
   formats and records IO500's `[INVALID]` flag, for example when the stonewall is

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
+import stat
 import subprocess
+import sys
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -89,11 +92,27 @@ def download(url: str, dest: Path) -> None:
             shutil.copyfileobj(resp, fh)
 
 
+def _rmtree_writable(path: Path) -> None:
+    """rmtree that also removes read-only entries (some tarballs, e.g.
+    iozone's, ship 0444 files and read-only directories)."""
+    def _retry(func, p, _exc):
+        os.chmod(os.path.dirname(p), stat.S_IRWXU)
+        os.chmod(p, stat.S_IRWXU)
+        func(p)
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_retry)
+    else:  # onerror is deprecated from 3.12
+        shutil.rmtree(path, onerror=_retry)
+
+
 def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Path:
     """Download a tarball to *dest_dir* and extract it.
 
     Returns the path of the top-level directory inside the tarball.
-    Skips the download if the tarball already exists and not force.
+    Skips the download if the tarball already exists and not force, and skips
+    extraction if its top-level directory already exists and not force
+    (re-extracting over a previous tree fails on read-only files). With force,
+    the old tree is removed first.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     filename = url.split("/")[-1]
@@ -116,9 +135,10 @@ def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Pat
 
     with tarfile.open(tarball) as tf:
         top = Path(tf.getnames()[0].split("/")[0])
-        console.print(f"  [cyan]tar x[/cyan] {tarball.name}")
         # Validate every member stays inside dest_dir (prevents zip-slip).
         # is_relative_to (not str.startswith) so /a/b does not match /a/bc.
+        # This runs BEFORE anything below touches the filesystem: a hostile
+        # first member like "../../x" would otherwise make top_dir the parent.
         dest_resolved = dest_dir.resolve()
         for member in tf.getmembers():
             member_path = (dest_dir / member.name).resolve()
@@ -134,7 +154,25 @@ def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Pat
                         f"Refusing to extract tarball: link member {member.name!r} "
                         f"targets {member.linkname!r} outside destination"
                     )
-        tf.extractall(dest_dir)  # noqa: S202 # nosec B202 — members validated above
+        top_dir = dest_dir / top
+        top_resolved = top_dir.resolve()
+        if top in (Path(""), Path("."), Path("..")) or top_resolved == dest_resolved \
+                or not top_resolved.is_relative_to(dest_resolved):
+            raise RuntimeError(f"Refusing to extract tarball: top-level entry {str(top)!r} "
+                               "is not a directory inside the destination")
+        if top_dir.exists():
+            if not force:
+                console.print(f"  [green]Already extracted:[/green] {top_dir}")
+                return top_dir
+            _rmtree_writable(top_dir)
+        console.print(f"  [cyan]tar x[/cyan] {tarball.name}")
+        # Python >= 3.12 (and 3.8.17/3.9.17+/3.10.12+/3.11.4+ backports, e.g.
+        # RHEL 9's 3.9) has extraction filters; "data" adds the stdlib's own
+        # checks on top of ours and silences the 3.12+ deprecation warning.
+        if hasattr(tarfile, "data_filter"):
+            tf.extractall(dest_dir, filter="data")  # noqa: S202 # nosec B202 — members validated above
+        else:
+            tf.extractall(dest_dir)  # noqa: S202 # nosec B202 — members validated above
 
     return dest_dir / top
 
