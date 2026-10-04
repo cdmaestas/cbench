@@ -151,6 +151,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **Random (IOPS) tests use 4k transfers everywhere.** fio's random job already did;
+  now iozone's random read/write and gpfsperf's `read rand`/`write rand` do too.
+  - Before, both used the profile's sequential size (4m–16m), which measured
+    large-block random bandwidth rather than IOPS.
+  - iozone now runs twice: throughput at the profile's record size, then random
+    read/write at `-r 4k`.
+  - gpfsperf's random ops move IO threads × 256 MiB at random offsets across the
+    full 2×-RAM file.
 - **IOR `io_ior*` transfer size follows the IO profile.** It was a fixed `-t 128m`; it's now
   the profile's block size, which is `-t 8m` on parallel filesystems with the default
   `auto`. `-b` rounds up to a multiple of it, and `iosanity` keeps `-t 1m`. IOR results

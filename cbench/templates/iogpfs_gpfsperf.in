@@ -3,8 +3,8 @@
 # else io_targets.parallel when nodecheck saw it is GPFS): sequential create,
 # sequential read, random read, random write of one file, with one thread per
 # IO thread (all CPUs, or io_threads_max). The file is 2x the node's RAM so the
-# GPFS pagepool can't hold it; the record size is the fio profile's block size
-# (auto on GPFS -> hpc, 8m). gen-jobs fills in the sizes
+# GPFS pagepool can't hold it; sequential ops use the IO profile's block size
+# (auto on GPFS -> hpc, 8m), random ops 4k records. gen-jobs fills in the sizes
 # (cbench/python/cbench/iosizing.py). Single node; gpfsperf-mpi is not used.
 #
 # NOTE: bash syntax is used here
@@ -33,12 +33,20 @@ cbench_runin_tempdir
 cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 
 threads=GPFSPERF_THREADS_HERE
-opts="-r GPFSPERF_RECORD_HERE -n GPFSPERF_SIZE_HERE -th $threads"
+# sequential ops stream the whole 2x-RAM file at the profile's block size;
+# random (IOPS) ops use 4k records at random offsets across that same file,
+# moving a bounded amount (-n) so they finish in reasonable time
+seq_opts="-r GPFSPERF_RECORD_HERE -n GPFSPERF_SIZE_HERE -th $threads"
+iops_opts="-r GPFSPERF_IOPS_RECORD_HERE -n GPFSPERF_IOPS_BYTES_HERE -th $threads"
 file=./gpfsperf.dat
-cbench_echo "Cbench gpfsperf: profile=GPFSPERF_PROFILE_HERE record=GPFSPERF_RECORD_HERE threads=$threads size=GPFSPERF_SIZE_HERE"
+cbench_echo "Cbench gpfsperf: profile=GPFSPERF_PROFILE_HERE record=GPFSPERF_RECORD_HERE iops_record=GPFSPERF_IOPS_RECORD_HERE threads=$threads size=GPFSPERF_SIZE_HERE iops_bytes=GPFSPERF_IOPS_BYTES_HERE"
 
-for op in "create seq" "read seq" "read rand" "write rand"; do
-	CMD="$GPFSPERF $op $file $opts"
+for op in "create seq" "read seq"; do
+	CMD="$GPFSPERF $op $file $seq_opts"
+	cbench_run_cmd $CMD
+done
+for op in "read rand" "write rand"; do
+	CMD="$GPFSPERF $op $file $iops_opts"
 	cbench_run_cmd $CMD
 done
 rm -f $file

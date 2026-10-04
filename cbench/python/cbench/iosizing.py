@@ -301,8 +301,9 @@ def _block_mib(bs: str) -> int:
 
 def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
     """iozone throughput mode: one thread per IO thread, each writing its share
-    of 2x RAM (rounded UP to the record size), record size = the fio profile's
-    sequential block size, capped to the target's free space with a caveat."""
+    of 2x RAM (rounded UP to the record size), capped to the target's free
+    space with a caveat. Sequential tests use the IO profile's block size as
+    the record; the random (IOPS) tests use 4k."""
     from cbench import fioprofile
 
     mem_kb = _require_mem(nv, testset, benchmark)
@@ -320,6 +321,7 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
                   f"x {n}) to fit target '{target}' free space; results may be cache-influenced")
         size = capped
     tokens = {
+        "IOZONE_IOPS_RECORD": fioprofile.IOPS_BS,
         "IOZONE_THREADS": str(n),
         "IOZONE_SIZE": f"{size}m",
         "IOZONE_RECORD": bs,
@@ -332,8 +334,9 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
 
 def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
     """gpfsperf: one file of 2x RAM (defeats the GPFS pagepool, which is
-    smaller than RAM), -th = IO threads, -r = the profile block size (auto on
-    GPFS -> hpc 8m); capped to free space with a caveat."""
+    smaller than RAM), -th = IO threads; sequential ops use -r = the profile
+    block size (auto on GPFS -> hpc 8m), random ops -r 4k over a bounded -n
+    (IO threads x 256 MiB); capped to free space with a caveat."""
     from cbench import fioprofile
 
     mem_kb = _require_mem(nv, testset, benchmark)
@@ -351,6 +354,10 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dic
                   f"'{target}' free space; results may be cache-influenced")
         size = capped
     tokens = {
+        "GPFSPERF_IOPS_RECORD": fioprofile.IOPS_BS,
+        # random ops move a bounded amount at random offsets across the full
+        # 2x-RAM file: at 4k, transferring the whole file would take hours
+        "GPFSPERF_IOPS_BYTES": f"{min(size, n * fioprofile.IOPS_BYTES_PER_THREAD_MIB)}m",
         "GPFSPERF_THREADS": str(n),
         "GPFSPERF_SIZE": f"{size}m",
         "GPFSPERF_RECORD": bs,
