@@ -191,7 +191,7 @@ These decisions are intentional — do not re-flag as vulnerabilities:
 - `send_from_directory(assets_dir, filename)` — Flask's `safe_join` prevents path traversal within the dir; the dir itself is operator-chosen at startup.
 - Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment.
 - Prometheus label values are escaped via `_prom_label()` in `cli/serve.py`.
-- Tarball downloads (`builders/_util.py:download()`) are https-only with a 120 s timeout; the zip-slip guard validates every member path *and* symlink/hardlink target with `Path.is_relative_to` before `extractall`.
+- Tarball downloads (`builders/_util.py:download()`) are https-only with a 120 s timeout; the zip-slip guard validates every member path *and* symlink/hardlink target with `Path.is_relative_to` before `extractall` (with `filter="data"` where Python has it). Validation runs before anything touches the filesystem. The top-level entry must be a real directory inside the destination, never `.` or `..`, before an existing tree is reused, or removed with `--force` via `_rmtree_writable`, which also clears read-only files.
 - All path-containment checks use `Path.is_relative_to` (never `str.startswith`, which has a `/a/b` vs `/a/bc` prefix-collision).
 - `cluster_name` in `cluster.yaml` is restricted to `[A-Za-z0-9_-]+` by JSON Schema validation.
 - `--node`/`--remote` hostname arguments reject `/`, `\\`, `..`, and spaces.
