@@ -86,10 +86,10 @@ jobs:
           PKG_TYPE: ${{ matrix.type }}
         run: |
           if [ "$PKG_TYPE" = rpm ]; then
-            rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec
+            rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec && grep -qx 'fio' /tmp/rec
           else
             rec=$(dpkg-deb -f $(find _dist -name '*.deb') Recommends); echo "$rec"
-            echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules'
+            echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules' && echo "$rec" | grep -qw 'fio'
           fi
 
       - uses: actions/upload-artifact@v4
@@ -145,7 +145,7 @@ jobs:
 
       - name: Verify MPI recommends (native RPM)
         working-directory: cbench/python/packaging
-        run: rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec
+        run: rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec && grep -qx 'fio' /tmp/rec
 
       - uses: actions/upload-artifact@v4
         with:
@@ -205,7 +205,7 @@ jobs:
         working-directory: cbench/python/packaging
         run: |
           rec=$(dpkg-deb -f $(find _dist -name '*.deb') Recommends); echo "$rec"
-          echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules'
+          echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules' && echo "$rec" | grep -qw 'fio'
 
       - uses: actions/upload-artifact@v4
         with:

@@ -31,7 +31,7 @@ BONNIE_INSTANCES = 3        # iometadata_bonnie.in runs 3 concurrent bonnie++
 CAPACITY_FRACTION = 0.9
 
 # Which io_targets entry each benchmark writes to.
-_TARGET_FOR = {"ior": "parallel", "mdtest": "parallel", "bonnie": "node-local"}
+_TARGET_FOR = {"ior": "parallel", "mdtest": "parallel", "bonnie": "node-local", "fio": "node-local"}
 
 
 class IOSizingError(Exception):
@@ -187,6 +187,47 @@ def bonnie_tokens(nv: NodeValues, *, testset: str, benchmark: str) -> dict:
         "IO_CAVEAT": _shell_safe(caveat),
     }
     return {**tokens, **target_tokens(nv, benchmark)}
+
+
+def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[dict, str]:
+    """Tokens for iometadata_fio.in, plus a gen-time warning ("" if none).
+
+    numjobs = min(MIN CPUs, 16); the sequential block size comes from the
+    fio profile and the target's fstype from the facts file. The run needs
+    numjobs x 1 GiB at its peak (the target is emptied between jobs); if the
+    free space nodecheck saw is short, the job's runtime preflight will exit
+    with a NOTICE, so warn now rather than cap (O_DIRECT needs no cache-defeat
+    sizing, but numjobs x 1 GiB files must fit).
+    """
+    from cbench import fioprofile
+
+    if not nv.cpus:
+        raise IOSizingError(
+            f"{testset}_{benchmark} sizes its job count from node CPUs: pass --nodefacts NAME "
+            "(from `cbench nodecheck`) or set procs_per_node explicitly in cluster.yaml"
+        )
+    njobs = fioprofile.numjobs(nv.cpus)
+    target = target_name_for(benchmark)
+    fstype = nv.targets.get(target or "", {}).get("fstype")
+    profile, seq_bs = fioprofile.seq_block_size(cfg.fio_profile, fstype, cfg.fio_seq_bs)
+    need_kb = fioprofile.peak_bytes(njobs) // 1024
+    warning = ""
+    cap_kb, _shared = _free_cap_kb(nv, target)
+    if cap_kb is not None and need_kb > cap_kb:
+        warning = (f"fio needs {need_kb} kB ({njobs} jobs x {fioprofile.DATA_SIZE}) on target "
+                   f"'{target}' but nodecheck saw {cap_kb} kB usable; the job will exit with a "
+                   "NOTICE unless space is freed")
+    tokens = {
+        "FIO_NUMJOBS": str(njobs),
+        "FIO_RUNTIME": str(cfg.fio_runtime_s),
+        "FIO_PROFILE": profile,
+        "FIO_SEQ_BS": seq_bs,
+        "FIO_SIZE": fioprofile.DATA_SIZE,
+        "FIO_MD_NRFILES": str(fioprofile.MD_NRFILES),
+        "IO_REQUIRED_KB": str(need_kb),
+        "IO_CAVEAT": "",
+    }
+    return {**tokens, **target_tokens(nv, benchmark)}, warning
 
 
 def target_tokens(nv: NodeValues, benchmark: str) -> dict:

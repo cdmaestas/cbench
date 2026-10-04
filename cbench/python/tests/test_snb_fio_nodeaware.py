@@ -183,12 +183,13 @@ def test_parse_fio_targets_round_trip(tmp_path):
     detail1, metrics1 = by_name["snb_fio_gpfs_scratch"]
     assert "fstype=gpfs" in detail1 and "odirect=1" in detail1
     assert "cache-influenced" not in detail1
-    assert metrics1["read_bw_MiB_s"] == pytest.approx(1000.0)
+    # seq_rw job -> sequential bandwidth metrics (cbench.fioprofile job names)
+    assert metrics1["seq_read_bw_MiB_s"] == pytest.approx(1000.0)
 
     assert "snb_fio_ext4_tmp" in by_name
     detail2, metrics2 = by_name["snb_fio_ext4_tmp"]
     assert "caveat=1" in detail2 and "cache-influenced" in detail2
-    assert metrics2["read_bw_MiB_s"] == pytest.approx(2000.0)
+    assert metrics2["seq_read_bw_MiB_s"] == pytest.approx(2000.0)
 
 
 def _fio_dry_run_output(tmp_path, monkeypatch, numcores, *, free_bytes=1024 * GIB,

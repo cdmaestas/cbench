@@ -57,6 +57,13 @@ def _db_path(cbenchtest: str) -> Path:
     return Path(cbenchtest) / "cbench_results.db"
 
 
+#: testset -> benchmarks gen-jobs skips unless selected with --match
+#: (fileop: superseded by fio, which also covers data IOPS).
+_DEFAULT_SKIP: dict[str, set[str]] = {"iometadata": {"fileop"}}
+#: single-node, non-MPI benchmarks generated once (numprocs 1), not per ppn x size
+_SINGLE_INSTANCE = {"fio"}
+
+
 def _cfg(config: Optional[str]) -> ClusterConfig:
     return load_config(config)
 
@@ -93,6 +100,9 @@ cli.add_command(serve_cmd)
 @click.option("--dry-run", is_flag=True, help="Print generated scripts without writing")
 @click.option("--config", default=None, help="Path to cluster.yaml")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST", help="CBENCHTEST directory")
+@click.option("--match", default=None, metavar="REGEX",
+              help="Only generate jobs whose name matches REGEX; also selects benchmarks "
+                   "skipped by default (e.g. --match fileop)")
 @click.option("--nodefacts", default=None, metavar="NAME|PATH",
               help="Node facts from `cbench nodecheck` (name under <cbenchtest>/nodefacts/ or a "
                    ".json path); sizes IO tests from the real compute nodes")
@@ -105,6 +115,7 @@ def gen_jobs(
     dry_run: bool,
     config: Optional[str],
     cbenchtest: Optional[str],
+    match: Optional[str],
     nodefacts: Optional[str],
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset."""
@@ -128,6 +139,17 @@ def gen_jobs(
         console.print(f"[red]No templates found for testset '{testset}' in {templates_dir}[/red]")
         raise SystemExit(1)
 
+    # Benchmarks superseded in the Python toolchain stay available (the Perl
+    # tools still use their templates) but only run when --match selects them.
+    match_re = _safe_regex(match, "--match")
+    default_skip = _DEFAULT_SKIP.get(testset, set())
+    if not match_re:
+        skipped_default = [b for b in benchmark_templates if b in default_skip]
+        benchmark_templates = [b for b in benchmark_templates if b not in default_skip]
+        if skipped_default:
+            console.print(f"Skipping {', '.join(skipped_default)} by default "
+                          f"(superseded; select with --match)")
+
     # Node-aware IO: resolve node values up front and fail BEFORE rendering
     # anything if an IO template needs values we don't have (an unset token
     # would otherwise render as an empty string, e.g. a broken `-b ` for IOR).
@@ -148,6 +170,11 @@ def gen_jobs(
             f"testset '{testset}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
             "NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly in cluster.yaml"
         )
+    if "fio" in benchmark_templates and not nv.cpus:
+        raise click.ClickException(
+            f"testset '{testset}' sizes fio's job count from node CPUs: pass --nodefacts NAME "
+            "(run `cbench nodecheck` first) or set procs_per_node explicitly in cluster.yaml"
+        )
     if sized:
         console.print(f"Node-aware IO sizing from {nv.source}: MemTotal {nv.mem_io_kb} kB (IO)")
     if not ppn and nv.cpus and any(b.startswith("mdtest") for b in benchmark_templates):
@@ -167,7 +194,9 @@ def gen_jobs(
         console.print(f"HPL sizing from {nv.source}: {hpl_mem_mb} MB/node (min MemTotal), "
                       f"memory_util_factors {hpl_factors}")
     caveats: set[str] = set()
+    gen_warnings: set[str] = set()
     skipped_no_grid: list[str] = []
+    single_done: set[str] = set()
 
     run_types = ["batch", "interactive"] if run_type == "both" else [run_type]
     total = 0
@@ -185,8 +214,20 @@ def gen_jobs(
 
             for bench in benchmark_templates:
                 jobname = f"{bench}-{ppn_val}ppn-{numprocs}"
+                if match_re and not match_re.search(jobname):
+                    continue
+                # single-node, non-MPI benchmarks: one job, not one per ppn x size
+                if bench in _SINGLE_INSTANCE:
+                    if numprocs != 1 or bench in single_done:
+                        continue
+                    single_done.add(bench)
                 try:
-                    if iosizing.needs_io_sizing(testset, bench) and bench.startswith("ior"):
+                    if bench == "fio":
+                        io_extra, warning = iosizing.fio_tokens(nv, cfg, testset=testset,
+                                                                benchmark=bench)
+                        if warning:
+                            gen_warnings.add(f"{jobname}: {warning}")
+                    elif iosizing.needs_io_sizing(testset, bench) and bench.startswith("ior"):
                         io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
                                                        testset=testset, benchmark=bench)
                     elif iosizing.needs_io_sizing(testset, bench):
@@ -265,6 +306,8 @@ def gen_jobs(
         console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "
                       f"{len(skipped_no_grid)} job(s), not generated: "
                       f"{', '.join(skipped_no_grid)}[/yellow]")
+    for w in sorted(gen_warnings):
+        console.print(f"[yellow]WARNING: {w}[/yellow]")
     for c in sorted(caveats):
         console.print(f"[yellow]WARNING (capacity cap): {c}[/yellow]")
     action = "Would generate" if dry_run else "Generated"

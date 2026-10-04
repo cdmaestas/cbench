@@ -91,13 +91,86 @@ def _clat_to_us(avg: str, unit: str) -> float:
     return v  # usec
 
 
+# Job block header: "rand_rw: (groupid=0, jobs=4): err= 0: pid=1234: ..."
+_JOB_HEADER_RE = re.compile(r"^(\S+): \(groupid=\d+, jobs=\d+\)")
+
+# cbench's own fio job names (cbench.fioprofile) -> metric role
+_ROLES = {
+    "seq_rw": "seq", "rand_rw": "rand",
+    "md_create": "create", "md_stat": "stat", "md_delete": "delete",
+}
+
+
+def _direction_metrics(lines: list[str]) -> dict[str, float]:
+    """Per-direction IOPS / MiB/s / clat avg / clat p99 from fio normal output.
+
+    Takes the first job block's values (with --group_reporting there is one
+    block per invocation) and the Run status group bandwidth.
+    """
+    metrics: dict[str, float] = {}
+    current_dir = ""
+    in_percentile_block = False
+
+    for line in lines:
+        m = _JOB_LINE_RE.match(line)
+        if m:
+            direction = m.group(1).lower()
+            current_dir = direction
+            in_percentile_block = False
+            metrics.setdefault(f"{direction}_iops", _iops_to_float(m.group(2), m.group(3)))
+            metrics.setdefault(f"{direction}_bw_MiB_s", _bw_to_mib_s(m.group(4), m.group(5)))
+            continue
+
+        m = _CLAT_RE.match(line)
+        if m and current_dir:
+            metrics.setdefault(f"{current_dir}_lat_avg_us", _clat_to_us(m.group(2), m.group(1)))
+            continue
+
+        if "clat percentiles" in line and current_dir:
+            in_percentile_block = True
+            continue
+
+        if in_percentile_block and current_dir:
+            m99 = _P99_RE.search(line)
+            if m99:
+                metrics.setdefault(f"{current_dir}_lat_p99_us", float(m99.group(1)))
+            # Percentile block ends when we hit a non-pipe line
+            if line.strip() and not line.strip().startswith("|"):
+                in_percentile_block = False
+            continue
+
+        # Run status group — aggregate bandwidth (overrides per-job values)
+        m = _RUN_STATUS_RE.match(line)
+        if m:
+            metrics[f"{m.group(1).lower()}_bw_MiB_s"] = _bw_to_mib_s(m.group(2), m.group(3))
+
+    return metrics
+
+
+def _role_metrics(role: str, dm: dict[str, float]) -> dict[str, float]:
+    if role == "seq":
+        return {f"seq_{k}": v for k, v in dm.items() if k.endswith("_bw_MiB_s")}
+    if role == "rand":
+        return {f"rand_{k}": v for k, v in dm.items() if not k.startswith("trim")}
+    # metadata engines report each operation as one I/O, in whichever direction
+    ops = sum(v for k, v in dm.items() if k.endswith("_iops"))
+    return {f"{role}_ops": ops} if ops else {}
+
+
 class FioParser(BenchmarkParser):
     """Parses fio Flexible I/O Tester output.
 
-    Captures per-direction IOPS, bandwidth (MiB/s), average completion
-    latency (µs), and 99th-percentile latency (µs) for read, write, and
-    trim operations.  A run is PASSED if at least one direction produced
-    metrics; NOTSTARTED if no fio output is detected.
+    For cbench's own job set (cbench.fioprofile: ``seq_rw``, ``rand_rw``,
+    ``md_create``/``md_stat``/``md_delete``, each run with --group_reporting)
+    every job's block is parsed separately:
+
+      seq_rw    -> seq_read_bw_MiB_s, seq_write_bw_MiB_s
+      rand_rw   -> rand_{read,write}_{iops,bw_MiB_s,lat_avg_us,lat_p99_us}
+      md_*      -> create_ops, stat_ops, delete_ops
+
+    Output without those job names (any other fio job) falls back to generic
+    per-direction metrics from the first job block. PASSED if anything parsed;
+    NOTSTARTED if no fio output is detected.
     """
 
     names = ["fio"]
@@ -108,77 +181,36 @@ class FioParser(BenchmarkParser):
                 if "CBENCH NOTICE" in line:
                     return ParseResult(status="NOTICE", status_detail=line.strip())
 
+        lines = stdout.splitlines()
+        sections: list[tuple[str, list[str]]] = []
+        for line in lines:
+            m = _JOB_HEADER_RE.match(line)
+            if m:
+                sections.append((m.group(1), []))
+            elif sections:
+                sections[-1][1].append(line)
+
         metrics: dict[str, float] = {}
-
-        # Track current direction context for clat/percentile lines
-        current_dir: str = ""
-        in_percentile_block = False
-
-        for line in stdout.splitlines():
-            # Per-job direction summary
-            m = _JOB_LINE_RE.match(line)
-            if m:
-                direction = m.group(1).lower()
-                current_dir = direction
-                in_percentile_block = False
-                iops = _iops_to_float(m.group(2), m.group(3))
-                bw = _bw_to_mib_s(m.group(4), m.group(5))
-                # Only record the first occurrence (first job); Run status
-                # group gives the aggregate which we also capture below.
-                if f"{direction}_iops" not in metrics:
-                    metrics[f"{direction}_iops"] = iops
-                if f"{direction}_bw_MiB_s" not in metrics:
-                    metrics[f"{direction}_bw_MiB_s"] = bw
-                continue
-
-            # clat average
-            m = _CLAT_RE.match(line)
-            if m and current_dir:
-                key = f"{current_dir}_lat_avg_us"
-                if key not in metrics:
-                    metrics[key] = _clat_to_us(m.group(2), m.group(1))
-                continue
-
-            # Start of percentile block
-            if "clat percentiles" in line and current_dir:
-                in_percentile_block = True
-                continue
-
-            # p99 inside percentile block
-            if in_percentile_block and current_dir:
-                m99 = _P99_RE.search(line)
-                if m99:
-                    key = f"{current_dir}_lat_p99_us"
-                    if key not in metrics:
-                        metrics[key] = float(m99.group(1))
-                # Percentile block ends when we hit a non-pipe line
-                if line.strip() and not line.strip().startswith("|"):
-                    in_percentile_block = False
-                continue
-
-            # Run status group — aggregate bandwidth (overrides per-job values)
-            m = _RUN_STATUS_RE.match(line)
-            if m:
-                direction = m.group(1).lower()
-                bw = _bw_to_mib_s(m.group(2), m.group(3))
-                metrics[f"{direction}_bw_MiB_s"] = bw
-                continue
+        role_sections = [(_ROLES[name], body) for name, body in sections if name in _ROLES]
+        if role_sections:
+            for role, body in role_sections:
+                metrics.update(_role_metrics(role, _direction_metrics(body)))
+        else:
+            metrics = _direction_metrics(lines)
 
         if not metrics:
             return ParseResult(status="NOTSTARTED")
-
         return ParseResult(status="PASSED", metrics=metrics)
 
     def metric_units(self) -> dict[str, str]:
-        return {
-            "read_iops": "IOPS",
-            "write_iops": "IOPS",
-            "trim_iops": "IOPS",
-            "read_bw_MiB_s": "MiB/s",
-            "write_bw_MiB_s": "MiB/s",
-            "trim_bw_MiB_s": "MiB/s",
-            "read_lat_avg_us": "us",
-            "write_lat_avg_us": "us",
-            "read_lat_p99_us": "us",
-            "write_lat_p99_us": "us",
-        }
+        units = {}
+        for prefix in ("", "rand_"):
+            for d in ("read", "write"):
+                units[f"{prefix}{d}_iops"] = "IOPS"
+                units[f"{prefix}{d}_bw_MiB_s"] = "MiB/s"
+                units[f"{prefix}{d}_lat_avg_us"] = "us"
+                units[f"{prefix}{d}_lat_p99_us"] = "us"
+        units.update({"trim_iops": "IOPS", "trim_bw_MiB_s": "MiB/s",
+                      "seq_read_bw_MiB_s": "MiB/s", "seq_write_bw_MiB_s": "MiB/s",
+                      "create_ops": "ops/s", "stat_ops": "ops/s", "delete_ops": "ops/s"})
+        return units

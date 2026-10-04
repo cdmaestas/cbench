@@ -1,0 +1,74 @@
+# iometadata_fio job template
+# uses fio to test node-local IOPS, sequential bandwidth and metadata ops.
+# Same job set as `cbench snb` fio (cbench/python/cbench/fioprofile.py):
+#   seq_rw     sequential read/write at the profile's block size
+#   rand_rw    4k random read/write, one job per core (capped at 16)
+#   md_create / md_stat / md_delete   fio filecreate/filestat/filedelete engines
+# Data jobs are time-based (FIO_RUNTIME_HERE s each); gen-jobs fills in the job
+# count, block size and the space the run needs from node facts / cluster.yaml.
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/fio (else fio on PATH)
+
+FIO=CBENCHTEST_BIN_HERE/fio
+[ -x "$FIO" ] || FIO=$(command -v fio || echo CBENCHTEST_BIN_HERE/fio)
+cbench_check_for_bin $FIO
+
+# fio is single-node and not MPI: it drives the node with its own job count
+if [ NUM_NODES_HERE -ne 1 ]; then
+	cbench_echo "CBENCH NOTICE: fio runs on 1 node only"
+	exit
+fi
+
+# run on the configured node-local IO target, if any (cluster.yaml io_targets)
+IO_TARGET_DIR="IO_TARGET_DIR_HERE"
+if [ -n "$IO_TARGET_DIR" ]; then
+	mkdir -p "$IO_TARGET_DIR" && cd "$IO_TARGET_DIR" || {
+		cbench_echo "CBENCH NOTICE: cannot use IO target $IO_TARGET_DIR"; exit 1; }
+fi
+cbench_runin_tempdir
+
+cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
+
+numjobs=FIO_NUMJOBS_HERE
+runtime=FIO_RUNTIME_HERE
+seqbs=FIO_SEQ_BS_HERE
+size=FIO_SIZE_HERE
+cbench_echo "Cbench fio: profile=FIO_PROFILE_HERE seq_bs=$seqbs numjobs=$numjobs runtime=${runtime}s"
+
+# O_DIRECT keeps the page cache out of the numbers; fall back to buffered I/O
+# (with a caveat) on filesystems that refuse it.
+direct=1
+if ! $FIO --name=odirect_probe --filename=./.cbench_odirect_probe --rw=write --bs=4k \
+	--size=4k --direct=1 --ioengine=psync --output=/dev/null >/dev/null 2>&1; then
+	direct=0
+	cbench_echo "CBENCH CAVEAT: O_DIRECT unsupported on $PWD; fio ran buffered I/O, results may be cache-influenced"
+fi
+rm -f ./.cbench_odirect_probe
+
+# the target is emptied after each job: the space check budgets one job's files
+data="--ioengine=libaio --direct=$direct --directory=. --time_based --runtime=$runtime --group_reporting --output-format=normal"
+CMD="$FIO --name=seq_rw --rw=rw --bs=$seqbs --size=$size --numjobs=1 --iodepth=8 $data"
+cbench_run_cmd $CMD
+rm -f ./seq_rw.*
+CMD="$FIO --name=rand_rw --rw=randrw --bs=4k --size=$size --numjobs=$numjobs --iodepth=32 $data"
+cbench_run_cmd $CMD
+rm -f ./rand_rw.*
+
+# metadata engines need fio >= 3.23
+if $FIO --enghelp 2>&1 | grep -qw filedelete; then
+	md="--filesize=4k --nrfiles=FIO_MD_NRFILES_HERE --openfiles=1 --numjobs=$numjobs --directory=. --runtime=$runtime --group_reporting --output-format=normal"
+	CMD="$FIO --name=md_create --ioengine=filecreate --rw=write --create_on_open=1 --fallocate=none $md"
+	cbench_run_cmd $CMD
+	rm -f ./md_create.*
+	CMD="$FIO --name=md_stat --ioengine=filestat $md"
+	cbench_run_cmd $CMD
+	rm -f ./md_stat.*
+	CMD="$FIO --name=md_delete --ioengine=filedelete $md"
+	cbench_run_cmd $CMD
+	rm -f ./md_delete.*
+else
+	cbench_echo "CBENCH CAVEAT: $FIO lacks the filecreate/filestat/filedelete engines (needs fio >= 3.23); metadata ops not measured"
+fi
+sync

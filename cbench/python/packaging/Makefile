@@ -76,6 +76,7 @@ fpm-rpm: stage | $(OUTDIR)
 	    --depends "python3 >= 3.9" \
 	    --rpm-tag "Recommends: openmpi-devel" \
 	    --rpm-tag "Recommends: environment-modules" \
+	    --rpm-tag "Recommends: fio" \
 	    --rpm-summary "cbench HPC benchmark CLI" \
 	    -C "$(STAGEDIR)" \
 	    --package "$(OUTDIR)/$(PACKAGE)-$(VERSION)-$(RELEASE).noarch.rpm" \
@@ -95,6 +96,7 @@ fpm-deb: stage | $(OUTDIR)
 	    --deb-recommends "openmpi-bin" \
 	    --deb-recommends "libopenmpi-dev" \
 	    --deb-recommends "environment-modules" \
+	    --deb-recommends "fio" \
 	    -C "$(STAGEDIR)" \
 	    --package "$(OUTDIR)/$(PACKAGE)_$(VERSION)-$(RELEASE)_all.deb" \
 	    .

@@ -8,6 +8,19 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **fio is the default node-local IOPS and metadata test.** gen-jobs `iometadata` now
+  generates one `fio` job instead of `fileop`, which is skipped by default; select it with
+  the new `gen-jobs --match REGEX`. snb and gen-jobs share one fio job set:
+  - sequential read/write;
+  - 4k random read/write with one job per core (max 16);
+  - file create/stat/delete via fio's metadata engines (fio ≥ 3.23).
+  The data jobs are time-capped (`fio_runtime_s`, default 300 s).
+- **fio workload profiles** set the sequential block size: `ai` 1m, `general` 4m,
+  `hpc` 8m, `streaming` 16m. `auto` (the default) picks `hpc` on parallel
+  filesystems and `general` elsewhere. Set it with cluster.yaml `fio_profile` or
+  `snb run --fio-profile`; `fio_seq_bs` sets an exact size. The profile used is
+  recorded with each result.
+- Packages now `Recommend` `fio` (RPM and DEB).
 - **Node-aware fio I/O testing in `cbench snb`.** New repeatable `--fs-target PATH`
   option targets fio at explicit filesystem(s). For each target, snb detects the
   filesystem type (gpfs/lustre/nfs/panfs/local, via `/proc/self/mountinfo`) and
@@ -81,6 +94,15 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **snb fio metrics renamed and corrected.** The old `read_iops`/`write_iops` were
+  the *sequential* job's IOPS from its first job block, and the bandwidth came from
+  the last run. Results are now reported per job: `seq_{read,write}_bw_MiB_s`,
+  `rand_{read,write}_{iops,bw_MiB_s,lat_avg_us,lat_p99_us}` (all random jobs
+  aggregated), plus `create_ops`/`stat_ops`/`delete_ops`. Old snb fio results are
+  not comparable.
+- **snb fio runs are time-capped** at `fio_runtime_s` (default 300 s) per data job
+  instead of running to completion. The sequential job now uses the profile block
+  size: 4m on local filesystems and 8m on parallel ones, where it was 1m.
 - **RPM and DEB packages now recommend Open MPI** (RPM `Recommends: openmpi-devel`;
   DEB `Recommends: openmpi-bin, libopenmpi-dev`), needed to build and run the MPI
   benchmarks (IOR, mdtest, IMB, OSU, HPL, …). It is a weak dependency: installed

@@ -24,6 +24,8 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from cbench import fioprofile
+
 console = Console()
 
 
@@ -43,8 +45,8 @@ def _detect_cores() -> int:
 # node-aware fio helpers (see CLAUDE.md / session design)
 # ---------------------------------------------------------------------------
 
-_FIO_DIRECT_SIZE = "1g"  # historical fixed size used on the O_DIRECT path
-_FIO_DIRECT_SIZE_BYTES = 1024 ** 3
+_FIO_DIRECT_SIZE = fioprofile.DATA_SIZE  # fixed per-job size on the O_DIRECT path
+_FIO_DIRECT_SIZE_BYTES = fioprofile.DATA_SIZE_BYTES
 _FIO_CAPACITY_FRACTION = 0.9  # never plan to fill more than 90% of a target
 
 
@@ -136,7 +138,7 @@ def _fio_direct_space_shortfall(numjobs: int, free_bytes: int) -> "tuple[int, in
     the sequential (1 job) and random (*numjobs*) runs, so the peak is
     numjobs x the fixed direct size. Usable space is 90% of free.
     """
-    needed = _FIO_DIRECT_SIZE_BYTES * max(1, numjobs)
+    needed = fioprofile.peak_bytes(numjobs, _FIO_DIRECT_SIZE_BYTES)
     usable = int(free_bytes * _FIO_CAPACITY_FRACTION)
     return (needed, usable) if needed > usable else None
 
@@ -443,8 +445,13 @@ def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, str, dict[str, fl
             f"path={path} fstype={fstype} "
             f"odirect={header.get('odirect', '?')} caveat={header.get('caveat', '0')}"
         )
+        if "profile" in header:
+            detail += (f" profile={header['profile']} seq_bs={header.get('seq_bs', '?')} "
+                       f"runtime_s={header.get('runtime_s', '?')}")
         if header.get("caveat") == "1":
             detail += " (result may be cache-influenced)"
+        if header.get("md") == "0":
+            detail += " (metadata ops not measured: fio lacks filecreate/filestat/filedelete)"
         results.append((_fio_benchmark_name(fstype, path), "PASSED", detail, parsed.metrics))
 
     for line in text.splitlines():
@@ -643,6 +650,8 @@ def _build_remote_cmd(
     remote_cbench: str = "cbench",
     fs_target: "tuple[str, ...]" = (),
     heartbeat: float = _HEARTBEAT_SECS,
+    fio_profile: Optional[str] = None,
+    fio_runtime: Optional[int] = None,
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
     import shlex as _shlex
@@ -659,6 +668,10 @@ def _build_remote_cmd(
     ]
     for tgt in fs_target:
         inner += ["--fs-target", tgt]
+    if fio_profile:
+        inner += ["--fio-profile", fio_profile]
+    if fio_runtime:
+        inner += ["--fio-runtime", str(fio_runtime)]
     if binpath:
         inner += ["--binpath", binpath]
     if config:
@@ -693,6 +706,12 @@ def _build_remote_cmd(
 @click.option("--fs-target", "fs_target", multiple=True, type=click.Path(),
               help="Filesystem path to target for fio I/O tests. Repeatable. "
                    "Required when fio is selected via --tests (fio is opt-in).")
+@click.option("--fio-profile", type=click.Choice(fioprofile.PROFILE_CHOICES), default=None,
+              help="fio sequential block size profile: ai 1m, general 4m, hpc 8m, streaming 16m; "
+                   "auto = hpc on a parallel filesystem, else general (default: cluster.yaml "
+                   "fio_profile, else auto)")
+@click.option("--fio-runtime", type=click.IntRange(min=1), default=None, metavar="SECONDS",
+              help="Time cap per fio job (default: cluster.yaml fio_runtime_s, else 300)")
 @click.option("--tests",
               default="stream|cachebench|dgemm|mpistreams|linpack|npb|hpcc",
               show_default=True,
@@ -714,6 +733,8 @@ def run_cmd(
     remote_cbench: str,
     numcores: Optional[int],
     fs_target: tuple[str, ...],
+    fio_profile: Optional[str],
+    fio_runtime: Optional[int],
     tests: str,
     binpath: Optional[str],
     mpi_cmd: str,
@@ -754,6 +775,8 @@ def run_cmd(
             numcores=numcores,
             tests=tests,
             fs_target=fs_target,
+            fio_profile=fio_profile,
+            fio_runtime=fio_runtime,
             binpath=binpath,
             mpi_cmd=mpi_cmd,
             heartbeat=heartbeat,
@@ -968,10 +991,21 @@ def run_cmd(
             else:
                 # one output file, one '### CBENCH FS-TARGET' section per target
                 run("true", "fio", overwrite=True)
-                # Random-I/O job count tracks node cores (1 job/core), capped so
-                # fat nodes don't spawn an absurd number of fio processes. The
-                # sequential job stays single-stream (numjobs=1) on purpose.
-                fio_numjobs = min(numcores, 16)
+                # Random-I/O and metadata job count tracks node cores (1 job/core),
+                # capped so fat nodes don't spawn an absurd number of fio
+                # processes. The sequential job stays single-stream on purpose.
+                fio_numjobs = fioprofile.numjobs(numcores)
+                fio_profile = fio_profile or cfg.fio_profile
+                fio_runtime = fio_runtime or cfg.fio_runtime_s
+                # metadata engines (filecreate/filestat/filedelete) need fio >= 3.23
+                if dry_run:
+                    fio_md = True
+                else:
+                    eng = subprocess.run([str(fio_bin), "--enghelp"], capture_output=True, text=True)
+                    fio_md = fioprofile.has_metadata_engines(eng.stdout + eng.stderr)
+                    if not fio_md:
+                        _logmsg(log, f"WARNING: {fio_bin} lacks the filecreate/filestat/filedelete "
+                                     "engines (needs fio >= 3.23); metadata ops not measured")
                 for target in fs_target:
                     tgt = Path(target).resolve()
                     if not dry_run and not (tgt.is_dir() and os.access(tgt, os.W_OK)):
@@ -1028,38 +1062,32 @@ def run_cmd(
                                 msg += " (capped by free space — result may be cache-influenced)"
                             _logmsg(log, "WARNING: " + msg)
 
-                    direct_flag = "1" if direct else "0"
+                    profile, seq_bs = fioprofile.seq_block_size(fio_profile, fstype, cfg.fio_seq_bs)
                     marker = (f"{_FIO_TARGET_MARKER} path={tgt} fstype={fstype} "
-                              f"odirect={direct_flag} caveat={int(caveat)}")
+                              f"odirect={int(direct)} caveat={int(caveat)} profile={profile} "
+                              f"seq_bs={seq_bs} runtime_s={fio_runtime} md={int(fio_md)}")
                     if not dry_run:
                         with open(out("fio"), "a") as fh:
                             fh.write(marker + "\n")
                     else:
                         _logmsg(log, f"DRYRUN: {marker}")
 
-                    # Sequential 1 MiB read/write, then random 4 KiB read/write
-                    runcmd(
-                        [str(fio_bin), "--name=seq_rw", "--rw=rw", "--bs=1m",
-                         f"--size={size_arg}", "--numjobs=1", "--iodepth=8",
-                         "--ioengine=libaio", f"--direct={direct_flag}",
-                         "--directory", str(fio_dir), "--output-format=normal"],
-                        out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
+                    jobs = fioprofile.data_jobs(
+                        str(fio_bin), str(fio_dir), seq_bs=seq_bs, njobs=fio_numjobs,
+                        runtime_s=fio_runtime, direct=direct, size=size_arg,
                     )
-                    # Empty the target before the random run so the sequential
-                    # file never coexists with the numjobs random files (the
-                    # sizing above budgets one run's files, not both).
-                    if not dry_run:
-                        _clean_fio_dir(fio_dir, log)
-                    runcmd(
-                        [str(fio_bin), "--name=rand_rw", "--rw=randrw", "--bs=4k",
-                         f"--size={size_arg}", f"--numjobs={fio_numjobs}", "--iodepth=32",
-                         "--ioengine=libaio", f"--direct={direct_flag}",
-                         "--directory", str(fio_dir), "--output-format=normal"],
-                        out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
-                    )
+                    if fio_md:
+                        jobs += fioprofile.metadata_jobs(
+                            str(fio_bin), str(fio_dir), njobs=fio_numjobs, runtime_s=fio_runtime,
+                        )
+                    for _name, argv in jobs:
+                        runcmd(argv, out("fio"), overwrite=False, dry_run=dry_run, log_fh=log)
+                        # Empty the target between jobs: the space check and the
+                        # buffered sizing budget one job's files, not several.
+                        if not dry_run:
+                            _clean_fio_dir(fio_dir, log)
 
                     if not dry_run:
-                        _clean_fio_dir(fio_dir, log)
                         try:
                             fio_dir.rmdir()
                         except OSError as e:
