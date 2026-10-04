@@ -302,3 +302,23 @@ def test_find_n_uses_min_memtotal_from_facts(genv):
                                    "--cbenchtest", str(genv.tmp)])
     assert res.exit_code == 0, res.output
     assert "memory per node = 7524 MB" in res.output  # floor(7705320 / 1024)
+
+
+@needs_bash
+@pytest.mark.parametrize("present,expected", [
+    (["ior", "IOR.posix"], "ior"),   # unified hpc/ior build wins
+    (["IOR.posix"], "IOR.posix"),    # legacy install still works
+])
+def test_ior_templates_prefer_unified_binary(genv, tmp_path, present, expected):
+    assert genv.run("--testset", "iosanity", "--ppn", "4", "--maxprocs", "4").exit_code == 0
+    script = next(genv.tmp.glob("iosanity/t1/*/*.*")).read_text()
+    block = re.search(r"^IOR_BIN=.*\n\[ -x .*\n", script, re.M).group(0)
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    for name in present:
+        (bindir / name).write_text("#!/bin/sh\n")
+        (bindir / name).chmod(0o755)
+    block = block.replace(str(genv.tmp / "bin"), str(bindir))
+    r = subprocess.run(["bash", "-c", block + 'basename "$IOR_BIN"'], capture_output=True, text=True)
+    assert r.stdout.strip() == expected
+    assert "$IOR_BIN -a POSIX" in script and "/IOR.posix -a" not in script
