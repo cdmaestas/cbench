@@ -14,7 +14,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   - sequential read/write;
   - 4k random read/write with one job per core (max 16);
   - file create/stat/delete via fio's metadata engines (fio ≥ 3.23).
-  The data jobs are time-capped (`fio_runtime_s`, default 300 s).
+  The data jobs are time-capped (`fio_runtime_s`, default 300 s). With O_DIRECT
+  each job uses a 256 MiB file, because fio writes its files out before the timed
+  run starts.
 - **fio workload profiles** set the sequential block size: `ai` 1m, `general` 4m,
   `hpc` 8m, `streaming` 16m. `auto` (the default) picks `hpc` on parallel
   filesystems and `general` elsewhere. Set it with cluster.yaml `fio_profile` or
@@ -101,7 +103,7 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   aggregated), plus `create_ops`/`stat_ops`/`delete_ops`. Old snb fio results are
   not comparable.
 - **snb fio runs are time-capped** at `fio_runtime_s` (default 300 s) per data job
-  instead of running to completion. The sequential job now uses the profile block
+  instead of running to completion, and O_DIRECT files are 256 MiB per job, down from 1 GiB. The sequential job now uses the profile block
   size: 4m on local filesystems and 8m on parallel ones, where it was 1m.
 - **RPM and DEB packages now recommend Open MPI** (RPM `Recommends: openmpi-devel`;
   DEB `Recommends: openmpi-bin, libopenmpi-dev`), needed to build and run the MPI

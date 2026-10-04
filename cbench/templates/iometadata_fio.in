@@ -29,23 +29,27 @@ if [ -n "$IO_TARGET_DIR" ]; then
 fi
 cbench_runin_tempdir
 
-cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
-
 numjobs=FIO_NUMJOBS_HERE
 runtime=FIO_RUNTIME_HERE
 seqbs=FIO_SEQ_BS_HERE
-size=FIO_SIZE_HERE
-cbench_echo "Cbench fio: profile=FIO_PROFILE_HERE seq_bs=$seqbs numjobs=$numjobs runtime=${runtime}s"
 
-# O_DIRECT keeps the page cache out of the numbers; fall back to buffered I/O
-# (with a caveat) on filesystems that refuse it.
+# O_DIRECT keeps the page cache out of the numbers, so small per-job files do
+# (fio writes them out before the timed run starts); fall back to buffered I/O
+# with larger files and a caveat on filesystems that refuse O_DIRECT.
 direct=1
+size_mb=FIO_SIZE_DIRECT_MB_HERE
 if ! $FIO --name=odirect_probe --filename=./.cbench_odirect_probe --rw=write --bs=4k \
 	--size=4k --direct=1 --ioengine=psync --output=/dev/null >/dev/null 2>&1; then
 	direct=0
+	size_mb=FIO_SIZE_BUFFERED_MB_HERE
 	cbench_echo "CBENCH CAVEAT: O_DIRECT unsupported on $PWD; fio ran buffered I/O, results may be cache-influenced"
 fi
 rm -f ./.cbench_odirect_probe
+size=${size_mb}m
+
+# peak footprint: the random job's numjobs files (target emptied between jobs)
+cbench_io_preflight "$PWD" "$((numjobs * size_mb * 1024))" "IO_CAVEAT_HERE"
+cbench_echo "Cbench fio: profile=FIO_PROFILE_HERE seq_bs=$seqbs numjobs=$numjobs size=$size direct=$direct runtime=${runtime}s"
 
 # the target is emptied after each job: the space check budgets one job's files
 data="--ioengine=libaio --direct=$direct --directory=. --time_based --runtime=$runtime --group_reporting --output-format=normal"

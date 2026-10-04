@@ -11,7 +11,8 @@ the job, so the parser can tell them apart:
 
 Data jobs are time-based (``fio_runtime_s``, default 300 s) so run time does not
 grow with core count or a slow target; metadata jobs are bounded by their file
-count with the same runtime as a cap. The caller empties the target directory
+count with the same runtime as a cap. ``--runtime`` does not cover fio's file
+layout, so O_DIRECT data files are kept small (256 MiB per job). The caller empties the target directory
 between jobs so only one job's files exist at a time.
 
 Sequential block size comes from a workload profile (``fio_profile``):
@@ -27,8 +28,15 @@ PROFILES = {"ai": "1m", "general": "4m", "hpc": "8m", "streaming": "16m"}
 PROFILE_CHOICES = ["auto", *PROFILES]
 PARALLEL_FSTYPES = frozenset({"gpfs", "lustre", "panfs", "beegfs", "ceph", "cephfs"})
 
-DATA_SIZE = "1g"                 # per-job file for the data jobs
-DATA_SIZE_BYTES = 1024 ** 3
+# Per-job data file with O_DIRECT. Small on purpose: fio writes the files out
+# before --runtime starts (zima: 4 x 1 GiB took ~2.5 min on xfs), the time-based
+# run loops over the file, and O_DIRECT keeps the page cache out regardless.
+DATA_SIZE = "256m"
+DATA_SIZE_BYTES = 256 * 1024 ** 2
+# Buffered runs need files larger than RAM to defeat the page cache; snb sizes
+# them from MemTotal, and this is the floor when nothing better is known.
+BUFFERED_FALLBACK_SIZE = "1g"
+BUFFERED_FALLBACK_SIZE_BYTES = 1024 ** 3
 RAND_BS = "4k"
 MAX_NUMJOBS = 16
 MD_NRFILES = 1000                # files per metadata job

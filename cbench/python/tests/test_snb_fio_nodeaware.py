@@ -249,24 +249,27 @@ def test_parse_fio_targets_no_marker_backcompat(tmp_path):
 # O_DIRECT path space check (1 GiB per job, target emptied between runs)
 # ---------------------------------------------------------------------------
 
+MIB = 1024 ** 2
+
+
 def test_direct_space_fits_returns_none():
-    # 4 jobs x 1 GiB = 4 GiB peak <= 90% of 10 GiB
+    # 4 jobs x 256 MiB = 1 GiB peak <= 90% of 10 GiB
     assert snb._fio_direct_space_shortfall(4, free_bytes=10 * GIB) is None
 
 
 def test_direct_space_short_reports_need_and_usable():
-    need, usable = snb._fio_direct_space_shortfall(16, free_bytes=10 * GIB)
-    assert need == 16 * GIB and usable == int(10 * GIB * 0.9)
+    need, usable = snb._fio_direct_space_shortfall(16, free_bytes=2 * GIB)
+    assert need == 16 * 256 * MIB and usable == int(2 * GIB * 0.9)
 
 
 def test_direct_space_peak_is_random_run_not_seq_plus_random():
-    # 4 GiB peak fits in 90% of 4.5 GiB only because the seq file is removed
-    # before the random run (seq + random would need 5 GiB)
-    assert snb._fio_direct_space_shortfall(4, free_bytes=int(4.5 * GIB)) is None
+    # 1 GiB peak fits in 90% of 1.2 GiB only because the seq file is removed
+    # before the random run (seq + random would need 1.25 GiB)
+    assert snb._fio_direct_space_shortfall(4, free_bytes=int(1.2 * GIB)) is None
 
 
 def test_direct_target_skipped_when_short(tmp_path, monkeypatch):
-    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=16, free_bytes=8 * GIB)
+    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=16, free_bytes=2 * GIB)
     assert "skipping fio" in out and "skipped=insufficient_space" in out
     assert "--name=rand_rw" not in out and "--name=seq_rw" not in out
 

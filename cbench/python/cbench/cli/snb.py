@@ -1057,7 +1057,7 @@ def run_cmd(
                         mem_total = _read_memtotal_bytes()
                         free_bytes = shutil.disk_usage(str(tgt)).free if not dry_run else 100 * 1024**3
                         if mem_total <= 0:
-                            size_arg = _FIO_DIRECT_SIZE
+                            size_arg = fioprofile.BUFFERED_FALLBACK_SIZE
                             caveat = True
                             _logmsg(log, f"WARNING: O_DIRECT unavailable on {fstype} ({tgt}) and MemTotal unknown; "
                                          f"buffered run at {size_arg} may be cache-influenced")

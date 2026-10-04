@@ -194,10 +194,10 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
 
     numjobs = min(MIN CPUs, 16); the sequential block size comes from the
     fio profile and the target's fstype from the facts file. The run needs
-    numjobs x 1 GiB at its peak (the target is emptied between jobs); if the
-    free space nodecheck saw is short, the job's runtime preflight will exit
-    with a NOTICE, so warn now rather than cap (O_DIRECT needs no cache-defeat
-    sizing, but numjobs x 1 GiB files must fit).
+    numjobs x the per-job file at its peak (the target is emptied between
+    jobs); the job itself picks the O_DIRECT or buffered size after probing and
+    runs its preflight with that. If the free space nodecheck saw cannot hold
+    the O_DIRECT peak, the preflight will exit with a NOTICE, so warn now.
     """
     from cbench import fioprofile
 
@@ -222,9 +222,9 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
         "FIO_RUNTIME": str(cfg.fio_runtime_s),
         "FIO_PROFILE": profile,
         "FIO_SEQ_BS": seq_bs,
-        "FIO_SIZE": fioprofile.DATA_SIZE,
+        "FIO_SIZE_DIRECT_MB": str(fioprofile.DATA_SIZE_BYTES // 1024 ** 2),
+        "FIO_SIZE_BUFFERED_MB": str(fioprofile.BUFFERED_FALLBACK_SIZE_BYTES // 1024 ** 2),
         "FIO_MD_NRFILES": str(fioprofile.MD_NRFILES),
-        "IO_REQUIRED_KB": str(need_kb),
         "IO_CAVEAT": "",
     }
     return {**tokens, **target_tokens(nv, benchmark)}, warning

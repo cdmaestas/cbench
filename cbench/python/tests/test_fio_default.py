@@ -314,7 +314,9 @@ def test_genjobs_fio_single_job_sized_from_facts(genv):
     assert [j for j in genv.jobs() if j.startswith("fio")] == ["fio-1ppn-1"]
     s = genv.script("fio-1ppn-1")
     assert "numjobs=4\n" in s and "runtime=300\n" in s and "seqbs=4m\n" in s
-    assert 'cbench_io_preflight "$PWD" "4194304" ""' in s
+    # O_DIRECT 256 MiB per job, buffered fallback 1 GiB; preflight uses the one picked
+    assert "size_mb=256\n" in s and "size_mb=1024\n" in s
+    assert 'cbench_io_preflight "$PWD" "$((numjobs * size_mb * 1024))" ""' in s
     assert 'IO_TARGET_DIR="/tmp"' in s
     assert "--ioengine=filedelete" in s and "--group_reporting" in s
 
@@ -335,9 +337,10 @@ def test_genjobs_fio_numjobs_capped(genv):
 
 
 def test_genjobs_fio_warns_when_target_short(genv):
-    res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=16))  # 16 GiB vs ~6.5 usable
+    # 16 jobs x 256 MiB = 4 GiB vs ~0.9 GiB usable
+    res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=16, local_free=1_000_000))
     assert res.exit_code == 0, res.output
-    assert "fio needs 16777216 kB" in res.output
+    assert "fio needs 4194304 kB" in res.output
 
 
 def test_genjobs_fio_cpus_from_explicit_procs_per_node(genv):
