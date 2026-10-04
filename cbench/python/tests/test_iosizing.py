@@ -266,6 +266,8 @@ def test_genjobs_bonnie_capped_and_warned(genv):
     assert m and int(m.group(1)) >= 2 * int(m.group(2))
     assert 'IO_TARGET_DIR="/tmp"' in s
     assert re.search(r'cbench_io_preflight "\$PWD" "\d+" "bonnie\+\+ size capped', s)
+    # bonnie++ 2.x: -y takes an argument (s = semaphore); a bare -y exits immediately
+    assert s.count("-y s") == 3 and not re.search(r"-y\s*\"", s)
 
 
 def test_genjobs_metadata_ppn_from_facts(genv):

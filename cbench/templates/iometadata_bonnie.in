@@ -39,11 +39,11 @@ CMD="$bonnie $opts -p3"
 cbench_run_cmd $CMD
 sync
 
-CMD="$bonnie $opts -y "
+CMD="$bonnie $opts -y s"
 cbench_run_cmd $CMD &
-CMD="$bonnie $opts -y "
+CMD="$bonnie $opts -y s"
 cbench_run_cmd $CMD &
-CMD="$bonnie $opts -y "
+CMD="$bonnie $opts -y s"
 cbench_run_cmd $CMD &
 
 wait
