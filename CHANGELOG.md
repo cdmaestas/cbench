@@ -41,6 +41,12 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **RPM and DEB packages now recommend Open MPI** (RPM `Recommends: openmpi-devel`;
+  DEB `Recommends: openmpi-bin, libopenmpi-dev`), needed to build and run the MPI
+  benchmarks (IOR, mdtest, IMB, OSU, HPL, …). It is a weak dependency: installed
+  by default, but sites on another MPI can skip it (`--setopt=install_weak_deps=False`
+  / `--no-install-recommends`). On RHEL, `module load mpi/openmpi-x86_64` puts
+  `mpicc`/`mpirun` on PATH.
 - **`fio` is no longer part of the default `cbench snb run` suite** — it is now
   opt-in via `--tests` and, when selected, **requires** `--fs-target`. Existing
   invocations that relied on fio running by default must add `fio` to `--tests`

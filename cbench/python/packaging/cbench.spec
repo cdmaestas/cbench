@@ -19,6 +19,14 @@ Requires:       python3-rich >= 13.0
 Requires:       python3-jinja2 >= 3.1
 Requires:       python3-jsonschema >= 4.0
 
+# MPI: needed to build and run MPI benchmarks (IOR, mdtest, IMB, OSU, HPL, ...).
+# Weak dependency on purpose: installed by default (dnf install_weak_deps), but
+# sites standardized on another MPI (Intel MPI, MPICH, HPE MPT, Cray via
+# modules) can skip it. RHEL installs Open MPI outside PATH:
+#   module load mpi/openmpi-x86_64
+# Keep in sync with debian/control Recommends and the Makefile fpm targets.
+Recommends:     openmpi-devel
+
 # Optional: web dashboard
 # Requires:     python3-flask >= 2.0
 
@@ -28,6 +36,10 @@ National Laboratories. The Python toolchain (v2.0) provides a cbench
 CLI for the full benchmark lifecycle: build benchmark software, generate
 job scripts, submit to a batch scheduler, parse output, query results,
 run single-node benchmarks, and serve a web dashboard.
+
+Open MPI is recommended (not required) for building and running the MPI
+benchmarks; on RHEL load it with `module load mpi/openmpi-x86_64`. Sites
+using another MPI can install with --setopt=install_weak_deps=False.
 
 %install
 # Install cbench package only (no bundled deps — distro packages handle them)
