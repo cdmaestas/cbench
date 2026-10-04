@@ -33,6 +33,7 @@ class ImbParser(BenchmarkParser):
     """
 
     names = ["imb", "bandwidth", "latency", "collective", "shakedown"]
+    alias_spec = r"imball|imbcust"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"

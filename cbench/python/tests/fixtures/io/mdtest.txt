@@ -1,0 +1,16 @@
+mdtest-4.1.0+dev was launched with 4 total task(s) on 1 node(s)
+SUMMARY rate (in ops/sec): (of 50 iterations)
+   Operation                     Max            Min           Mean        Std Dev
+   ---------                     ---            ---           ----        -------
+   Directory creation           1430.887        250.357        648.277        337.088
+   Directory stat             429634.213     304293.389     401047.349      25266.394
+   Directory rename             3301.419        900.556       1986.877        728.143
+   Directory removal            3564.255       1592.620       2677.152        487.322
+   File creation                1549.892        335.589        700.785        408.272
+   File stat                  443489.717      46791.845     384783.148      70090.529
+   File read                   99491.289      25670.703      91660.822      15626.995
+   File removal                 4613.663        361.209       1680.455       1459.038
+   Tree creation                2193.674        214.916        803.324        415.957
+   Tree removal                  633.676        118.259        432.437        122.670
+V-1: Entering PrintTimestamp...
+-- finished at 10/03/2026 19:50:44 --

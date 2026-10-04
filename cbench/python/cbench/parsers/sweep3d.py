@@ -7,6 +7,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 
 class Sweep3dParser(BenchmarkParser):
     names = ["sweep3d"]
+    alias_spec = r"150std|long"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"

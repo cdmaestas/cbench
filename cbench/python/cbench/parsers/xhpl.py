@@ -15,6 +15,7 @@ class XhplParser(BenchmarkParser):
     """
 
     names = ["xhpl", "xhpl2"]
+    alias_spec = r"xhpl_.*|xhpl2-.*"
 
     # Matches lines like:  WR11C2R4      16384  512    4    4   12.34   5.678e+02
     _RESULT_RE = re.compile(

@@ -11,6 +11,7 @@ _LINE_RE = re.compile(
 
 class MpibenchParser(BenchmarkParser):
     names = ["mpibench", "collective", "mpisanity"]
+    alias_spec = r"mpibench(allreduce|bcast|barrier)"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"

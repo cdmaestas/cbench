@@ -44,8 +44,24 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   target immediately before running and exit with `CBENCH NOTICE: insufficient
   space` instead of failing mid-run with ENOSPC.
 - `cbench utils find-n --nodefacts` sizes HPL N from the smallest node's MemTotal.
+- `cbench parse` keeps `CBENCH CAVEAT:` lines from job output (e.g. "IO size capped
+  to free space") in the result's `status_detail`, so capped runs stay flagged.
+- mdtest results now include `directory_rename`, `file_read`, `tree_create` and
+  `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **IO jobs were not parsed.** `cbench parse` looked parsers up by exact benchmark
+  name, so `ior1mNtoN`/`ior1mNto1` jobs came back `NO_PARSER`. Parsers now carry
+  the Perl `alias_spec` patterns (IOR, NPB, xhpl, OSU, IMB, mpibench, hpccg,
+  graph500, lammps, sweep3d, irs, trilinos), matched against the whole name.
+- **IOR and mdtest parsers failed on current hpc/ior output** (IOR 3.1+ prints
+  `Began`/`Finished` instead of `Run began`/`Run finished`; mdtest prints a
+  `SUMMARY rate` table without colons), reporting `ERROR(NOTSTARTED)` /
+  `ERROR(STARTED)` for successful runs.
+- **bonnie++ parser rewritten for the 1.9x/2.x CSV layout** (older 1.03 rows still
+  parse). A single `+++++` (too fast to measure) field no longer discards the
+  whole row; that operation is left out of the aggregate and named in
+  `status_detail`. File create/stat/delete rates are reported as `/s`, not `K/s`.
 - pdsh-style hostlists with more than one bracket group (e.g. `n[1-3],m[5-6]`,
   as returned by `sinfo`) were expanded incorrectly by `nodehwtest`; hostlist
   handling now lives in `cbench.hostlist`.

@@ -1,4 +1,4 @@
-from cbench.parsers.base import BenchmarkParser, ParseResult, REGISTRY
+from cbench.parsers.base import ALIASES, BenchmarkParser, ParseResult, REGISTRY
 from cbench.parsers import (  # noqa: F401 — side-effect: registers parsers
     xhpl, hpcc, imb, npb, ior, io500, osu, mlperf, elbencho, gpfsperf, fio,
     amg, beff, bonnie, com, fileop, graph500, hpccg, irs,
@@ -11,5 +11,8 @@ __all__ = ["BenchmarkParser", "ParseResult", "REGISTRY", "get_parser"]
 
 
 def get_parser(name: str) -> "BenchmarkParser | None":
+    """Parser for benchmark *name*: an exact ``names`` match, else an ``alias_spec`` match."""
     cls = REGISTRY.get(name)
+    if cls is None:
+        cls = next((c for rx, c in ALIASES if rx.fullmatch(name)), None)
     return cls() if cls else None

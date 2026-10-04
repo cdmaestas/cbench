@@ -14,6 +14,7 @@ class NpbParser(BenchmarkParser):
     """
 
     names = ["npb"]
+    alias_spec = r"(cg|ft|sp|bt|mg|lu|ep|is)[A-D]"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"
