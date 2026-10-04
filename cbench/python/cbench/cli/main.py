@@ -248,10 +248,100 @@ def gen_jobs(
     caveats: set[str] = set()
     gen_warnings: set[str] = set()
     skipped_no_grid: list[str] = []
-    single_done: set[str] = set()
-
     run_types = ["batch", "interactive"] if run_type == "both" else [run_type]
     total = 0
+
+    def emit(home: str, bench: str, out_bench: str, ppn_val: int, numprocs: int,
+             numnodes: int, walltime: str, launch_cmd: str) -> None:
+        """Render and write one job (every run type) for a member at (ppn, numprocs)."""
+        nonlocal total
+        jobname = f"{out_bench}-{ppn_val}ppn-{numprocs}"
+        if match_re and not match_re.search(jobname):
+            return
+        try:
+            if bench == "fio":
+                io_extra, warning = iosizing.fio_tokens(nv, cfg, testset=home,
+                                                        benchmark=bench)
+                if warning:
+                    gen_warnings.add(f"{jobname}: {warning}")
+            elif bench == "iozone":
+                io_extra = iosizing.iozone_tokens(nv, cfg, testset=home, benchmark=bench)
+            elif bench == "gpfsperf":
+                io_extra = iosizing.gpfsperf_tokens(nv, cfg, testset=home, benchmark=bench)
+            elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
+                io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
+                                               testset=home, benchmark=bench)
+            elif iosizing.needs_io_sizing(home, bench):
+                io_extra = iosizing.bonnie_tokens(nv, cfg, testset=home, benchmark=bench)
+            elif iosizing.target_name_for(bench):
+                io_extra = iosizing.target_tokens(nv, bench)
+            else:
+                io_extra = {}
+        except iosizing.IOSizingError as exc:
+            raise click.ClickException(str(exc)) from exc
+        if io_extra.get("IO_CAVEAT"):
+            caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
+        hpl_spec = hplsizing.input_spec(bench)
+        hpl_input = None
+        if hpl_spec:
+            try:
+                hpl_input = hplsizing.render(
+                    hpl_spec, templates_dir, numprocs=numprocs, ppn=ppn_val,
+                    mem_per_node_mb=hpl_mem_mb, factors=hpl_factors,
+                )
+            except hplsizing.HplSizingError as exc:
+                raise click.ClickException(str(exc)) from exc
+            if hpl_input is None:
+                skipped_no_grid.append(jobname)
+                return
+            io_extra = {**io_extra,
+                        "MEM_UTIL_FACTORS": ",".join(str(f) for f in hpl_factors)}
+        for rtype in run_types:
+            try:
+                raw = templates.build_job_template(home, bench, rtype, cfg)
+            except FileNotFoundError as exc:
+                console.print(f"[yellow]Skipping {jobname}/{rtype}: {exc}[/yellow]")
+                continue
+
+            script = templates.substitute(
+                raw,
+                numprocs=numprocs,
+                ppn=ppn_val,
+                numnodes=numnodes,
+                walltime=walltime,
+                jobname=jobname,
+                benchmark=out_bench,
+                testset=out_ts,
+                ident=ident,
+                run_type=rtype,
+                launch_cmd=launch_cmd,
+                cfg=cfg,
+                cbenchtest=cbenchtest,
+                extra=io_extra,
+            )
+
+            ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
+            script_name = f"{jobname}{ext}"
+            job_dir = _safe_path(cbenchtest, out_ts, ident, jobname)
+
+            if dry_run:
+                console.rule(f"{job_dir}/{script_name}")
+                console.print(script)
+            else:
+                job_dir.mkdir(parents=True, exist_ok=True)
+                (job_dir / script_name).write_text(script)
+                (job_dir / script_name).chmod(0o755)
+
+            total += 1
+
+        if hpl_input is not None:
+            input_path = _safe_path(cbenchtest, out_ts, ident, jobname, hpl_spec.filename)
+            if dry_run:
+                console.rule(str(input_path))
+                console.print(hpl_input)
+            else:
+                input_path.parent.mkdir(parents=True, exist_ok=True)
+                input_path.write_text(hpl_input)
 
     for ppn_val in ppn_values:
         max_procs_for_ppn = cfg.max_ppn_procs.get(str(ppn_val), ppn_val * cfg.max_nodes)
@@ -263,100 +353,20 @@ def gen_jobs(
             numnodes = max(1, math.ceil(numprocs / ppn_val))
             walltime = templates.compute_walltime(numprocs, valid_sizes, cfg)
             launch_cmd = launchers.build_launch_cmd(numprocs, ppn_val, numnodes, cfg)
-
             for home, bench, out_bench in members:
-                jobname = f"{out_bench}-{ppn_val}ppn-{numprocs}"
-                if match_re and not match_re.search(jobname):
-                    continue
-                # single-node, non-MPI benchmarks: one job, not one per ppn x size
-                if bench in _SINGLE_INSTANCE:
-                    if numprocs != 1 or out_bench in single_done:
-                        continue
-                    single_done.add(out_bench)
-                try:
-                    if bench == "fio":
-                        io_extra, warning = iosizing.fio_tokens(nv, cfg, testset=home,
-                                                                benchmark=bench)
-                        if warning:
-                            gen_warnings.add(f"{jobname}: {warning}")
-                    elif bench == "iozone":
-                        io_extra = iosizing.iozone_tokens(nv, cfg, testset=home, benchmark=bench)
-                    elif bench == "gpfsperf":
-                        io_extra = iosizing.gpfsperf_tokens(nv, cfg, testset=home, benchmark=bench)
-                    elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
-                        io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
-                                                       testset=home, benchmark=bench)
-                    elif iosizing.needs_io_sizing(home, bench):
-                        io_extra = iosizing.bonnie_tokens(nv, cfg, testset=home, benchmark=bench)
-                    elif iosizing.target_name_for(bench):
-                        io_extra = iosizing.target_tokens(nv, bench)
-                    else:
-                        io_extra = {}
-                except iosizing.IOSizingError as exc:
-                    raise click.ClickException(str(exc)) from exc
-                if io_extra.get("IO_CAVEAT"):
-                    caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
-                hpl_spec = hplsizing.input_spec(bench)
-                hpl_input = None
-                if hpl_spec:
-                    try:
-                        hpl_input = hplsizing.render(
-                            hpl_spec, templates_dir, numprocs=numprocs, ppn=ppn_val,
-                            mem_per_node_mb=hpl_mem_mb, factors=hpl_factors,
-                        )
-                    except hplsizing.HplSizingError as exc:
-                        raise click.ClickException(str(exc)) from exc
-                    if hpl_input is None:
-                        skipped_no_grid.append(jobname)
-                        continue
-                    io_extra = {**io_extra,
-                                "MEM_UTIL_FACTORS": ",".join(str(f) for f in hpl_factors)}
-                for rtype in run_types:
-                    try:
-                        raw = templates.build_job_template(home, bench, rtype, cfg)
-                    except FileNotFoundError as exc:
-                        console.print(f"[yellow]Skipping {jobname}/{rtype}: {exc}[/yellow]")
-                        continue
+                if bench not in _SINGLE_INSTANCE:
+                    emit(home, bench, out_bench, ppn_val, numprocs, numnodes, walltime, launch_cmd)
 
-                    script = templates.substitute(
-                        raw,
-                        numprocs=numprocs,
-                        ppn=ppn_val,
-                        numnodes=numnodes,
-                        walltime=walltime,
-                        jobname=jobname,
-                        benchmark=out_bench,
-                        testset=out_ts,
-                        ident=ident,
-                        run_type=rtype,
-                        launch_cmd=launch_cmd,
-                        cfg=cfg,
-                        cbenchtest=cbenchtest,
-                        extra=io_extra,
-                    )
-
-                    ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
-                    script_name = f"{jobname}{ext}"
-                    job_dir = _safe_path(cbenchtest, out_ts, ident, jobname)
-
-                    if dry_run:
-                        console.rule(f"{job_dir}/{script_name}")
-                        console.print(script)
-                    else:
-                        job_dir.mkdir(parents=True, exist_ok=True)
-                        (job_dir / script_name).write_text(script)
-                        (job_dir / script_name).chmod(0o755)
-
-                    total += 1
-
-                if hpl_input is not None:
-                    input_path = _safe_path(cbenchtest, out_ts, ident, jobname, hpl_spec.filename)
-                    if dry_run:
-                        console.rule(str(input_path))
-                        console.print(hpl_input)
-                    else:
-                        input_path.parent.mkdir(parents=True, exist_ok=True)
-                        input_path.write_text(hpl_input)
+    # Single-node, non-MPI benchmarks: one job at their real concurrency — T
+    # IO threads on 1 node, named <bench>-<T>ppn-<T> — so the name, the
+    # scheduler request (T tasks on one node, not 1) and the parsed ppn agree.
+    singles = [m for m in members if m[1] in _SINGLE_INSTANCE]
+    if singles:
+        threads = iosizing.io_threads(nv, cfg)
+        launch_cmd = launchers.build_launch_cmd(threads, threads, 1, cfg)
+        walltime = templates.compute_walltime(threads, [threads], cfg)
+        for home, bench, out_bench in singles:
+            emit(home, bench, out_bench, threads, threads, 1, walltime, launch_cmd)
 
     if skipped_no_grid:
         console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "

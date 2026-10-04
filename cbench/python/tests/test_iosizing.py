@@ -262,7 +262,7 @@ def test_genjobs_bonnie_capped_and_warned(genv):
                    "--nodefacts", "typeA")
     assert res.exit_code == 0, res.output
     assert "capacity cap" in res.output
-    s = genv.script("iometadata", "bonnie-1ppn-1")
+    s = genv.script("iometadata", "bonnie-4ppn-4")
     m = re.search(r'opts="-d \. -s (\d+) -r (\d+)"', s)
     assert m and int(m.group(1)) >= 2 * int(m.group(2))
     assert 'IO_TARGET_DIR="/tmp"' in s
@@ -274,7 +274,7 @@ def test_genjobs_bonnie_capped_and_warned(genv):
     assert "for i in $(seq 1 $instances)" in s
     # single-node, so generated once rather than per ppn x size
     assert sorted(p.name for p in (genv.tmp / "iometadata" / "t1").iterdir()
-                  if p.name.startswith("bonnie")) == ["bonnie-1ppn-1"]
+                  if p.name.startswith("bonnie")) == ["bonnie-4ppn-4"]
 
 
 def test_genjobs_metadata_ppn_from_facts(genv):

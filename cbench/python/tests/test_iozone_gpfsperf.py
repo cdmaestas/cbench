@@ -214,7 +214,7 @@ def genv(tmp_path):
 def test_genjobs_gpfs_group_from_gpfs_parallel_target(genv):
     res = genv.run("--profile", "io-default", "--group", "gpfs")
     assert res.exit_code == 0, res.output
-    s = genv.script("gpfsperf-gpfs-1ppn-1")
+    s = genv.script("gpfsperf-gpfs-4ppn-4")
     assert f'IO_TARGET_DIR="{GPFS}"' in s
     assert re.search(r'opts="-r 8m -n \d+m -th \$threads"', s) and "threads=4\n" in s
     assert 'for op in "create seq" "read seq" "read rand" "write rand"' in s
@@ -223,7 +223,7 @@ def test_genjobs_gpfs_group_from_gpfs_parallel_target(genv):
 def test_genjobs_iozone_in_node_local(genv):
     res = genv.run("--profile", "io-default")
     assert res.exit_code == 0, res.output
-    s = genv.script("iozone-local-1ppn-1")
+    s = genv.script("iozone-local-4ppn-4")
     assert re.search(r"-t \$threads -s \d+m -r 4m -F \$files", s) and "threads=4\n" in s
     assert 'IO_TARGET_DIR="/tmp"' in s
 

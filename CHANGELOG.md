@@ -143,8 +143,12 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `io_threads_max` is set. bonnie's per-instance `-s`/`-r` shrink to match, so the total
   stays 2× RAM, and results on nodes with other than 3 CPUs aren't comparable with
   earlier runs.
-- **gen-jobs generates bonnie once per testset** (`bonnie-1ppn-1`) instead of once per
-  ppn × size, like fio.
+- **Single-node IO jobs (fio, bonnie, iozone, gpfsperf) are generated once, at their real
+  concurrency:** `<bench>-<T>ppn-<T>` on one node, where T is the IO thread count, for
+  example `fio-local-4ppn-4`.
+  - Before, fio and bonnie jobs were named `…-1ppn-1`, and the batch script asked the
+    scheduler for 1 task, which can confine a multi-threaded run to one core.
+  - bonnie was previously generated once per ppn × size.
 - **snb fio metrics renamed and corrected.** The old `read_iops`/`write_iops` were
   the *sequential* job's IOPS from its first job block, and the bandwidth came from
   the last run. Results are now reported per job: `seq_{read,write}_bw_MiB_s`,

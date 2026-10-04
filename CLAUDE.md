@@ -149,7 +149,7 @@ Groups in `io-default`:
 - The cap: `io_threads_max` if set. There is no built-in cap.
 - snb applies the same rule locally (`_detect_physical_cores()`, `cap_threads`).
 
-nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core id pairs) and `aggregate.cores`; v1 files still load. A physical-core mismatch at equal logical count (SMT differs) counts as heterogeneous. fio, bonnie, iozone and gpfsperf are `_SINGLE_INSTANCE`: one job per testset or profile, not one per ppn × size.
+nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core id pairs) and `aggregate.cores`; v1 files still load. A physical-core mismatch at equal logical count (SMT differs) counts as heterogeneous. fio, bonnie, iozone and gpfsperf are `_SINGLE_INSTANCE`: one job per testset or profile, generated at their real concurrency as `<bench>-<T>ppn-<T>` on 1 node, where T = `io_threads`. That makes the name, the scheduler request (T tasks, not 1, which could pin the job to one core under cgroups) and the parsed ppn agree. gen-jobs renders every job through a local `emit()`; the ppn × size sweep covers the MPI members, and a second pass handles the single-node ones.
 
 **iozone** (`templates/iolocal_iozone.in`, `parsers/iozone.py`):
 - Runs throughput mode `-i 0 -i 1 -i 2 -t N`, with 2× RAM ÷ N per thread, rounded up to the record size, which is the fio profile block size.

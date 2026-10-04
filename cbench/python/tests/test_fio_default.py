@@ -311,8 +311,8 @@ def genv(tmp_path, monkeypatch):
 def test_genjobs_fio_single_job_sized_from_facts(genv):
     res = genv.run("--nodefacts", "typeA")
     assert res.exit_code == 0, res.output
-    assert [j for j in genv.jobs() if j.startswith("fio")] == ["fio-1ppn-1"]
-    s = genv.script("fio-1ppn-1")
+    assert [j for j in genv.jobs() if j.startswith("fio")] == ["fio-4ppn-4"]
+    s = genv.script("fio-4ppn-4")
     assert "numjobs=4\n" in s and "runtime=300\n" in s and "seqbs=4m\n" in s
     # O_DIRECT 256 MiB per job, buffered fallback 1 GiB; preflight uses the one picked
     assert "size_mb=256\n" in s and "size_mb=1024\n" in s
@@ -324,20 +324,20 @@ def test_genjobs_fio_single_job_sized_from_facts(genv):
 def test_genjobs_fio_profile_from_target_fstype_and_config(genv):
     res = genv.run("--nodefacts", "typeA", facts=_facts(local_fstype="gpfs"))
     assert res.exit_code == 0, res.output
-    assert "seqbs=8m\n" in genv.script("fio-1ppn-1")
+    assert "seqbs=8m\n" in genv.script("fio-4ppn-4")
     res = genv.run("--nodefacts", "typeA", cfg_extra="fio_profile: streaming\nfio_runtime_s: 120\n")
-    s = genv.script("fio-1ppn-1")
+    s = genv.script("fio-4ppn-4")
     assert "seqbs=16m\n" in s and "runtime=120\n" in s
 
 
 def test_genjobs_fio_numjobs_all_cpus_unless_capped(genv):
     res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64, local_free=10**9))
     assert res.exit_code == 0, res.output
-    assert "numjobs=64\n" in genv.script("fio-1ppn-1")
+    assert "numjobs=64\n" in genv.script("fio-64ppn-64")
     res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64, local_free=10**9),
                    cfg_extra="io_threads_max: 16\n")
     assert res.exit_code == 0, res.output
-    assert "numjobs=16\n" in genv.script("fio-1ppn-1")
+    assert "numjobs=16\n" in genv.script("fio-16ppn-16")
 
 
 def test_genjobs_fio_warns_when_target_short(genv):
@@ -350,7 +350,7 @@ def test_genjobs_fio_warns_when_target_short(genv):
 def test_genjobs_fio_cpus_from_explicit_procs_per_node(genv):
     res = genv.run(cfg_extra="memory_per_node_mb: 7500\n")  # no facts; procs_per_node: 4
     assert res.exit_code == 0, res.output
-    assert "numjobs=4\n" in genv.script("fio-1ppn-1")
+    assert "numjobs=4\n" in genv.script("fio-4ppn-4")
 
 
 def test_genjobs_fio_without_cpu_source_fails_before_rendering(genv):
@@ -376,14 +376,14 @@ def test_genjobs_skips_fileop_unless_matched(genv):
 def test_genjobs_match_filters_jobnames(genv):
     res = genv.run("--nodefacts", "typeA", "--match", "^fio-")
     assert res.exit_code == 0, res.output
-    assert genv.jobs() == ["fio-1ppn-1"]
+    assert genv.jobs() == ["fio-4ppn-4"]
 
 
 def test_iometadata_fio_template_is_valid_bash(genv):
     if shutil.which("bash") is None:
         pytest.skip("bash not installed")
     genv.run("--nodefacts", "typeA")
-    path = next((genv.tmp / "iometadata" / "t1" / "fio-1ppn-1").glob("*.slurm"))
+    path = next((genv.tmp / "iometadata" / "t1" / "fio-4ppn-4").glob("*.slurm"))
     assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
 
 
