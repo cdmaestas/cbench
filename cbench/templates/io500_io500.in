@@ -1,0 +1,43 @@
+# io500_io500 job template
+# IO500 (github.com/IO500/io500) on the parallel IO target: ior-easy/hard,
+# mdtest-easy/hard and find phases, scored the IO500 way. gen-jobs runs it at
+# ppn = IO threads (all CPUs, or io_threads_max), one job per node count.
+# The stonewall (seconds each write phase runs) is io500_stonewall_s; IO500
+# marks a run [INVALID] when it is below the rules' 300 s, and the parser
+# records that in the result detail.
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/io500
+
+IO500=CBENCHTEST_BIN_HERE/io500
+cbench_check_for_bin $IO500
+
+IO_TARGET_DIR="IO_TARGET_DIR_HERE"
+if [ -z "$IO_TARGET_DIR" ]; then
+	cbench_echo "CBENCH NOTICE: no parallel IO target (set io_targets.parallel in cluster.yaml)"
+	exit 1
+fi
+DATADIR="$IO_TARGET_DIR/io500.$JOBID"
+mkdir -p "$DATADIR" || { cbench_echo "CBENCH NOTICE: cannot create $DATADIR"; exit 1; }
+
+# IO500 reads its settings from an ini file; results land under ./results
+cat > io500.ini <<EOF
+[global]
+datadir = $DATADIR
+timestamp-datadir = FALSE
+resultdir = ./results
+timestamp-resultdir = TRUE
+api = POSIX
+drop-caches = FALSE
+
+[debug]
+stonewall-time = IO500_STONEWALL_HERE
+EOF
+cbench_echo "Cbench io500: stonewall=IO500_STONEWALL_HERE datadir=$DATADIR"
+
+CMD="JOBLAUNCH_CMD_HERE $IO500 io500.ini"
+cbench_run_cmd $CMD
+
+rm -rf "$DATADIR"
+sync

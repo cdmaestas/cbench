@@ -18,7 +18,7 @@ from cbench.cli.main import cli
 _EXPECTED_BUILDERS = [
     "stream", "imb", "osu", "ior", "hpl", "npb",
     "hpcc", "amg", "hpccg", "mpibench", "mpigraph", "bonnie", "graph500",
-    "iozone", "fio", "gpfsperf",
+    "iozone", "fio", "gpfsperf", "io500",
 ]
 
 @pytest.mark.parametrize("name", _EXPECTED_BUILDERS)
@@ -560,3 +560,93 @@ def test_gpfsperf_build_cflags_override(tmp_path, monkeypatch):
     cfg = BuildConfig(cc="gcc", extra={"cflags": "-O2 -DGPFS_LINUX -DRDMA"})
     get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", cfg)
     assert calls == [["make", "gpfsperf", "CC=gcc", "CFLAGS=-O2 -DGPFS_LINUX -DRDMA"]]
+
+
+def _readonly_tarball(tmp_path):
+    """A tarball like iozone's: a read-only file inside a read-only directory."""
+    import io
+    import tarfile as tf_mod
+    buf = io.BytesIO()
+    with tf_mod.open(fileobj=buf, mode="w:gz") as tf:
+        d = tf_mod.TarInfo("pkg-1.0/src")
+        d.type, d.mode = tf_mod.DIRTYPE, 0o555
+        tf.addfile(d)
+        f = tf_mod.TarInfo("pkg-1.0/src/Changes.txt")
+        data = b"v1\n"
+        f.size, f.mode = len(data), 0o444
+        tf.addfile(f, io.BytesIO(data))
+    path = tmp_path / "pkg-1.0.tar.gz"
+    path.write_bytes(buf.getvalue())
+    return path
+
+
+def test_wget_tarball_reuses_extracted_tree_and_force_replaces_readonly(tmp_path):
+    """Re-running a build must not re-extract over read-only files (zima:
+    iozone 'Permission denied: .../Changes.txt'); --force replaces the tree."""
+    import shutil
+    import cbench.builders._util as util_mod
+    from cbench.builders._util import wget_tarball
+
+    src = _readonly_tarball(tmp_path)
+    dest = tmp_path / "dest"
+    with patch.object(util_mod, "download", side_effect=lambda url, d: shutil.copy(src, d)):
+        top = wget_tarball("https://example.com/pkg-1.0.tar.gz", dest, force=False, dry_run=False)
+        assert (top / "src" / "Changes.txt").read_text() == "v1\n"
+        # second build: extraction skipped, no PermissionError
+        assert wget_tarball("https://example.com/pkg-1.0.tar.gz", dest,
+                            force=False, dry_run=False) == top
+        # --force: read-only tree removed and re-extracted
+        assert wget_tarball("https://example.com/pkg-1.0.tar.gz", dest,
+                            force=True, dry_run=False) == top
+        assert (top / "src" / "Changes.txt").exists()
+    util_mod._rmtree_writable(top)   # leave tmp_path removable
+
+
+def test_wget_tarball_force_never_removes_outside_dest(tmp_path):
+    """A hostile first member ('../x') must be rejected before any removal:
+    the reuse/--force logic must never act on dest's parent."""
+    import io
+    import shutil
+    import tarfile as tf_mod
+    import cbench.builders._util as util_mod
+    from cbench.builders._util import wget_tarball
+    import pytest as _pytest
+
+    buf = io.BytesIO()
+    with tf_mod.open(fileobj=buf, mode="w:gz") as tf:
+        info = tf_mod.TarInfo("../sibling.txt")
+        info.size = 1
+        tf.addfile(info, io.BytesIO(b"x"))
+    evil = tmp_path / "evil.tar.gz"
+    evil.write_bytes(buf.getvalue())
+    keep = tmp_path / "keep-me.txt"
+    keep.write_text("precious")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    with patch.object(util_mod, "download", side_effect=lambda url, d: shutil.copy(evil, d)):
+        with _pytest.raises(RuntimeError):
+            wget_tarball("https://example.com/evil.tar.gz", dest, force=True, dry_run=False)
+    assert keep.read_text() == "precious" and dest.is_dir()
+
+
+def test_wget_tarball_rejects_dot_top_entry(tmp_path):
+    """A tarball whose first entry is './file' has no top-level directory."""
+    import io
+    import shutil
+    import tarfile as tf_mod
+    import cbench.builders._util as util_mod
+    from cbench.builders._util import wget_tarball
+    import pytest as _pytest
+
+    buf = io.BytesIO()
+    with tf_mod.open(fileobj=buf, mode="w:gz") as tf:
+        info = tf_mod.TarInfo("./file.txt")
+        info.size = 1
+        tf.addfile(info, io.BytesIO(b"x"))
+    src = tmp_path / "flat.tar.gz"
+    src.write_bytes(buf.getvalue())
+    dest = tmp_path / "dest"
+    with patch.object(util_mod, "download", side_effect=lambda url, d: shutil.copy(src, d)):
+        with _pytest.raises(RuntimeError, match="top-level entry"):
+            wget_tarball("https://example.com/flat.tar.gz", dest, force=True, dry_run=False)
+    assert dest.is_dir()
