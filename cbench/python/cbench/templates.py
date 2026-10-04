@@ -203,7 +203,10 @@ def substitute(
         "CBENCHTEST_BIN": bin_path,
         "TESTDIR": cbenchtest_path,
         "SCRATCHDIR": cbenchtest_path,
-        "JOBSCRIPT": f"{jobname}.{schedulers.extension(cfg).lstrip('.')}",
+        # gen-jobs writes interactive scripts as .sh, batch scripts with the
+        # scheduler's extension
+        "JOBSCRIPT": (f"{jobname}.sh" if run_type == "interactive"
+                      else f"{jobname}.{schedulers.extension(cfg).lstrip('.')}"),
         # Launch
         "JOBLAUNCH_CMD": launch_cmd,
         "JOBLAUNCHMETHOD": cfg.joblaunch_method,

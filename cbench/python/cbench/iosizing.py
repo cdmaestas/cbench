@@ -4,7 +4,9 @@ Rules (settled in design):
   * IO sizes round UP so each node writes >= 2x its RAM (defeats page cache);
     memory sizes round DOWN so they never exceed RAM.
   * IO sizing uses the MAX MemTotal from the facts file (cache-defeat holds on
-    every node); CPU counts use the MIN.
+    every node); CPU counts use the MIN. Thread/job counts for every IO
+    benchmark come from io_threads(): all CPUs (logical or physical, per
+    io_threads_basis), capped by io_threads_max if set.
   * If the rounded-up size does not fit the target (90% of the free space seen
     by nodecheck), it is capped to fit and a caveat is recorded.
   * Without a facts file, values come from cluster.yaml only if set there
@@ -12,6 +14,7 @@ Rules (settled in design):
 
 Template tokens produced (all via substitute(extra=...)):
   IOR_BLOCKSIZE   IOR -b value, e.g. "3840m"
+  BONNIE_INSTANCES concurrent bonnie++ instances (= IO threads)
   BONNIE_SIZE_MB  bonnie++ -s per instance (MiB)
   BONNIE_RAM_MB   bonnie++ -r per instance (MiB)
   IO_REQUIRED_KB  space the job needs on its target, checked at run time
@@ -27,7 +30,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 IOR_TRANSFER_MIB = 128      # matches `-t 128m` in io_ior1mNtoN.in
-BONNIE_INSTANCES = 3        # iometadata_bonnie.in runs 3 concurrent bonnie++
 CAPACITY_FRACTION = 0.9
 
 # Which io_targets entry each benchmark writes to.
@@ -52,6 +54,7 @@ class NodeValues:
     targets: dict = field(default_factory=dict)  # name -> {path, fstype, shared, free_kb_min}
     source: str = "none"            # "nodefacts:<name>" | "cluster.yaml" | "none"
     warnings: list = field(default_factory=list)
+    cores: Optional[int] = None     # MIN physical cores per node (facts v2), if known
 
 
 def _resolve_targets(cfg, facts_targets: dict, warnings: list) -> dict:
@@ -88,6 +91,7 @@ def resolve_node_values(cfg, facts: Optional[dict] = None) -> NodeValues:
             )
         return NodeValues(
             cpus=agg["cpus"]["min"],
+            cores=(agg.get("cores") or {}).get("min"),
             mem_io_kb=agg["memtotal_kb"]["max"],
             mem_nonio_kb=agg["memtotal_kb"]["min"],
             targets=_resolve_targets(cfg, agg.get("targets", {}), warnings),
@@ -100,6 +104,41 @@ def resolve_node_values(cfg, facts: Optional[dict] = None) -> NodeValues:
     src = "cluster.yaml" if (cpus or mem) else "none"
     return NodeValues(cpus=cpus, mem_io_kb=mem, mem_nonio_kb=mem,
                       targets=_resolve_targets(cfg, {}, warnings), source=src, warnings=warnings)
+
+
+_PHYSICAL_FALLBACK = "io_threads_basis is physical but physical cores are unknown"
+
+
+def cap_threads(count: int, cfg) -> int:
+    """Apply the optional ``io_threads_max`` cap (never below 1)."""
+    cap = getattr(cfg, "io_threads_max", None)
+    return max(1, min(int(count), cap) if cap else int(count))
+
+
+def io_threads(nv: NodeValues, cfg) -> int:
+    """Thread/job count for IO benchmarks (fio jobs, bonnie instances, iozone
+    threads, gpfsperf threads, mdtest top ppn): every CPU of the configured
+    basis on the smallest node, capped by ``io_threads_max`` if set.
+
+    ``io_threads_basis: physical`` uses physical cores when the facts file
+    recorded them (schema v2), else falls back to logical CPUs with a warning
+    appended to ``nv.warnings``.
+    """
+    if not nv.cpus:
+        raise IOSizingError(
+            "IO thread count needs node CPUs: pass --nodefacts NAME (from `cbench nodecheck`) "
+            "or set procs_per_node explicitly in cluster.yaml"
+        )
+    count = nv.cpus
+    if getattr(cfg, "io_threads_basis", "logical") == "physical":
+        if nv.cores:
+            count = nv.cores
+        elif not any(w.startswith(_PHYSICAL_FALLBACK) for w in nv.warnings):
+            nv.warnings.append(
+                f"{_PHYSICAL_FALLBACK} (facts schema v1, cluster.yaml values, or no core ids in "
+                "cpuinfo); using logical CPUs"
+            )
+    return cap_threads(count, cfg)
 
 
 def target_name_for(benchmark: str) -> Optional[str]:
@@ -160,13 +199,14 @@ def ior_tokens(nv: NodeValues, *, ppn: int, numprocs: int, testset: str, benchma
     return {**tokens, **target_tokens(nv, benchmark)}
 
 
-def bonnie_tokens(nv: NodeValues, *, testset: str, benchmark: str) -> dict:
-    """bonnie++ -s/-r so the 3 concurrent instances write 2x RAM in aggregate.
+def bonnie_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
+    """bonnie++ -s/-r so the concurrent instances (one per IO thread) write 2x
+    RAM in aggregate.
 
     -s rounds up (IO), -r rounds down (memory); bonnie++ requires -s >= 2*-r.
     """
     mem_mib = _require_mem(nv, testset, benchmark) / 1024
-    n = BONNIE_INSTANCES
+    n = io_threads(nv, cfg)
     size = math.ceil(2 * mem_mib / n)
     ram = math.floor(mem_mib / n)
     caveat = ""
@@ -181,6 +221,7 @@ def bonnie_tokens(nv: NodeValues, *, testset: str, benchmark: str) -> dict:
         size = capped
         ram = min(ram, size // 2)
     tokens = {
+        "BONNIE_INSTANCES": str(n),
         "BONNIE_SIZE_MB": str(size),
         "BONNIE_RAM_MB": str(ram),
         "IO_REQUIRED_KB": str(size * n * 1024),
@@ -192,7 +233,7 @@ def bonnie_tokens(nv: NodeValues, *, testset: str, benchmark: str) -> dict:
 def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[dict, str]:
     """Tokens for iometadata_fio.in, plus a gen-time warning ("" if none).
 
-    numjobs = min(MIN CPUs, 16); the sequential block size comes from the
+    numjobs = io_threads (all CPUs, optional cap); the sequential block size comes from the
     fio profile and the target's fstype from the facts file. The run needs
     numjobs x the per-job file at its peak (the target is emptied between
     jobs); the job itself picks the O_DIRECT or buffered size after probing and
@@ -206,7 +247,7 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
             f"{testset}_{benchmark} sizes its job count from node CPUs: pass --nodefacts NAME "
             "(from `cbench nodecheck`) or set procs_per_node explicitly in cluster.yaml"
         )
-    njobs = fioprofile.numjobs(nv.cpus)
+    njobs = fioprofile.numjobs(io_threads(nv, cfg))
     target = target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype")
     profile, seq_bs = fioprofile.seq_block_size(cfg.fio_profile, fstype, cfg.fio_seq_bs)

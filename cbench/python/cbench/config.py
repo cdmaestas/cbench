@@ -69,6 +69,10 @@ _SCHEMA: dict = {
         "fio_runtime_s": {"type": "integer", "minimum": 1},
         "fio_profile": {"type": "string", "enum": _VALID_FIO_PROFILES},
         "fio_seq_bs": {"type": "string", "pattern": r"^\d+[kKmMgG]$"},
+        # IO thread/job count for every IO benchmark (iosizing.io_threads):
+        # all CPUs of the chosen basis, optionally capped
+        "io_threads_max": {"type": "integer", "minimum": 1},
+        "io_threads_basis": {"type": "string", "enum": ["logical", "physical"]},
         "parse_filter_include": {
             "type": "array",
             "items": {"type": "string", "enum": _VALID_FILTER_MODULES},
@@ -145,6 +149,8 @@ class ClusterConfig:
     fio_runtime_s: int = 300
     fio_profile: str = "auto"
     fio_seq_bs: str = ""
+    io_threads_max: Optional[int] = None
+    io_threads_basis: str = "logical"
     parse_filter_include: list[str] = field(
         default_factory=lambda: ["openmpi", "slurm", "mpiexec", "torque", "mvapich", "misc"]
     )

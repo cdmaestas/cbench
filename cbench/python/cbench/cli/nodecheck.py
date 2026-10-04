@@ -113,12 +113,12 @@ def nodecheck_cmd(
     rows = nc.group_summary(per_host, result["responded"], cfg.io_targets)
     if rows:
         tbl = Table(title=f"Node groups ({len(result['responded'])}/{len(hosts)} responded)")
-        for col in ("hosts", "n", "cpus", "MemTotal GiB", "model"):
+        for col in ("hosts", "n", "cpus", "cores", "MemTotal GiB", "model"):
             tbl.add_column(col)
         for tname in sorted(cfg.io_targets):
             tbl.add_column(f"{tname} fstype")
         for r in rows:
-            tbl.add_row(r["hosts"], str(r["count"]), r["cpus"], r["mem_gib"], r["model"],
+            tbl.add_row(r["hosts"], str(r["count"]), r["cpus"], r["cores"], r["mem_gib"], r["model"],
                         *[r["targets"][t] for t in sorted(cfg.io_targets)])
         console.print(tbl)
 

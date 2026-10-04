@@ -24,7 +24,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from cbench import fioprofile
+from cbench import fioprofile, iosizing
 
 console = Console()
 
@@ -39,6 +39,24 @@ def _hostname() -> str:
 
 def _detect_cores() -> int:
     return os.cpu_count() or 1
+
+
+def _detect_physical_cores(cpuinfo_path: "str | Path" = Path("/proc/cpuinfo")) -> int:
+    """Distinct (physical id, core id) pairs in /proc/cpuinfo; 0 if unknown
+    (non-Linux, or cpuinfo without core ids). Mirrors the nodecheck probe."""
+    try:
+        text = Path(cpuinfo_path).read_text()
+    except OSError:
+        return 0
+    pairs, phys = set(), ""
+    for line in text.splitlines():
+        key, _, val = line.partition(":")
+        key = key.strip()
+        if key == "physical id":
+            phys = val.strip()
+        elif key == "core id":
+            pairs.add((phys, val.strip()))
+    return len(pairs)
 
 
 # ---------------------------------------------------------------------------
@@ -805,6 +823,7 @@ def run_cmd(
     hostname = node or _hostname()
     if "/" in hostname or "\\" in hostname or hostname.startswith(".."):
         raise click.UsageError(f"Invalid --node value: '{hostname}'")
+    explicit_numcores = numcores is not None
     numcores = numcores or _detect_cores()
     ident = ident or f"{cfg.cluster_name}1"
 
@@ -999,10 +1018,14 @@ def run_cmd(
             else:
                 # one output file, one '### CBENCH FS-TARGET' section per target
                 run("true", "fio", overwrite=True)
-                # Random-I/O and metadata job count tracks node cores (1 job/core),
-                # capped so fat nodes don't spawn an absurd number of fio
-                # processes. The sequential job stays single-stream on purpose.
-                fio_numjobs = fioprofile.numjobs(numcores)
+                # Random-I/O and metadata job count = IO thread count (the
+                # iosizing.io_threads rule): every CPU of io_threads_basis,
+                # capped by io_threads_max; an explicit --numcores is taken as
+                # the count to use. The sequential job stays single-stream.
+                io_cpus = numcores
+                if cfg.io_threads_basis == "physical" and not explicit_numcores:
+                    io_cpus = _detect_physical_cores() or numcores
+                fio_numjobs = fioprofile.numjobs(iosizing.cap_threads(io_cpus, cfg))
                 fio_profile = fio_profile or cfg.fio_profile
                 fio_runtime = fio_runtime or cfg.fio_runtime_s
                 # metadata engines (filecreate/filestat/filedelete) need fio >= 3.23
