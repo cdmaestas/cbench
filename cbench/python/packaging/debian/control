@@ -21,7 +21,8 @@ Depends: ${python3:Depends},
          python3-jinja2 (>= 3.1),
          python3-jsonschema (>= 4.0)
 Recommends: openmpi-bin,
-            libopenmpi-dev
+            libopenmpi-dev,
+            environment-modules
 Suggests: python3-flask, man-db
 Description: Cbench HPC benchmarking framework — Python toolchain
  Cbench is a framework for building, running, and parsing HPC benchmarks
@@ -35,4 +36,5 @@ Description: Cbench HPC benchmarking framework — Python toolchain
   * Web dashboard with Prometheus metrics endpoint (optional, needs flask)
  .
  Open MPI is recommended (not required) for building and running the MPI
- benchmarks; sites using another MPI can install with --no-install-recommends.
+ benchmarks, along with environment-modules for site-installed MPI stacks;
+ sites using another MPI can install with --no-install-recommends.
