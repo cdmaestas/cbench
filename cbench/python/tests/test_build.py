@@ -484,4 +484,6 @@ def test_bonnie_builds_as_gnu_cxx14(tmp_path, monkeypatch):
     get_builder("bonnie").build(tmp_path, tmp_path / "pfx", BuildConfig(), dry_run=False)
     configure = calls[0]
     assert configure[0] == "./configure"
-    assert any(a.startswith("CXXFLAGS=") and "-std=gnu++14" in a for a in configure)
+    # must be inside CXX: bonnie's Makefile uses `CXX=@CXX@ $(CFLAGS)`, never CXXFLAGS
+    assert "CXX=c++ -std=gnu++14" in configure
+    assert not any(a.startswith("CXXFLAGS=") for a in configure)

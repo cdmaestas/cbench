@@ -22,8 +22,9 @@ class BonnieBuilder(BenchmarkBuilder):
         # bonnie++ 2.00a predates C++17: bon_csv2html.cpp has a global `data`
         # plus `using namespace std`, which collides with C++17's std::data and
         # fails on GCC >= 11 ("reference to 'data' is ambiguous"). Pin gnu++14.
-        run(["./configure", f"--prefix={prefix}", f"CXX={cfg.cxx}",
-             f"CXXFLAGS={cfg.cflags} -std=gnu++14"],
+        # It must go inside CXX: bonnie's Makefile.in compiles with
+        # `CXX=@CXX@ $(CFLAGS)` and never reads CXXFLAGS.
+        run(["./configure", f"--prefix={prefix}", f"CXX={cfg.cxx} -std=gnu++14"],
             cwd=src, dry_run=dry_run)
         run(["make", "-j", str(cfg.jobs)], cwd=src, dry_run=dry_run)
         run(["make", "install"], cwd=src, dry_run=dry_run)
