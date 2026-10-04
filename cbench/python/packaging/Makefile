@@ -74,6 +74,8 @@ fpm-rpm: stage | $(OUTDIR)
 	    --url "https://github.com/cdmaestas/cbench" \
 	    --license "GPLv2" \
 	    --depends "python3 >= 3.9" \
+	    --rpm-tag "Recommends: openmpi-devel" \
+	    --rpm-tag "Recommends: environment-modules" \
 	    --rpm-summary "cbench HPC benchmark CLI" \
 	    -C "$(STAGEDIR)" \
 	    --package "$(OUTDIR)/$(PACKAGE)-$(VERSION)-$(RELEASE).noarch.rpm" \
@@ -90,6 +92,9 @@ fpm-deb: stage | $(OUTDIR)
 	    --url "https://github.com/cdmaestas/cbench" \
 	    --license "GPLv2" \
 	    --depends "python3 (>= 3.9)" \
+	    --deb-recommends "openmpi-bin" \
+	    --deb-recommends "libopenmpi-dev" \
+	    --deb-recommends "environment-modules" \
 	    -C "$(STAGEDIR)" \
 	    --package "$(OUTDIR)/$(PACKAGE)_$(VERSION)-$(RELEASE)_all.deb" \
 	    .

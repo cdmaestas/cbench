@@ -8,6 +8,7 @@ _METRICS = ["SpMV", "SpMM2", "SpMM4", "SpMM8", "NORM", "DOT", "AXPY"]
 
 class TrilinosParser(BenchmarkParser):
     names = ["trilinos"]
+    alias_spec = r"epetra.*"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"

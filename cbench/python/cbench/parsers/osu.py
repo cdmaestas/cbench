@@ -15,6 +15,7 @@ class OsuParser(BenchmarkParser):
     """
 
     names = ["osu", "mpioverhead"]
+    alias_spec = r"osubw|osubibw|osumsgrate"
 
     _TEST_RE = re.compile(r"OSU MPI\s+(.*?)\s+Test", re.IGNORECASE)
     _DATA_RE = re.compile(r"^\s*(\d+)\s+([\d.]+)\s*$")

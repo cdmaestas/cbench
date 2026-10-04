@@ -7,6 +7,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 
 class IrsParser(BenchmarkParser):
     names = ["irs"]
+    alias_spec = r"zrad3d"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"

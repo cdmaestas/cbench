@@ -7,6 +7,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 
 class LammpsParser(BenchmarkParser):
     names = ["lammps"]
+    alias_spec = r"rhodo|lj|chain|eam|chute"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"

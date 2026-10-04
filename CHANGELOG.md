@@ -25,8 +25,78 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   "still running (elapsed)" line every 30 s (tunable via `--heartbeat SECONDS`,
   `<=0` disables), so a long test (fio, linpack, hpcc) is visibly alive instead
   of indistinguishable from a hang.
+- **`cbench nodecheck` node precheck.** Probes every node in a pool (`--nodelist`
+  or Slurm `--partition`) via pdsh (`-R ssh` or `-R exec`) or ssh, collects
+  logical CPU count, MemTotal, CPU model, and each configured IO target's fstype
+  and free space, verifies the pool is homogeneous (CPUs exact, MemTotal within
+  2%, every target mounted with the same fstype, every node reachable), and
+  writes `$CBENCHTEST/nodefacts/<name>.json` for job generation. Exits nonzero on
+  failure; `--allow-heterogeneous` and `--ignore` cover mixed pools.
+- New `cluster.yaml` keys: `io_targets` (named IO target directories),
+  `remotecmd_rcmd` (`ssh`|`exec`), `remotecmd_exec_cmd` (exec template with `%h`).
+- **Node-aware IO sizing in `gen-jobs`** (`--nodefacts NAME|PATH`). IOR throughput
+  jobs size `-b` so each node writes at least 2× its RAM (rounded up to a multiple
+  of the transfer size); bonnie++ gets explicit `-s`/`-r` so its 3 concurrent
+  instances write 2× RAM in aggregate. Sizes that won't fit the target's free
+  space are capped with a gen-time warning and a `CBENCH CAVEAT:` line. IOR and
+  mdtest run on `io_targets.parallel`, bonnie on `io_targets.node-local`.
+- **Runtime space preflight for IO jobs**: sized IO jobs check free space on their
+  target immediately before running and exit with `CBENCH NOTICE: insufficient
+  space` instead of failing mid-run with ENOSPC.
+- `cbench utils find-n --nodefacts` sizes HPL N from the smallest node's MemTotal.
+- **`gen-jobs` writes HPL.dat / hpccinf.txt** for linpack (`xhpl`, `xhpl2`, `xhplintel`)
+  and `hpcc` jobs, as the Perl tool did: N per `memory_util_factors` entry from the
+  smallest node's MemTotal (`--nodefacts`) or `memory_per_node_mb`, P×Q from the
+  proc count (P:Q within 1:3; counts with no such grid are skipped with a warning).
+  The `shakedown` testset uses a single 0.45 factor.
+- `cbench parse` keeps `CBENCH CAVEAT:` lines from job output (e.g. "IO size capped
+  to free space") in the result's `status_detail`, so capped runs stay flagged.
+- mdtest results now include `directory_rename`, `file_read`, `tree_create` and
+  `tree_remove`; bonnie++ results include an `instances` count.
+
+### Fixed
+- **Linpack and HPCC jobs from `gen-jobs` could not run**: no HPL.dat/hpccinf.txt
+  was generated, and the binary path was doubled (`<bin>//<bin>/xhpl`; `xhpl2` and
+  `xhplintel` rendered as an empty name).
+- **IO jobs were not parsed.** `cbench parse` looked parsers up by exact benchmark
+  name, so `ior1mNtoN`/`ior1mNto1` jobs came back `NO_PARSER`. Parsers now carry
+  the Perl `alias_spec` patterns (IOR, NPB, xhpl, OSU, IMB, mpibench, hpccg,
+  graph500, lammps, sweep3d, irs, trilinos), matched against the whole name.
+- **IOR and mdtest parsers failed on current hpc/ior output** (IOR 3.1+ prints
+  `Began`/`Finished` instead of `Run began`/`Run finished`; mdtest prints a
+  `SUMMARY rate` table without colons), reporting `ERROR(NOTSTARTED)` /
+  `ERROR(STARTED)` for successful runs.
+- **bonnie++ parser rewritten for the 1.9x/2.x CSV layout** (older 1.03 rows still
+  parse). A single `+++++` (too fast to measure) field no longer discards the
+  whole row; that operation is left out of the aggregate and named in
+  `status_detail`. File create/stat/delete rates are reported as `/s`, not `K/s`.
+- pdsh-style hostlists with more than one bracket group (e.g. `n[1-3],m[5-6]`,
+  as returned by `sinfo`) were expanded incorrectly by `nodehwtest`; hostlist
+  handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **RPM and DEB packages now recommend Open MPI** (RPM `Recommends: openmpi-devel`;
+  DEB `Recommends: openmpi-bin, libopenmpi-dev`), needed to build and run the MPI
+  benchmarks (IOR, mdtest, IMB, OSU, HPL, …). It is a weak dependency: installed
+  by default, but sites on another MPI can skip it (`--setopt=install_weak_deps=False`
+  / `--no-install-recommends`). Both formats also recommend `environment-modules`
+  for the `module` command (Lmod sites already have one; a conflicting weak
+  dependency is skipped, not fatal). On RHEL, Open MPI installs outside PATH: use
+  `module load mpi/openmpi-x86_64` or add `/usr/lib64/openmpi/bin` to PATH.
+- **`gen-jobs` for the `linpack`, `hpcc` and `shakedown` testsets now needs a memory
+  source** too (same rule as IO below), since HPL N is sized from node memory.
+- **`gen-jobs` for the `io` and `iometadata` testsets now needs a memory source**:
+  `--nodefacts` (from `cbench nodecheck`) or `memory_per_node_mb` set explicitly in
+  cluster.yaml. The built-in default is no longer used to size IO jobs.
+- **bonnie++ writes 2× RAM in aggregate instead of ~6×.** It previously relied on
+  bonnie++'s own per-process default (2× detected RAM) times 3 concurrent
+  instances; results are not directly comparable with older runs.
+- **IOR `io_ior*` block size now scales with node memory** (was a fixed 1024m), so
+  runs on large-memory nodes write more and take longer.
+- **HPL N from `compute_n` / `find-n` is about 2% smaller**: N is now a true floor.
+  The Perl `compute_N` inflated N by 2%; this intentionally diverges from it.
+- Metadata testsets (`iometadata`) generated with node facts use the measured CPU
+  count as the top ppn level and skip ppn levels above it.
 - **`fio` is no longer part of the default `cbench snb run` suite** — it is now
   opt-in via `--tests` and, when selected, **requires** `--fs-target`. Existing
   invocations that relied on fio running by default must add `fio` to `--tests`

@@ -151,7 +151,11 @@ def install_bins(src_dir: Path, prefix_bin: Path, names: list[str], *, dry_run: 
         dst = prefix_bin / name
         console.print(f"  [green]install[/green] {dst}")
         if not dry_run:
-            shutil.copy2(src, dst)
+            # Builders whose `make install` already lands in prefix/bin (ior,
+            # fio) pass src_dir == prefix_bin; copying a file onto itself raises
+            # SameFileError and would fail a successful build.
+            if not (dst.exists() and src.resolve() == dst.resolve()):
+                shutil.copy2(src, dst)
             dst.chmod(0o755)
         installed.append(name)
     return installed

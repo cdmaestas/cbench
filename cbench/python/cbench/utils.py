@@ -124,6 +124,24 @@ def find_pq(nprocs: int, delta: int = 60) -> list[tuple[int, int, float]]:
     return results
 
 
+def compute_pq(nprocs: int) -> tuple[int, int] | None:
+    """The P x Q grid gen-jobs writes into HPL.dat / hpccinf.txt (P <= Q).
+
+    Port of Perl ``compute_PQ``: a square grid when *nprocs* is a perfect
+    square, else the first Q in (sqrt, 3*sqrt] that divides *nprocs* — HPL
+    "likes" P:Q of 1:k with k in [1..3]. None when no such grid exists.
+    """
+    if nprocs <= 0:
+        return None
+    root = math.isqrt(nprocs)
+    if root * root == nprocs:
+        return root, root
+    for q in range(root + 1, root * 3 + 1):
+        if nprocs % q == 0:
+            return nprocs // q, q
+    return None
+
+
 # ---------------------------------------------------------------------------
 # HPL problem size N
 # ---------------------------------------------------------------------------
@@ -143,8 +161,9 @@ def compute_n(
     total_bytes = memory_per_node_mb * numnodes * 1024 * 1024
     results: list[int] = []
     for factor in memory_util_factors:
-        n = math.sqrt(total_bytes / 8) * factor
-        n = int(n * 1.02)
+        # Memory-sized benchmarks round DOWN (never exceed the requested share
+        # of RAM). The Perl compute_N inflated N by 2% here; dropped on purpose.
+        n = math.floor(math.sqrt(total_bytes / 8) * factor)
         results.append(n)
     return results
 

@@ -21,6 +21,7 @@ from cbench import launchers, schedulers, templates
 from cbench.db import ParseResult, ResultsDB
 from cbench.parsers import get_parser
 from cbench.parse_filters import build_filter_set, apply_filters, AVAILABLE as FILTER_MODULES
+from cbench.cli.nodecheck import nodecheck_cmd
 from cbench.cli.nodehwtest import nodehwtest_group
 from cbench.cli.utils_cmd import utils_group
 from cbench.cli.diag import diag_cmd
@@ -70,6 +71,7 @@ def cli() -> None:
     """Cbench HPC benchmarking framework — Python toolchain."""
 
 
+cli.add_command(nodecheck_cmd)
 cli.add_command(nodehwtest_group)
 cli.add_command(utils_group)
 cli.add_command(diag_cmd)
@@ -91,6 +93,9 @@ cli.add_command(serve_cmd)
 @click.option("--dry-run", is_flag=True, help="Print generated scripts without writing")
 @click.option("--config", default=None, help="Path to cluster.yaml")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST", help="CBENCHTEST directory")
+@click.option("--nodefacts", default=None, metavar="NAME|PATH",
+              help="Node facts from `cbench nodecheck` (name under <cbenchtest>/nodefacts/ or a "
+                   ".json path); sizes IO tests from the real compute nodes")
 def gen_jobs(
     testset: str,
     ident: str,
@@ -100,8 +105,12 @@ def gen_jobs(
     dry_run: bool,
     config: Optional[str],
     cbenchtest: Optional[str],
+    nodefacts: Optional[str],
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset."""
+    from cbench import hplsizing, iosizing
+    from cbench.nodecheck import NodecheckError, load_facts
+
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
@@ -119,6 +128,47 @@ def gen_jobs(
         console.print(f"[red]No templates found for testset '{testset}' in {templates_dir}[/red]")
         raise SystemExit(1)
 
+    # Node-aware IO: resolve node values up front and fail BEFORE rendering
+    # anything if an IO template needs values we don't have (an unset token
+    # would otherwise render as an empty string, e.g. a broken `-b ` for IOR).
+    facts = None
+    if nodefacts:
+        try:
+            facts, fact_warnings = load_facts(cbenchtest, nodefacts)
+        except NodecheckError as exc:
+            raise click.ClickException(str(exc)) from exc
+        for w in fact_warnings:
+            console.print(f"[yellow]WARNING: {w}[/yellow]")
+    nv = iosizing.resolve_node_values(cfg, facts)
+    for w in nv.warnings:
+        console.print(f"[yellow]WARNING: {w}[/yellow]")
+    sized = [b for b in benchmark_templates if iosizing.needs_io_sizing(testset, b)]
+    if sized and not nv.mem_io_kb:
+        raise click.ClickException(
+            f"testset '{testset}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
+            "NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly in cluster.yaml"
+        )
+    if sized:
+        console.print(f"Node-aware IO sizing from {nv.source}: MemTotal {nv.mem_io_kb} kB (IO)")
+    if not ppn and nv.cpus and any(b.startswith("mdtest") for b in benchmark_templates):
+        ppn_values = iosizing.ppn_levels_for_metadata(ppn_values, cfg.procs_per_node, nv.cpus)
+        console.print(f"Metadata ppn levels from {nv.source} ({nv.cpus} CPUs/node): {ppn_values}")
+    # Linpack/HPCC: HPL.dat / hpccinf.txt are memory-sized (MIN MemTotal).
+    hpl_benches = [b for b in benchmark_templates if hplsizing.input_spec(b)]
+    hpl_mem_mb = (nv.mem_nonio_kb or 0) // 1024
+    hpl_factors = hplsizing.mem_util_factors(cfg, testset)
+    if hpl_benches and not hpl_mem_mb:
+        raise click.ClickException(
+            f"testset '{testset}' sizes {', '.join(hpl_benches)} (HPL N) from node memory: pass "
+            "--nodefacts NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly "
+            "in cluster.yaml"
+        )
+    if hpl_benches:
+        console.print(f"HPL sizing from {nv.source}: {hpl_mem_mb} MB/node (min MemTotal), "
+                      f"memory_util_factors {hpl_factors}")
+    caveats: set[str] = set()
+    skipped_no_grid: list[str] = []
+
     run_types = ["batch", "interactive"] if run_type == "both" else [run_type]
     total = 0
 
@@ -135,6 +185,35 @@ def gen_jobs(
 
             for bench in benchmark_templates:
                 jobname = f"{bench}-{ppn_val}ppn-{numprocs}"
+                try:
+                    if iosizing.needs_io_sizing(testset, bench) and bench.startswith("ior"):
+                        io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
+                                                       testset=testset, benchmark=bench)
+                    elif iosizing.needs_io_sizing(testset, bench):
+                        io_extra = iosizing.bonnie_tokens(nv, testset=testset, benchmark=bench)
+                    elif iosizing.target_name_for(bench):
+                        io_extra = iosizing.target_tokens(nv, bench)
+                    else:
+                        io_extra = {}
+                except iosizing.IOSizingError as exc:
+                    raise click.ClickException(str(exc)) from exc
+                if io_extra.get("IO_CAVEAT"):
+                    caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
+                hpl_spec = hplsizing.input_spec(bench)
+                hpl_input = None
+                if hpl_spec:
+                    try:
+                        hpl_input = hplsizing.render(
+                            hpl_spec, templates_dir, numprocs=numprocs, ppn=ppn_val,
+                            mem_per_node_mb=hpl_mem_mb, factors=hpl_factors,
+                        )
+                    except hplsizing.HplSizingError as exc:
+                        raise click.ClickException(str(exc)) from exc
+                    if hpl_input is None:
+                        skipped_no_grid.append(jobname)
+                        continue
+                    io_extra = {**io_extra,
+                                "MEM_UTIL_FACTORS": ",".join(str(f) for f in hpl_factors)}
                 for rtype in run_types:
                     try:
                         raw = templates.build_job_template(testset, bench, rtype, cfg)
@@ -156,6 +235,7 @@ def gen_jobs(
                         launch_cmd=launch_cmd,
                         cfg=cfg,
                         cbenchtest=cbenchtest,
+                        extra=io_extra,
                     )
 
                     ext = schedulers.extension(cfg) if rtype == "batch" else ".sh"
@@ -172,6 +252,21 @@ def gen_jobs(
 
                     total += 1
 
+                if hpl_input is not None:
+                    input_path = _safe_path(cbenchtest, testset, ident, jobname, hpl_spec.filename)
+                    if dry_run:
+                        console.rule(str(input_path))
+                        console.print(hpl_input)
+                    else:
+                        input_path.parent.mkdir(parents=True, exist_ok=True)
+                        input_path.write_text(hpl_input)
+
+    if skipped_no_grid:
+        console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "
+                      f"{len(skipped_no_grid)} job(s), not generated: "
+                      f"{', '.join(skipped_no_grid)}[/yellow]")
+    for c in sorted(caveats):
+        console.print(f"[yellow]WARNING (capacity cap): {c}[/yellow]")
     action = "Would generate" if dry_run else "Generated"
     console.print(f"[green]{action} {total} job script(s) for testset '{testset}', ident '{ident}'[/green]")
 
@@ -399,6 +494,11 @@ def parse_cmd(
             else:
                 status = parsed.status
                 status_detail = parsed.status_detail
+            # gen-jobs writes a CBENCH CAVEAT line when it had to shrink a run
+            # (e.g. IO capped to free space); keep it with the result.
+            caveats = _caveat_lines(stdout)
+            if caveats:
+                status_detail = "; ".join(filter(None, [status_detail, *caveats]))
             result = ParseResult(
                 cluster=cfg.cluster_name, testset=testset, ident=ident,
                 jobname=jobname, benchmark=benchmark,
@@ -418,6 +518,7 @@ def parse_cmd(
             "numprocs": numprocs,
             "ppn": ppn_val,
             "status": result.status,
+            "status_detail": result.status_detail,
             "metrics": result.metrics,
         })
 
@@ -435,6 +536,16 @@ def parse_cmd(
         f"[red]{summary.get('ERROR', 0)} ERROR[/red]  "
         f"[yellow]{summary.get('OTHER', 0)} OTHER[/yellow]"
     )
+
+
+def _caveat_lines(stdout: str) -> list[str]:
+    """Unique ``CBENCH CAVEAT:`` lines from job output, in order."""
+    seen: dict[str, None] = {}
+    for line in stdout.splitlines():
+        idx = line.find("CBENCH CAVEAT:")
+        if idx >= 0:
+            seen.setdefault(line[idx:].strip(), None)
+    return list(seen)
 
 
 def _render_table(results: list[dict], testset: str, ident: str) -> None:

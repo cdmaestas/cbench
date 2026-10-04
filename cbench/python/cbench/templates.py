@@ -215,8 +215,12 @@ def substitute(
         # Misc
         "MEM_UTIL_FACTORS": ",".join(str(f) for f in cfg.memory_util_factors),
         "PREAMBLE": "",
-        "XHPL_BIN": str(Path(bin_path) / "xhpl"),
-        "HPCC_BIN": str(Path(bin_path) / "hpcc"),
+        # Binary *names*: templates prefix them with CBENCHTEST_BIN_HERE/
+        # (Perl cbench_gen_jobs.pl defaults).
+        "XHPL_BIN": "xhpl",
+        "XHPL2_BIN": "xhpl2",
+        "XHPLINTEL_BIN": "xhplintel",
+        "HPCC_BIN": "hpcc",
     }
     if extra:
         vars.update(extra)

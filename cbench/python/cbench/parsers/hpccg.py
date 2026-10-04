@@ -7,6 +7,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 
 class HpccgParser(BenchmarkParser):
     names = ["hpccg"]
+    alias_spec = r"\d+cubed"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"
