@@ -2,8 +2,8 @@
 # IOzone throughput mode on the node-local IO target: write/rewrite,
 # read/reread, random read/write with one thread per IO thread (all CPUs, or
 # io_threads_max). Each thread writes its share of 2x the node's RAM so the
-# page cache can't hold the data; the record size is the fio profile's
-# sequential block size. gen-jobs fills in the sizes (cbench/python/cbench/iosizing.py).
+# page cache can't hold the data; sequential tests use the IO profile's block
+# size as the record, random (IOPS) tests use 4k. gen-jobs fills in the sizes (cbench/python/cbench/iosizing.py).
 #
 # NOTE: bash syntax is used here
 #
@@ -33,11 +33,18 @@ cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 threads=IOZONE_THREADS_HERE
 files=""
 for i in $(seq 1 $threads); do files="$files ./iozone.$i"; done
-cbench_echo "Cbench iozone: profile=IOZONE_PROFILE_HERE record=IOZONE_RECORD_HERE threads=$threads size=IOZONE_SIZE_HERE"
+cbench_echo "Cbench iozone: profile=IOZONE_PROFILE_HERE record=IOZONE_RECORD_HERE iops_record=IOZONE_IOPS_RECORD_HERE threads=$threads size=IOZONE_SIZE_HERE"
 
-# -i 0 write/rewrite, -i 1 read/reread, -i 2 random read/write; -e/-c include
-# flush and close in the timing; -+n is NOT used so rewrite/reread run too
-CMD="$IOZONE -i 0 -i 1 -i 2 -e -c -t $threads -s IOZONE_SIZE_HERE -r IOZONE_RECORD_HERE -F $files"
+# -e/-c include flush and close in the timing; -+n is NOT used so rewrite and
+# reread run too. Throughput: -i 0 write/rewrite, -i 1 read/reread at the IO
+# profile's record size. IOPS: -i 2 random read/write at 4k; iozone needs -i 0
+# to lay the files out first, and the parser keeps the first run's write
+# numbers, so that second write pass is not reported.
+CMD="$IOZONE -i 0 -i 1 -e -c -t $threads -s IOZONE_SIZE_HERE -r IOZONE_RECORD_HERE -F $files"
 cbench_run_cmd $CMD
 rm -f $files
+CMD="$IOZONE -i 0 -i 2 -e -c -t $threads -s IOZONE_SIZE_HERE -r IOZONE_IOPS_RECORD_HERE -F $files"
+cbench_run_cmd $CMD
+rm -f $files
+cbench_echo "Cbench iozone: finished"
 sync

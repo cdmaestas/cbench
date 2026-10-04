@@ -40,6 +40,9 @@ _CHILDREN_RE = re.compile(
     r"Children see throughput for\s+(\d+)\s+(.+?)\s*=\s*([\d.]+)\s*kB/sec"
 )
 _DONE = "iozone test complete"
+# iolocal_iozone.in brackets its two iozone runs with these lines
+_JOB_START = "Cbench iozone: profile="
+_JOB_END = "Cbench iozone: finished"
 
 
 class IozoneParser(BenchmarkParser):
@@ -59,11 +62,14 @@ class IozoneParser(BenchmarkParser):
             key = _TESTS.get(m.group(2).strip().lower())
             if key:
                 threads = int(m.group(1))
-                metrics[f"{key}_MiB_s"] = float(m.group(3)) / 1024.0
+                # the cbench job runs iozone twice (throughput at the profile
+                # record, then -i 0 -i 2 at 4k); the second run's -i 0 only
+                # lays the files out, so the first value of each test wins
+                metrics.setdefault(f"{key}_MiB_s", float(m.group(3)) / 1024.0)
 
         if not metrics:
             return ParseResult(status="NOTSTARTED")
-        if _DONE not in stdout:
+        if _DONE not in stdout or (_JOB_START in stdout and _JOB_END not in stdout):
             return ParseResult(status="ERROR(STARTED)",
                                status_detail="iozone did not finish (still running or killed)")
         if threads:

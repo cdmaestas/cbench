@@ -39,7 +39,12 @@ DATA_SIZE_BYTES = 256 * 1024 ** 2
 # them from MemTotal, and this is the floor when nothing better is known.
 BUFFERED_FALLBACK_SIZE = "1g"
 BUFFERED_FALLBACK_SIZE_BYTES = 1024 ** 3
-RAND_BS = "4k"
+#: transfer size for every random / IOPS test (fio rand_rw, iozone -i 2,
+#: gpfsperf read/write rand): 4 KiB is the usual IOPS target
+IOPS_BS = "4k"
+RAND_BS = IOPS_BS
+#: bytes each IO thread moves in a bounded random test (gpfsperf rand -n)
+IOPS_BYTES_PER_THREAD_MIB = 256
 MD_NRFILES = 1000                # files per metadata job
 MD_ENGINES = ("filecreate", "filestat", "filedelete")
 DEFAULT_RUNTIME_S = 300

@@ -24,7 +24,7 @@ from cbench.parsers.iozone import IozoneParser
 GPFS = "/gpfs/zimafs1/cdmaestas"
 
 _IOZONE = """\
-Cbench iozone: profile=general record=4m threads=4 size=1668m
+Cbench iozone: profile=general record=4m iops_record=4k threads=4 size=1668m
 \tIozone: Performance Test of File I/O
 \t        Version $Revision: 3.506 $
 \tRecord Size 4096 kB
@@ -36,10 +36,17 @@ Cbench iozone: profile=general record=4m threads=4 size=1668m
 \tChildren see throughput for  4 rewriters \t=  204800.00 kB/sec
 \tChildren see throughput for  4 readers \t\t= 1048576.00 kB/sec
 \tChildren see throughput for 4 re-readers \t= 2097152.00 kB/sec
+
+iozone test complete.
+\tIozone: Performance Test of File I/O
+\tRecord Size 4 kB
+\tChildren see throughput for  4 initial writers \t=   99999.00 kB/sec
+\tChildren see throughput for  4 rewriters \t=   88888.00 kB/sec
 \tChildren see throughput for 4 random readers \t=   51200.00 kB/sec
 \tChildren see throughput for 4 random writers \t=   10240.00 kB/sec
 
 iozone test complete.
+Cbench iozone: finished
 """
 
 _GPFSPERF = """\
@@ -76,7 +83,8 @@ def test_iozone_throughput_mode():
     r = IozoneParser().parse(_IOZONE)
     assert r.status == "PASSED"
     m = r.metrics
-    assert m["write_MiB_s"] == pytest.approx(256.0)          # children, not parent
+    assert m["write_MiB_s"] == pytest.approx(256.0)          # children, not parent; first run
+    assert m["rewrite_MiB_s"] == pytest.approx(200.0)       # not the 4k layout pass
     assert m["rewrite_MiB_s"] == pytest.approx(200.0)
     assert m["read_MiB_s"] == pytest.approx(1024.0)
     assert m["reread_MiB_s"] == pytest.approx(2048.0)
@@ -89,6 +97,9 @@ def test_iozone_throughput_mode():
 def test_iozone_unfinished_is_started():
     partial = _IOZONE[: _IOZONE.index("\tChildren see throughput for  4 readers")]
     assert IozoneParser().parse(partial).status == "ERROR(STARTED)"
+    # first run done, the 4k IOPS run still going: not PASSED yet
+    one_run = _IOZONE[: _IOZONE.index("\tRecord Size 4 kB")]
+    assert IozoneParser().parse(one_run).status == "ERROR(STARTED)"
 
 
 def test_iozone_no_results():
@@ -216,15 +227,20 @@ def test_genjobs_gpfs_group_from_gpfs_parallel_target(genv):
     assert res.exit_code == 0, res.output
     s = genv.script("gpfsperf-gpfs-4ppn-4")
     assert f'IO_TARGET_DIR="{GPFS}"' in s
-    assert re.search(r'opts="-r 8m -n \d+m -th \$threads"', s) and "threads=4\n" in s
-    assert 'for op in "create seq" "read seq" "read rand" "write rand"' in s
+    assert re.search(r'seq_opts="-r 8m -n \d+m -th \$threads"', s) and "threads=4\n" in s
+    # IOPS ops: 4k records over a bounded amount (4 threads x 256 MiB)
+    assert 'iops_opts="-r 4k -n 1024m -th $threads"' in s
+    assert 'for op in "create seq" "read seq"; do' in s
+    assert 'for op in "read rand" "write rand"; do' in s
 
 
 def test_genjobs_iozone_in_node_local(genv):
     res = genv.run("--profile", "io-default")
     assert res.exit_code == 0, res.output
     s = genv.script("iozone-local-4ppn-4")
-    assert re.search(r"-t \$threads -s \d+m -r 4m -F \$files", s) and "threads=4\n" in s
+    assert re.search(r"-i 0 -i 1 -e -c -t \$threads -s \d+m -r 4m -F \$files", s)
+    assert re.search(r"-i 0 -i 2 -e -c -t \$threads -s \d+m -r 4k -F \$files", s)   # IOPS at 4k
+    assert "threads=4\n" in s
     assert 'IO_TARGET_DIR="/tmp"' in s
 
 
@@ -234,3 +250,20 @@ def test_genjobs_profile_scripts_have_no_unresolved_tokens(genv):
     for script in (genv.tmp / "io-default" / "b1").glob("*/*.slurm"):
         leftover = re.findall(r"\b[A-Z][A-Z0-9_]*_HERE\w*", script.read_text())
         assert not leftover, f"{script.name}: {leftover}"
+
+
+def test_iops_tests_use_4k_everywhere():
+    from cbench import fioprofile
+    assert fioprofile.IOPS_BS == "4k" == fioprofile.RAND_BS
+    t = iosizing.iozone_tokens(_nv(), ClusterConfig(io_profile="streaming"),
+                               testset="iolocal", benchmark="iozone")
+    assert (t["IOZONE_RECORD"], t["IOZONE_IOPS_RECORD"]) == ("16m", "4k")
+    g = iosizing.gpfsperf_tokens(_nv(), ClusterConfig(), testset="iogpfs", benchmark="gpfsperf")
+    assert (g["GPFSPERF_RECORD"], g["GPFSPERF_IOPS_RECORD"]) == ("8m", "4k")
+    assert g["GPFSPERF_IOPS_BYTES"] == "1024m"              # 4 threads x 256 MiB
+
+
+def test_gpfsperf_iops_bytes_never_exceed_the_file():
+    nv = _nv(gpfs_free=600 * 1024)                          # tiny target -> capped file
+    g = iosizing.gpfsperf_tokens(nv, ClusterConfig(), testset="iogpfs", benchmark="gpfsperf")
+    assert int(g["GPFSPERF_IOPS_BYTES"][:-1]) <= int(g["GPFSPERF_SIZE"][:-1])
