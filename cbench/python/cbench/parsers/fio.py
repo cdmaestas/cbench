@@ -95,6 +95,11 @@ def _clat_to_us(avg: str, unit: str) -> float:
 # Job block header: "rand_rw: (groupid=0, jobs=4): err= 0: pid=1234: ..."
 _JOB_HEADER_RE = re.compile(r"^(\S+): \(groupid=\d+, jobs=\d+\)")
 
+# iometadata_fio.in brackets its run with these lines; output with the first and
+# not the second is a job that died or is still running.
+_JOB_START = "Cbench fio: profile="
+_JOB_END = "Cbench fio: finished"
+
 # cbench's own fio job names (cbench.fioprofile) -> metric role
 _ROLES = {
     "seq_rw": "seq", "rand_rw": "rand",
@@ -171,7 +176,8 @@ class FioParser(BenchmarkParser):
 
     Output without those job names (any other fio job) falls back to generic
     per-direction metrics from the first job block. PASSED if anything parsed;
-    NOTSTARTED if no fio output is detected.
+    NOTSTARTED if no fio output is detected; ERROR(STARTED) for a gen-jobs fio
+    job whose output has the start line but not the end line.
     """
 
     names = ["fio"]
@@ -181,6 +187,10 @@ class FioParser(BenchmarkParser):
             for line in stdout.splitlines():
                 if "CBENCH NOTICE" in line:
                     return ParseResult(status="NOTICE", status_detail=line.strip())
+
+        if _JOB_START in stdout and _JOB_END not in stdout:
+            return ParseResult(status="ERROR(STARTED)",
+                               status_detail="fio job did not finish (still running or killed)")
 
         lines = stdout.splitlines()
         sections: list[tuple[str, list[str]]] = []

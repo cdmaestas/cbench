@@ -76,3 +76,6 @@ else
 	cbench_echo "CBENCH CAVEAT: $FIO lacks the filecreate/filestat/filedelete engines (needs fio >= 3.23); metadata ops not measured"
 fi
 sync
+# end marker: the fio parser reports an unfinished (or still running) job as
+# ERROR(STARTED) instead of PASSED on partial output
+cbench_echo "Cbench fio: finished"
