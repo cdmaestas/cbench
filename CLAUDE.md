@@ -16,7 +16,7 @@ Cbench is an HPC benchmarking framework. v2.0 adds a Python toolchain alongside 
 Read this first — it's the pointer to "where things are right now" so a new session doesn't re-derive it.
 
 - **Active branch:** `v2.0` (all Python work lands here). `main` tracks behind; sync `v2.0` → `main` at release milestones.
-- **Current focus:** _Perl→Python port is feature-complete; repo is post-hardening and CI-green on `v2.0`. No work in flight._
+- **Current focus:** _Node-aware IO arc landed on `v2.0` and `main` (nodecheck, IO sizing, modern IO parsers, HPL.dat, fio as default node-local IOPS/metadata test — §11–§14). No work in flight; next candidates are in the session-state backlog (IO profile bundles first)._
 - **Open PRs / in flight:** _none._
 - **Detailed state:** richer per-session notes (in-flight work, next steps, gotchas, how to run things on this machine) live in Claude's **local memory dir** — not committed to the repo. At the start of a session, check that memory; a cold session can also be told "read session state."
 
