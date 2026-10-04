@@ -37,8 +37,9 @@ def slurm_query(regex: str, cfg: ClusterConfig) -> dict:
         out = subprocess.check_output(
             [cmd, "--noheader", "-o", "%j %T"], text=True, stderr=subprocess.DEVNULL
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        # Reporting "0 jobs" here would make throttled start-jobs submit everything
+        raise AssertionError(f"Slurm queue query `{cmd}` failed: {e}") from e
 
     result: dict = {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
     pat = re.compile(regex) if regex else None
@@ -78,8 +79,9 @@ def torque_query(regex: str, cfg: ClusterConfig) -> dict:
     cmd = cfg.batch_cmd or "qstat"
     try:
         out = subprocess.check_output([cmd, "-a"], text=True, stderr=subprocess.DEVNULL)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        # Reporting "0 jobs" here would make throttled start-jobs submit everything
+        raise AssertionError(f"Torque/PBS queue query `{cmd}` failed: {e}") from e
 
     result: dict = {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
     pat = re.compile(regex) if regex else None
@@ -116,7 +118,10 @@ def lsf_nodespec(nodelist: list[str], cfg: ClusterConfig) -> str:
 
 
 def lsf_query(regex: str, cfg: ClusterConfig) -> dict:
-    return {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
+    # Not implemented: answering "0 jobs" would let throttled start-jobs flood
+    # the queue, so refuse rather than guess.
+    raise AssertionError("LSF queue query is not implemented; --throttledbatch is "
+                         "unavailable with batch_method: lsf")
 
 
 def lsf_extension(cfg: ClusterConfig) -> str:

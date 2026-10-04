@@ -503,13 +503,14 @@ def start_jobs(
                 if dry_run:
                     console.print(f"[dim]Would submit:[/dim] {cmd}")
                 else:
-                    subprocess.run(shlex.split(cmd), shell=False, check=False)
+                    _submit_batch(cmd, script)
                 submitted += 1
                 if delay:
                     time.sleep(delay)
             if remaining:
                 time.sleep(poll_interval)
     else:
+        failed: list[str] = []
         for script in scripts:
             if mode == "interactive":
                 if dry_run:
@@ -517,16 +518,26 @@ def start_jobs(
                 else:
                     env = {**os.environ, "CBENCH_ECHO_OUTPUT": "YES"} if echo_output else None
                     console.print(f"[bold]Running {script.parent.name}[/bold]")
-                    subprocess.run(["bash", str(script)], shell=False, check=False, env=env)
+                    rc = subprocess.run(["bash", str(script)], shell=False, check=False,
+                                        env=env).returncode
+                    # one failing job must not stop the rest of the run, but it
+                    # must not pass unnoticed either
+                    if rc != 0:
+                        failed.append(f"{script.parent.name} (exit {rc})")
+                        console.print(f"[red]{script.parent.name} exited {rc}[/red]")
             else:
                 cmd = schedulers.submit_cmd(str(script), cfg)
                 if dry_run:
                     console.print(f"[dim]Would submit:[/dim] {cmd}")
                 else:
-                    subprocess.run(shlex.split(cmd), shell=False, check=False)
+                    _submit_batch(cmd, script)
             submitted += 1
             if delay:
                 time.sleep(delay)
+        if failed:
+            console.print(f"[red]{len(failed)} of {submitted} interactive job(s) exited nonzero: "
+                          f"{', '.join(failed)}[/red]")
+            raise SystemExit(1)
 
     action = "Would submit" if dry_run else "Submitted"
     console.print(f"[green]{action} {submitted} job(s)[/green]")
@@ -678,6 +689,18 @@ def parse_cmd(
         f"[red]{summary.get('ERROR', 0)} ERROR[/red]  "
         f"[yellow]{summary.get('OTHER', 0)} OTHER[/yellow]"
     )
+
+
+def _submit_batch(cmd: str, script: Path) -> None:
+    """Run a scheduler submit command; a failed submission must not be counted."""
+    try:
+        result = subprocess.run(shlex.split(cmd), shell=False, check=False)
+    except OSError as e:
+        raise AssertionError(f"Failed to run batch submit command {cmd!r} "
+                             f"for {script.parent.name}: {e}") from e
+    if result.returncode != 0:
+        raise AssertionError(f"Batch submit for {script.parent.name} exited "
+                             f"{result.returncode}: {cmd}")
 
 
 def _job_output_files(job_dir: Path) -> tuple[Path | None, Path | None]:

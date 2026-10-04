@@ -128,8 +128,9 @@ def _dispatch(
     try:
         data = hw.parse(buf)
     except Exception as exc:
-        console.print(f"[yellow]Warning: hw_test parser '{module}' failed: {exc}[/yellow]")
-        return
+        # A crashing parser is a bug, not messy input (parsers skip bad lines
+        # themselves); dropping the module's results would hide it.
+        raise AssertionError(f"hw_test parser '{module}' failed: {exc}") from exc
     for k, v in data.items():
         if isinstance(v, str):
             strings[k] = v
@@ -367,7 +368,9 @@ def start_jobs(
             else:
                 result = subprocess.run(argv)
                 if result.returncode != 0:
-                    console.print(f"[yellow]Warning: remote pdsh command exited {result.returncode}[/yellow]")
+                    raise click.ClickException(
+                        f"remote pdsh command exited {result.returncode} "
+                        f"(one or more of {len(nodes)} nodes failed)")
 
 
 def _expand_pdsh(spec: str) -> list[str]:

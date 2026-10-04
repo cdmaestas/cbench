@@ -1024,7 +1024,12 @@ def run_cmd(
                 # the count to use. The sequential job stays single-stream.
                 io_cpus = numcores
                 if cfg.io_threads_basis == "physical" and not explicit_numcores:
-                    io_cpus = _detect_physical_cores() or numcores
+                    io_cpus = _detect_physical_cores()
+                    if not io_cpus:
+                        _logmsg(log, "WARNING: io_threads_basis is physical but physical cores "
+                                     "are unknown (no core ids in /proc/cpuinfo); using "
+                                     f"{numcores} logical CPUs")
+                        io_cpus = numcores
                 fio_numjobs = fioprofile.numjobs(iosizing.cap_threads(io_cpus, cfg))
                 io_profile = io_profile or cfg.io_profile
                 fio_runtime = fio_runtime or cfg.fio_runtime_s
