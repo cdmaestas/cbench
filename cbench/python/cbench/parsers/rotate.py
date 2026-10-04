@@ -51,4 +51,4 @@ class RotateParser(BenchmarkParser):
         return ParseResult(status=f"ERROR({status})")
 
     def metric_units(self) -> dict[str, str]:
-        return {k: "MB/s" for k in ("min_link_bw", "max_link_bw", "ave_link_bw", "aggregate_bw")}
+        return dict.fromkeys(("min_link_bw", "max_link_bw", "ave_link_bw", "aggregate_bw"), "MB/s")

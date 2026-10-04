@@ -36,7 +36,7 @@ def test_walltime_method_1_increases():
 
 
 def test_run_sizes_are_sorted():
-    assert RUN_SIZES == sorted(RUN_SIZES)
+    assert sorted(RUN_SIZES) == RUN_SIZES
 
 
 def test_run_sizes_include_powers_of_two():

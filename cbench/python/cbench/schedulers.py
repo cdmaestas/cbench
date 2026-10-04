@@ -21,17 +21,17 @@ if TYPE_CHECKING:
 # SLURM
 # ---------------------------------------------------------------------------
 
-def slurm_submit_cmd(script: str, cfg: "ClusterConfig") -> str:
+def slurm_submit_cmd(script: str, cfg: ClusterConfig) -> str:
     cmd = cfg.batch_cmd or "sbatch"
     extra = cfg.batch_extraargs
     return f"{cmd} {extra} {script}".strip()
 
 
-def slurm_nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:
+def slurm_nodespec(nodelist: list[str], cfg: ClusterConfig) -> str:
     return f"-w {','.join(nodelist)}" if nodelist else ""
 
 
-def slurm_query(regex: str, cfg: "ClusterConfig") -> dict:
+def slurm_query(regex: str, cfg: ClusterConfig) -> dict:
     cmd = cfg.batch_cmd or "squeue"
     try:
         out = subprocess.check_output(
@@ -56,7 +56,7 @@ def slurm_query(regex: str, cfg: "ClusterConfig") -> dict:
     return result
 
 
-def slurm_extension(cfg: "ClusterConfig") -> str:
+def slurm_extension(cfg: ClusterConfig) -> str:
     return ".slurm"
 
 
@@ -64,17 +64,17 @@ def slurm_extension(cfg: "ClusterConfig") -> str:
 # Torque / PBS
 # ---------------------------------------------------------------------------
 
-def torque_submit_cmd(script: str, cfg: "ClusterConfig") -> str:
+def torque_submit_cmd(script: str, cfg: ClusterConfig) -> str:
     cmd = cfg.batch_cmd or "qsub"
     extra = cfg.batch_extraargs
     return f"{cmd} {extra} {script}".strip()
 
 
-def torque_nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:
+def torque_nodespec(nodelist: list[str], cfg: ClusterConfig) -> str:
     return f"-l nodes={'+'.join(nodelist)}" if nodelist else ""
 
 
-def torque_query(regex: str, cfg: "ClusterConfig") -> dict:
+def torque_query(regex: str, cfg: ClusterConfig) -> dict:
     cmd = cfg.batch_cmd or "qstat"
     try:
         out = subprocess.check_output([cmd, "-a"], text=True, stderr=subprocess.DEVNULL)
@@ -97,7 +97,7 @@ def torque_query(regex: str, cfg: "ClusterConfig") -> dict:
     return result
 
 
-def torque_extension(cfg: "ClusterConfig") -> str:
+def torque_extension(cfg: ClusterConfig) -> str:
     return ".pbs"
 
 
@@ -105,21 +105,21 @@ def torque_extension(cfg: "ClusterConfig") -> str:
 # LSF
 # ---------------------------------------------------------------------------
 
-def lsf_submit_cmd(script: str, cfg: "ClusterConfig") -> str:
+def lsf_submit_cmd(script: str, cfg: ClusterConfig) -> str:
     cmd = cfg.batch_cmd or "bsub"
     extra = cfg.batch_extraargs
     return f"{cmd} {extra} < {script}".strip()
 
 
-def lsf_nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:
+def lsf_nodespec(nodelist: list[str], cfg: ClusterConfig) -> str:
     return ""
 
 
-def lsf_query(regex: str, cfg: "ClusterConfig") -> dict:
+def lsf_query(regex: str, cfg: ClusterConfig) -> dict:
     return {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
 
 
-def lsf_extension(cfg: "ClusterConfig") -> str:
+def lsf_extension(cfg: ClusterConfig) -> str:
     return ".lsf"
 
 
@@ -127,20 +127,20 @@ def lsf_extension(cfg: "ClusterConfig") -> str:
 # Local (no scheduler — run scripts directly with bash)
 # ---------------------------------------------------------------------------
 
-def local_submit_cmd(script: str, cfg: "ClusterConfig") -> str:
+def local_submit_cmd(script: str, cfg: ClusterConfig) -> str:
     import shlex
     return f"bash {shlex.quote(script)}"
 
 
-def local_nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:
+def local_nodespec(nodelist: list[str], cfg: ClusterConfig) -> str:
     return ""
 
 
-def local_query(regex: str, cfg: "ClusterConfig") -> dict:
+def local_query(regex: str, cfg: ClusterConfig) -> dict:
     return {"RUNNING": 0, "QUEUED": 0, "TOTAL": 0}
 
 
-def local_extension(cfg: "ClusterConfig") -> str:
+def local_extension(cfg: ClusterConfig) -> str:
     return ".sh"
 
 
@@ -194,24 +194,24 @@ _SCHEDULERS: dict[str, dict] = {
 }
 
 
-def _get(cfg: "ClusterConfig") -> dict:
+def _get(cfg: ClusterConfig) -> dict:
     adapter = _SCHEDULERS.get(cfg.batch_method)
     if adapter is None:
         raise ValueError(f"Unknown batch_method: {cfg.batch_method!r}")
     return adapter
 
 
-def submit_cmd(script: str, cfg: "ClusterConfig") -> str:
+def submit_cmd(script: str, cfg: ClusterConfig) -> str:
     return _get(cfg)["submit"](script, cfg)
 
 
-def nodespec(nodelist: list[str], cfg: "ClusterConfig") -> str:
+def nodespec(nodelist: list[str], cfg: ClusterConfig) -> str:
     return _get(cfg)["nodespec"](nodelist, cfg)
 
 
-def query(regex: str, cfg: "ClusterConfig") -> dict:
+def query(regex: str, cfg: ClusterConfig) -> dict:
     return _get(cfg)["query"](regex, cfg)
 
 
-def extension(cfg: "ClusterConfig") -> str:
+def extension(cfg: ClusterConfig) -> str:
     return _get(cfg)["extension"](cfg)

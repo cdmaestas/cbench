@@ -30,7 +30,7 @@ import shlex
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 from cbench.hostlist import compress
 
@@ -203,7 +203,7 @@ def _is_shared(fstype: str) -> bool:
     return fstype in _SHARED_FSTYPES or fstype.startswith("nfs") or fstype.startswith("fuse.")
 
 
-def _int(value: Optional[str]) -> Optional[int]:
+def _int(value: str | None) -> int | None:
     try:
         return int(value) if value is not None else None
     except ValueError:
@@ -364,7 +364,7 @@ def build_facts(
     allow_heterogeneous: bool,
     per_host: dict[str, dict[str, str]],
     result: dict,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     responded = result["responded"]
@@ -391,7 +391,7 @@ def write_facts(path: Path, facts: dict) -> None:
 
 
 def load_facts(
-    cbenchtest: str | Path, name_or_path: str, now: Optional[datetime] = None
+    cbenchtest: str | Path, name_or_path: str, now: datetime | None = None
 ) -> tuple[dict, list[str]]:
     """Load a facts file; return (facts, warnings). Refuses failed checks."""
     p = Path(name_or_path)

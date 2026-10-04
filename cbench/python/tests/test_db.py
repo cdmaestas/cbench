@@ -12,14 +12,14 @@ def db(tmp_path):
 
 
 def _make_result(**kwargs) -> ParseResult:
-    defaults = dict(
-        cluster="test", testset="bandwidth", ident="run1",
-        jobname="osubw-2ppn-16", benchmark="osubw",
-        numprocs=16, ppn=2, numnodes=8,
-        status="PASSED",
-        metrics={"unidir_bw": 9500.0},
-        metric_units={"unidir_bw": "MB/s"},
-    )
+    defaults = {
+        "cluster": "test", "testset": "bandwidth", "ident": "run1",
+        "jobname": "osubw-2ppn-16", "benchmark": "osubw",
+        "numprocs": 16, "ppn": 2, "numnodes": 8,
+        "status": "PASSED",
+        "metrics": {"unidir_bw": 9500.0},
+        "metric_units": {"unidir_bw": "MB/s"},
+    }
     defaults.update(kwargs)
     return ParseResult(**defaults)
 

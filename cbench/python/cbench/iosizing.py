@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 CAPACITY_FRACTION = 0.9
 
@@ -53,13 +52,13 @@ def _shell_safe(text: str) -> str:
 
 @dataclass
 class NodeValues:
-    cpus: Optional[int]             # MIN logical CPUs per node
-    mem_io_kb: Optional[int]        # MAX MemTotal (IO sizing)
-    mem_nonio_kb: Optional[int]     # MIN MemTotal (memory-sized benchmarks)
+    cpus: int | None             # MIN logical CPUs per node
+    mem_io_kb: int | None        # MAX MemTotal (IO sizing)
+    mem_nonio_kb: int | None     # MIN MemTotal (memory-sized benchmarks)
     targets: dict = field(default_factory=dict)  # name -> {path, fstype, shared, free_kb_min}
     source: str = "none"            # "nodefacts:<name>" | "cluster.yaml" | "none"
     warnings: list = field(default_factory=list)
-    cores: Optional[int] = None     # MIN physical cores per node (facts v2), if known
+    cores: int | None = None     # MIN physical cores per node (facts v2), if known
 
 
 def _resolve_targets(cfg, facts_targets: dict, warnings: list) -> dict:
@@ -92,7 +91,7 @@ def _gpfs_alias(targets: dict) -> dict:
     return targets
 
 
-def resolve_node_values(cfg, facts: Optional[dict] = None) -> NodeValues:
+def resolve_node_values(cfg, facts: dict | None = None) -> NodeValues:
     """Pick node CPU/memory values from a facts file, else explicit config."""
     warnings: list[str] = []
     if facts:
@@ -154,7 +153,7 @@ def io_threads(nv: NodeValues, cfg) -> int:
     return cap_threads(count, cfg)
 
 
-def target_name_for(benchmark: str) -> Optional[str]:
+def target_name_for(benchmark: str) -> str | None:
     for prefix, name in _TARGET_FOR.items():
         if benchmark.startswith(prefix):
             return name
@@ -179,7 +178,7 @@ def _require_mem(nv: NodeValues, testset: str, benchmark: str) -> int:
     return nv.mem_io_kb
 
 
-def _free_cap_kb(nv: NodeValues, target: Optional[str]) -> tuple[Optional[int], Optional[bool]]:
+def _free_cap_kb(nv: NodeValues, target: str | None) -> tuple[int | None, bool | None]:
     t = nv.targets.get(target or "", {})
     free = t.get("free_kb_min")
     if not free:

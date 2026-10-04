@@ -47,4 +47,4 @@ class RotlatParser(BenchmarkParser):
         return ParseResult(status=f"ERROR({status})")
 
     def metric_units(self) -> dict[str, str]:
-        return {k: "us" for k in ("min_latency", "max_latency", "ave_latency")}
+        return dict.fromkeys(("min_latency", "max_latency", "ave_latency"), "us")

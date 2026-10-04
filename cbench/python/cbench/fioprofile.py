@@ -24,7 +24,6 @@ gpfsperf's record size and IOR's transfer size (-t).
 
 from __future__ import annotations
 
-from typing import Optional
 
 PROFILES = {"ai": "1m", "general": "4m", "hpc": "8m", "streaming": "16m"}
 PROFILE_CHOICES = ["auto", *PROFILES]
@@ -56,7 +55,7 @@ def numjobs(threads: int) -> int:
     return max(1, int(threads))
 
 
-def seq_block_size(profile: str, fstype: Optional[str], override: str = "") -> tuple[str, str]:
+def seq_block_size(profile: str, fstype: str | None, override: str = "") -> tuple[str, str]:
     """(resolved profile name, sequential block size)."""
     if profile == "auto":
         profile = "hpc" if (fstype or "").lower() in PARALLEL_FSTYPES else "general"

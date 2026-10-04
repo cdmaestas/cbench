@@ -8,7 +8,6 @@ Usage:
 from __future__ import annotations
 
 import subprocess
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -47,13 +46,13 @@ def _partition_nodes(partition: str) -> str:
               help="Test tree root; facts go to <cbenchtest>/nodefacts/ (default: .)")
 @click.option("--config", default=None)
 def nodecheck_cmd(
-    nodelist: Optional[str],
-    partition: Optional[str],
-    ignore_nodes: Optional[str],
-    name: Optional[str],
+    nodelist: str | None,
+    partition: str | None,
+    ignore_nodes: str | None,
+    name: str | None,
     allow_heterogeneous: bool,
-    cbenchtest: Optional[str],
-    config: Optional[str],
+    cbenchtest: str | None,
+    config: str | None,
 ) -> None:
     """Probe every node in a pool and verify it is homogeneous.
 

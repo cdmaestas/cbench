@@ -14,7 +14,6 @@ import shlex
 import statistics
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -209,7 +208,7 @@ def nodehwtest_group() -> None:
 @click.option("--ident", default=None, help="Test identifier (default: <cluster>1)")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 @click.option("--config", default=None)
-def gen_jobs(nodelist: str, ident: Optional[str], cbenchtest: Optional[str], config: Optional[str]) -> None:
+def gen_jobs(nodelist: str, ident: str | None, cbenchtest: str | None, config: str | None) -> None:
     """Create a nodehwtest identifier directory and record the node list."""
     cfg = load_config(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
@@ -248,21 +247,21 @@ def gen_jobs(nodelist: str, ident: Optional[str], cbenchtest: Optional[str], con
 @click.option("--config", default=None)
 @click.option("--dry-run", is_flag=True)
 def start_jobs(
-    ident: Optional[str],
-    nodelist: Optional[str],
+    ident: str | None,
+    nodelist: str | None,
     remote: bool,
     batch: bool,
     nodebatch: bool,
     batchargs: str,
-    match: Optional[str],
-    exclude: Optional[str],
-    test_class: Optional[str],
-    preamble: Optional[str],
+    match: str | None,
+    exclude: str | None,
+    test_class: str | None,
+    preamble: str | None,
     background: bool,
-    ignore_nodes: Optional[str],
-    cbenchtest: Optional[str],
-    cbenchome: Optional[str],
-    config: Optional[str],
+    ignore_nodes: str | None,
+    cbenchtest: str | None,
+    cbenchome: str | None,
+    config: str | None,
     dry_run: bool,
 ) -> None:
     """Start nodehwtest jobs via batch scheduler or remote (pdsh) execution."""
@@ -433,20 +432,20 @@ def _build_batch_script(cfg, node: str, jobname: str, nodecmd: str, ident: str, 
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 @click.option("--config", default=None)
 def parse_cmd(
-    ident: Optional[str],
+    ident: str | None,
     characterize: bool,
-    save_targets: Optional[str],
-    load_targets: Optional[str],
+    save_targets: str | None,
+    load_targets: str | None,
     lastnruns: int,
-    only_run: Optional[int],
-    match: Optional[str],
-    test_class: Optional[str],
+    only_run: int | None,
+    match: str | None,
+    test_class: str | None,
     no_errors: bool,
     iteration_analyze: bool,
     output: str,
     store: bool,
-    cbenchtest: Optional[str],
-    config: Optional[str],
+    cbenchtest: str | None,
+    config: str | None,
 ) -> None:
     """Parse nodehwtest output files and report statistical outliers."""
     cfg = load_config(config)

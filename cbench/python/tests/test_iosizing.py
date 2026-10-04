@@ -287,7 +287,7 @@ def test_genjobs_bonnie_capped_and_warned(genv):
     assert "-y s" in s and not re.search(r"-y\s*\"", s)
     # one instance per IO thread (4 CPUs), sharing a -p semaphore of that size
     assert "instances=4\n" in s and '-p$instances"' in s
-    assert "for i in $(seq 1 $instances)" in s
+    assert 'for _ in $(seq 1 "$instances")' in s
     # single-node, so generated once rather than per ppn x size
     assert sorted(p.name for p in (genv.tmp / "iometadata" / "t1").iterdir()
                   if p.name.startswith("bonnie")) == ["bonnie-4ppn-4"]

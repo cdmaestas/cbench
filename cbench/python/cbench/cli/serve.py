@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -310,7 +309,7 @@ def _prometheus_text(db) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _build_html(no_cdn: bool, assets_dir: Optional[Path]) -> str:
+def _build_html(no_cdn: bool, assets_dir: Path | None) -> str:
     """Return the dashboard HTML with appropriate asset loading strategy."""
     if no_cdn:
         # Try local asset files first
@@ -342,7 +341,7 @@ def _build_html(no_cdn: bool, assets_dir: Optional[Path]) -> str:
     )
 
 
-def _make_flask_app(db_path: Path, no_cdn: bool = False, assets_dir: Optional[Path] = None):
+def _make_flask_app(db_path: Path, no_cdn: bool = False, assets_dir: Path | None = None):
     try:
         from flask import Flask, Response, jsonify, request, send_from_directory
     except ImportError:
@@ -429,9 +428,9 @@ def _make_flask_app(db_path: Path, no_cdn: bool = False, assets_dir: Optional[Pa
 def serve_cmd(
     port: int,
     host: str,
-    cbenchtest: Optional[str],
+    cbenchtest: str | None,
     no_cdn: bool,
-    assets_dir: Optional[str],
+    assets_dir: str | None,
 ) -> None:
     """Start a web dashboard for browsing Cbench results.
 

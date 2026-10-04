@@ -40,4 +40,4 @@ class SppmParser(BenchmarkParser):
         return ParseResult(status=f"ERROR({status})")
 
     def metric_units(self) -> dict[str, str]:
-        return {k: "s" for k in ("hyd_cpu_time", "hyd_wall_time", "io_cpu_time", "io_wall_time")}
+        return dict.fromkeys(("hyd_cpu_time", "hyd_wall_time", "io_cpu_time", "io_wall_time"), "s")
