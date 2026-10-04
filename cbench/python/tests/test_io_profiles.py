@@ -252,3 +252,10 @@ def test_snb_detect_physical_cores(tmp_path):
     f.write_text("processor\t: 0\nprocessor\t: 1\n")      # no core ids (some ARM/VMs)
     assert snb._detect_physical_cores(f) == 0
     assert snb._detect_physical_cores(tmp_path / "missing") == 0
+
+
+def test_genjobs_fio_runtime_flag_overrides_config(genv):
+    res = genv.run("--profile", "io-default", "--fio-runtime", "30",
+                   cfg_extra="fio_runtime_s: 600\n")
+    assert res.exit_code == 0, res.output
+    assert "runtime=30\n" in genv.script("fio-local-1ppn-1")

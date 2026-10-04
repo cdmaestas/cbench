@@ -79,10 +79,10 @@ def test_start_jobs_local_dry_run(tmp_path):
     from click.testing import CliRunner
     from cbench.cli.main import cli
 
-    # interactive mode globs for the batch extension from config (default: .slurm)
+    # interactive mode runs the .sh scripts gen-jobs writes for --run-type interactive
     ident_dir = tmp_path / "bandwidth" / "run1" / "xhpl-1ppn-1"
     ident_dir.mkdir(parents=True)
-    script = ident_dir / "xhpl-1ppn-1.slurm"
+    script = ident_dir / "xhpl-1ppn-1.sh"
     script.write_text("#!/bin/bash\necho hello\n")
 
     runner = CliRunner()

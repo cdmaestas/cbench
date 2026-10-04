@@ -8,6 +8,11 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- `gen-jobs --fio-runtime SECONDS` sets the fio time cap for one generation, so
+  cluster.yaml doesn't need editing.
+- `start-jobs --interactive --echo-output` streams each job's output to the terminal
+  as it runs. It sets `CBENCH_ECHO_OUTPUT=YES`, and output still goes to the job's
+  `.o` file.
 - **IO profiles:** `cbench gen-jobs --profile io-default [--group node-local|parallel|gpfs|all]`
   generates a bundle of IO benchmarks into one testset directory
   (`$CBENCHTEST/io-default/<ident>/`), which you then start and parse with
@@ -82,6 +87,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **`start-jobs --interactive` ran the batch scripts.** It looked for scripts with the
+  scheduler's extension (e.g. `.slurm`) instead of the `.sh` interactive scripts
+  that gen-jobs writes.
 - **`cbench parse` / `rm-failed` read an arbitrary output file** when a job directory
   held more than one `*.o*` (re-runs, stray files). They now use the newest run's
   stdout and its matching `.e<id>` stderr.

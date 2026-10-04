@@ -113,6 +113,8 @@ cli.add_command(serve_cmd)
 @click.option("--nodefacts", default=None, metavar="NAME|PATH",
               help="Node facts from `cbench nodecheck` (name under <cbenchtest>/nodefacts/ or a "
                    ".json path); sizes IO tests from the real compute nodes")
+@click.option("--fio-runtime", type=click.IntRange(min=1), default=None, metavar="SECONDS",
+              help="Time cap per fio data job (default: cluster.yaml fio_runtime_s, else 300)")
 def gen_jobs(
     testset: Optional[str],
     profile: Optional[str],
@@ -126,6 +128,7 @@ def gen_jobs(
     cbenchtest: Optional[str],
     match: Optional[str],
     nodefacts: Optional[str],
+    fio_runtime: Optional[int],
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset or IO profile."""
     from cbench import hplsizing, iosizing, profiles
@@ -137,6 +140,8 @@ def gen_jobs(
         raise click.UsageError("--group only applies with --profile")
 
     cfg = _cfg(config)
+    if fio_runtime:
+        cfg.fio_runtime_s = fio_runtime
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
     match_re = _safe_regex(match, "--match")
@@ -368,6 +373,9 @@ def gen_jobs(
 @click.option("--ident", required=True)
 @click.option("--batch", "mode", flag_value="batch", default=True)
 @click.option("--interactive", "mode", flag_value="interactive")
+@click.option("--echo-output", is_flag=True,
+              help="With --interactive: also stream each job's output to the terminal "
+                   "(sets CBENCH_ECHO_OUTPUT=YES; output still goes to the job's .o file)")
 @click.option("--throttledbatch", "throttle", default=None, type=int,
               help="Keep N jobs running+queued at a time")
 @click.option("--match", default=None, help="Regex to filter job names")
@@ -384,6 +392,7 @@ def start_jobs(
     testset: str,
     ident: str,
     mode: str,
+    echo_output: bool,
     throttle: Optional[int],
     match: Optional[str],
     exclude: Optional[str],
@@ -396,6 +405,8 @@ def start_jobs(
     cbenchtest: Optional[str],
 ) -> None:
     """Submit jobs from a generated testset/ident directory."""
+    if echo_output and mode != "interactive":
+        raise click.UsageError("--echo-output only applies with --interactive")
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     ident_dir = _safe_path(cbenchtest, testset, ident)
@@ -407,7 +418,9 @@ def start_jobs(
     match_re = _safe_regex(match, "--match")
     exclude_re = _safe_regex(exclude, "--exclude")
 
-    ext = schedulers.extension(cfg)
+    # gen-jobs writes batch scripts with the scheduler's extension and
+    # interactive scripts as .sh; run the kind that was asked for
+    ext = ".sh" if mode == "interactive" else schedulers.extension(cfg)
     # Discover job scripts matching *-*ppn-* pattern
     scripts: list[Path] = sorted(ident_dir.glob(f"**/*-*ppn-*{ext}"))
 
@@ -462,7 +475,9 @@ def start_jobs(
                 if dry_run:
                     console.print(f"[dim]Would run:[/dim] bash {script}")
                 else:
-                    subprocess.run(["bash", str(script)], shell=False, check=False)
+                    env = {**os.environ, "CBENCH_ECHO_OUTPUT": "YES"} if echo_output else None
+                    console.print(f"[bold]Running {script.parent.name}[/bold]")
+                    subprocess.run(["bash", str(script)], shell=False, check=False, env=env)
             else:
                 cmd = schedulers.submit_cmd(str(script), cfg)
                 if dry_run:

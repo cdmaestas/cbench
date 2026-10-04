@@ -71,7 +71,8 @@ Used exclusively by `cbench nodehwtest parse`. Same auto-registration pattern as
 ### 6. CLI (`cli/`)
 Six subgroups wired into `cli/main.py`:
 - `gen-jobs` / `start-jobs` / `parse` / `query` — MPI benchmark workflow
-- `gen-jobs --profile` — IO profile bundles (§15)
+- `gen-jobs --profile` — IO profile bundles (§15); `gen-jobs --fio-runtime` overrides `fio_runtime_s`
+- `start-jobs --interactive` runs the `.sh` scripts gen-jobs writes; `--echo-output` sets `CBENCH_ECHO_OUTPUT=YES` so `cbench_functions` tees job output to the terminal
 - `nodehwtest gen-jobs` / `start-jobs` / `parse` — single-node hw test workflow
 - `snb run` / `report` / `store` / `compare` — single-node benchmark suite
 - `build run` / `build all` / `build list` / `build check` / `build update` — benchmark builder framework
