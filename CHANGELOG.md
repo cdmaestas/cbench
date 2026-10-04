@@ -44,12 +44,20 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   target immediately before running and exit with `CBENCH NOTICE: insufficient
   space` instead of failing mid-run with ENOSPC.
 - `cbench utils find-n --nodefacts` sizes HPL N from the smallest node's MemTotal.
+- **`gen-jobs` writes HPL.dat / hpccinf.txt** for linpack (`xhpl`, `xhpl2`, `xhplintel`)
+  and `hpcc` jobs, as the Perl tool did: N per `memory_util_factors` entry from the
+  smallest node's MemTotal (`--nodefacts`) or `memory_per_node_mb`, P×Q from the
+  proc count (P:Q within 1:3; counts with no such grid are skipped with a warning).
+  The `shakedown` testset uses a single 0.45 factor.
 - `cbench parse` keeps `CBENCH CAVEAT:` lines from job output (e.g. "IO size capped
   to free space") in the result's `status_detail`, so capped runs stay flagged.
 - mdtest results now include `directory_rename`, `file_read`, `tree_create` and
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **Linpack and HPCC jobs from `gen-jobs` could not run**: no HPL.dat/hpccinf.txt
+  was generated, and the binary path was doubled (`<bin>//<bin>/xhpl`; `xhpl2` and
+  `xhplintel` rendered as an empty name).
 - **IO jobs were not parsed.** `cbench parse` looked parsers up by exact benchmark
   name, so `ior1mNtoN`/`ior1mNto1` jobs came back `NO_PARSER`. Parsers now carry
   the Perl `alias_spec` patterns (IOR, NPB, xhpl, OSU, IMB, mpibench, hpccg,
@@ -75,6 +83,8 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   for the `module` command (Lmod sites already have one; a conflicting weak
   dependency is skipped, not fatal). On RHEL, Open MPI installs outside PATH: use
   `module load mpi/openmpi-x86_64` or add `/usr/lib64/openmpi/bin` to PATH.
+- **`gen-jobs` for the `linpack`, `hpcc` and `shakedown` testsets now needs a memory
+  source** too (same rule as IO below), since HPL N is sized from node memory.
 - **`gen-jobs` for the `io` and `iometadata` testsets now needs a memory source**:
   `--nodefacts` (from `cbench nodecheck`) or `memory_per_node_mb` set explicitly in
   cluster.yaml. The built-in default is no longer used to size IO jobs.

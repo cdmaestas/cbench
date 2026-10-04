@@ -108,7 +108,7 @@ def gen_jobs(
     nodefacts: Optional[str],
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset."""
-    from cbench import iosizing
+    from cbench import hplsizing, iosizing
     from cbench.nodecheck import NodecheckError, load_facts
 
     cfg = _cfg(config)
@@ -153,7 +153,21 @@ def gen_jobs(
     if not ppn and nv.cpus and any(b.startswith("mdtest") for b in benchmark_templates):
         ppn_values = iosizing.ppn_levels_for_metadata(ppn_values, cfg.procs_per_node, nv.cpus)
         console.print(f"Metadata ppn levels from {nv.source} ({nv.cpus} CPUs/node): {ppn_values}")
+    # Linpack/HPCC: HPL.dat / hpccinf.txt are memory-sized (MIN MemTotal).
+    hpl_benches = [b for b in benchmark_templates if hplsizing.input_spec(b)]
+    hpl_mem_mb = (nv.mem_nonio_kb or 0) // 1024
+    hpl_factors = hplsizing.mem_util_factors(cfg, testset)
+    if hpl_benches and not hpl_mem_mb:
+        raise click.ClickException(
+            f"testset '{testset}' sizes {', '.join(hpl_benches)} (HPL N) from node memory: pass "
+            "--nodefacts NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly "
+            "in cluster.yaml"
+        )
+    if hpl_benches:
+        console.print(f"HPL sizing from {nv.source}: {hpl_mem_mb} MB/node (min MemTotal), "
+                      f"memory_util_factors {hpl_factors}")
     caveats: set[str] = set()
+    skipped_no_grid: list[str] = []
 
     run_types = ["batch", "interactive"] if run_type == "both" else [run_type]
     total = 0
@@ -185,6 +199,21 @@ def gen_jobs(
                     raise click.ClickException(str(exc)) from exc
                 if io_extra.get("IO_CAVEAT"):
                     caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
+                hpl_spec = hplsizing.input_spec(bench)
+                hpl_input = None
+                if hpl_spec:
+                    try:
+                        hpl_input = hplsizing.render(
+                            hpl_spec, templates_dir, numprocs=numprocs, ppn=ppn_val,
+                            mem_per_node_mb=hpl_mem_mb, factors=hpl_factors,
+                        )
+                    except hplsizing.HplSizingError as exc:
+                        raise click.ClickException(str(exc)) from exc
+                    if hpl_input is None:
+                        skipped_no_grid.append(jobname)
+                        continue
+                    io_extra = {**io_extra,
+                                "MEM_UTIL_FACTORS": ",".join(str(f) for f in hpl_factors)}
                 for rtype in run_types:
                     try:
                         raw = templates.build_job_template(testset, bench, rtype, cfg)
@@ -223,6 +252,19 @@ def gen_jobs(
 
                     total += 1
 
+                if hpl_input is not None:
+                    input_path = _safe_path(cbenchtest, testset, ident, jobname, hpl_spec.filename)
+                    if dry_run:
+                        console.rule(str(input_path))
+                        console.print(hpl_input)
+                    else:
+                        input_path.parent.mkdir(parents=True, exist_ok=True)
+                        input_path.write_text(hpl_input)
+
+    if skipped_no_grid:
+        console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "
+                      f"{len(skipped_no_grid)} job(s), not generated: "
+                      f"{', '.join(skipped_no_grid)}[/yellow]")
     for c in sorted(caveats):
         console.print(f"[yellow]WARNING (capacity cap): {c}[/yellow]")
     action = "Would generate" if dry_run else "Generated"
