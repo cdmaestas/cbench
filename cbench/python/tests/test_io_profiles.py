@@ -259,3 +259,11 @@ def test_genjobs_fio_runtime_flag_overrides_config(genv):
                    cfg_extra="fio_runtime_s: 600\n")
     assert res.exit_code == 0, res.output
     assert "runtime=30\n" in genv.script("fio-local-1ppn-1")
+
+
+def test_interactive_header_names_the_sh_script(genv):
+    res = genv.run("--profile", "io-default", "--run-type", "both")
+    assert res.exit_code == 0, res.output
+    job = genv.tmp / "io-default" / "p1" / "fio-local-1ppn-1"
+    assert "fio-local-1ppn-1/fio-local-1ppn-1.sh" in (job / "fio-local-1ppn-1.sh").read_text()
+    assert "fio-local-1ppn-1/fio-local-1ppn-1.slurm" in (job / "fio-local-1ppn-1.slurm").read_text()
