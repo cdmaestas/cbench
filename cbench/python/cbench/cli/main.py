@@ -62,7 +62,7 @@ def _db_path(cbenchtest: str) -> Path:
 _DEFAULT_SKIP: dict[str, set[str]] = {"iometadata": {"fileop"}}
 #: single-node, non-MPI benchmarks generated once (numprocs 1), not per ppn x size;
 #: they size their own concurrency from the IO thread count
-_SINGLE_INSTANCE = {"fio", "bonnie"}
+_SINGLE_INSTANCE = {"fio", "bonnie", "iozone", "gpfsperf"}
 
 
 def _cfg(config: Optional[str]) -> ClusterConfig:
@@ -149,6 +149,22 @@ def gen_jobs(
     # Determine which PPN values to use
     ppn_values = [int(p) for p in ppn.split(",")] if ppn else cfg.ppn_levels
 
+    # Node-aware IO: resolve node values up front and fail BEFORE rendering
+    # anything if an IO template needs values we don't have (an unset token
+    # would otherwise render as an empty string, e.g. a broken `-b ` for IOR).
+    facts = None
+    if nodefacts:
+        try:
+            facts, fact_warnings = load_facts(cbenchtest, nodefacts)
+        except NodecheckError as exc:
+            raise click.ClickException(str(exc)) from exc
+        for w in fact_warnings:
+            console.print(f"[yellow]WARNING: {w}[/yellow]")
+    nv = iosizing.resolve_node_values(cfg, facts)
+    if nv.cpus:
+        iosizing.io_threads(nv, cfg)  # surfaces io_threads_basis fallback warnings now
+    for w in nv.warnings:
+        console.print(f"[yellow]WARNING: {w}[/yellow]")
     # Members to generate: (home testset whose template is used, template
     # benchmark, benchmark name in the job name). Jobs are written under
     # out_ts — the testset, or the profile acting as a virtual testset.
@@ -163,9 +179,11 @@ def gen_jobs(
         used: list[str] = []
         for gname in selected:
             group = prof.groups[gname]
-            if group.target not in cfg.io_targets:
+            if not (nv.targets.get(group.target) or {}).get("path"):
+                hint = (" (and io_targets.parallel is not GPFS per the node facts)"
+                        if group.target == "gpfs" else "")
                 console.print(f"[yellow]WARNING: skipping group '{gname}': io_targets.{group.target} "
-                              f"is not set in cluster.yaml[/yellow]")
+                              f"is not set in cluster.yaml{hint}[/yellow]")
                 continue
             if not group.members:
                 console.print(f"[yellow]WARNING: group '{gname}' has no benchmarks yet[/yellow]")
@@ -195,22 +213,6 @@ def gen_jobs(
                               f"(superseded; select with --match)")
     benchmark_templates = [bench for _home, bench, _out in members]
 
-    # Node-aware IO: resolve node values up front and fail BEFORE rendering
-    # anything if an IO template needs values we don't have (an unset token
-    # would otherwise render as an empty string, e.g. a broken `-b ` for IOR).
-    facts = None
-    if nodefacts:
-        try:
-            facts, fact_warnings = load_facts(cbenchtest, nodefacts)
-        except NodecheckError as exc:
-            raise click.ClickException(str(exc)) from exc
-        for w in fact_warnings:
-            console.print(f"[yellow]WARNING: {w}[/yellow]")
-    nv = iosizing.resolve_node_values(cfg, facts)
-    if nv.cpus:
-        iosizing.io_threads(nv, cfg)  # surfaces io_threads_basis fallback warnings now
-    for w in nv.warnings:
-        console.print(f"[yellow]WARNING: {w}[/yellow]")
     sized = [b for home, b, _o in members if iosizing.needs_io_sizing(home, b)]
     if sized and not nv.mem_io_kb:
         raise click.ClickException(
@@ -277,6 +279,10 @@ def gen_jobs(
                                                                 benchmark=bench)
                         if warning:
                             gen_warnings.add(f"{jobname}: {warning}")
+                    elif bench == "iozone":
+                        io_extra = iosizing.iozone_tokens(nv, cfg, testset=home, benchmark=bench)
+                    elif bench == "gpfsperf":
+                        io_extra = iosizing.gpfsperf_tokens(nv, cfg, testset=home, benchmark=bench)
                     elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
                         io_extra = iosizing.ior_tokens(nv, ppn=ppn_val, numprocs=numprocs,
                                                        testset=home, benchmark=bench)

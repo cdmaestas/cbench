@@ -145,8 +145,9 @@ def test_select_groups():
 def test_io_default_composition():
     p = profiles.get_profile("io-default")
     names = {g: [m.benchmark for m in grp.members] for g, grp in p.groups.items()}
-    assert names["node-local"] == ["fio", "bonnie"]
+    assert names["node-local"] == ["fio", "bonnie", "iozone"]
     assert names["parallel"] == ["ior1mNtoN", "mdtest"]
+    assert names["gpfs"] == ["gpfsperf"]
 
 
 @pytest.mark.parametrize("bench, cls", [
@@ -191,16 +192,19 @@ def genv(tmp_path):
 def test_profile_default_is_node_local(genv):
     res = genv.run("--profile", "io-default")
     assert res.exit_code == 0, res.output
-    assert genv.jobs() == ["bonnie-local-1ppn-1", "fio-local-1ppn-1"]
+    assert genv.jobs() == ["bonnie-local-1ppn-1", "fio-local-1ppn-1", "iozone-local-1ppn-1"]
     s = genv.script("fio-local-1ppn-1")
     assert 'Cbench benchmark: fio-local"' in s and "/io-default/p1/fio-local-1ppn-1" in s
     assert "numjobs=4\n" in s
 
 
 def test_profile_all_groups_skips_unconfigured_targets(genv):
-    res = genv.run("--profile", "io-default", "--group", "all")
+    # facts say the parallel target is xfs here, and there is no io_targets.gpfs
+    facts = _facts()
+    facts["aggregate"]["targets"]["parallel"]["fstype"] = "xfs"
+    res = genv.run("--profile", "io-default", "--group", "all", facts=facts)
     assert res.exit_code == 0, res.output
-    assert "skipping group 'gpfs'" in res.output
+    assert "skipping group 'gpfs'" in res.output and "is not GPFS" in res.output
     assert "generating groups node-local, parallel" in res.output
     jobs = genv.jobs()
     assert "ior1mNtoN-parallel-4ppn-4" in jobs and "mdtest-parallel-4ppn-4" in jobs

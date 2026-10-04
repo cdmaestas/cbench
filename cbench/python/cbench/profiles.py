@@ -9,7 +9,9 @@ Members are grouped by the IO target class they exercise. Job names carry the
 group (``fio-local-1ppn-1``) so one benchmark can appear in several groups;
 ``parsers.get_parser`` resolves ``fio-local`` back to the fio parser.
 
-A group whose ``io_targets`` entry is not configured is skipped with a warning.
+A group whose target is not available (``io_targets`` entry unset; for
+``gpfs``, no ``io_targets.gpfs`` and no GPFS ``parallel`` target in the node
+facts) is skipped with a warning.
 Only the profile's default groups are generated unless ``--group`` names
 others (or ``all``).
 """
@@ -46,13 +48,17 @@ PROFILES: dict[str, Profile] = {
             "node-local": Group("node-local", "local", (
                 Member("iometadata", "fio"),
                 Member("iometadata", "bonnie"),
+                Member("iolocal", "iozone"),
             )),
             "parallel": Group("parallel", "parallel", (
                 Member("io", "ior1mNtoN"),
                 Member("iometadata", "mdtest"),
             )),
-            # gpfsperf joins here (PR B); empty until then
-            "gpfs": Group("gpfs", "gpfs", ()),
+            # target: io_targets.gpfs, else io_targets.parallel when nodecheck
+            # saw it is GPFS (iosizing._gpfs_alias)
+            "gpfs": Group("gpfs", "gpfs", (
+                Member("iogpfs", "gpfsperf"),
+            )),
         },
         default_groups=("node-local",),
     ),

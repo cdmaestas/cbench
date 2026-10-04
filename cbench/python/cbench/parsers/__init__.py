@@ -4,7 +4,7 @@ from cbench.parsers import (  # noqa: F401 — side-effect: registers parsers
     amg, beff, bonnie, com, fileop, graph500, hpccg, irs,
     lammps, laten, mdtest, miranda, mpibench, mpigraph, mpioverhead,
     phdmesh, rotate, rotlat, routecheck, sppm, sqmr,
-    stress, sweep3d, trilinos,
+    stress, sweep3d, trilinos, iozone,
 )
 
 __all__ = ["BenchmarkParser", "ParseResult", "REGISTRY", "get_parser"]

@@ -44,9 +44,13 @@ def test_io_job_names_resolve_to_parsers(bench, cls):
     assert isinstance(get_parser(bench), cls)
 
 
-@pytest.mark.parametrize("bench", ["prior", "iozone", "nosuchbench"])
+@pytest.mark.parametrize("bench", ["prior", "iozonex", "nosuchbench"])
 def test_alias_must_match_whole_name(bench):
     assert get_parser(bench) is None
+
+
+def test_iozone_is_not_caught_by_the_ior_alias():
+    assert type(get_parser("iozone")).__name__ == "IozoneParser"
 
 
 @pytest.mark.parametrize("bench, parser", [
