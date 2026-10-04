@@ -8,6 +8,17 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **iozone in the `io-default` profile's `node-local` group**, run in iozone's throughput
+  mode with one thread per IO thread. Each thread writes its share of 2× RAM, and
+  the record size comes from the fio profile. A new `iozone` parser reads the
+  results; the nodehwtest parser is unchanged.
+- **gpfsperf as the `gpfs` group:** sequential create, sequential and random read,
+  and random write on one file of 2× RAM, with `-th` set to the IO thread count.
+  - It runs on `io_targets.gpfs`, or on `io_targets.parallel` when nodecheck saw
+    that it's GPFS.
+  - It uses the `gpfsperf` binary GPFS ships. A new optional `gpfsperf` builder
+    compiles one from the GPFS samples for variants such as RDMA, and
+    `build all` skips it on hosts without GPFS.
 - `gen-jobs --fio-runtime SECONDS` sets the fio time cap for one generation, so
   cluster.yaml doesn't need editing.
 - `start-jobs --interactive --echo-output` streams each job's output to the terminal
@@ -124,6 +135,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **The gpfsperf parser handles several operations in one output.** When there's more
+  than one, metrics are prefixed `<op>_<pattern>_` (for example `read_rand_iops`).
+  Before, each operation overwrote the last. A single operation keeps the old names.
 - **fio jobs and bonnie instances now follow the IO thread rule.** fio previously used at
   most 16 jobs and bonnie always ran 3 instances; both now use every CPU unless
   `io_threads_max` is set. bonnie's per-instance `-s`/`-r` shrink to match, so the total

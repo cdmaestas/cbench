@@ -18,7 +18,7 @@ from cbench.cli.main import cli
 _EXPECTED_BUILDERS = [
     "stream", "imb", "osu", "ior", "hpl", "npb",
     "hpcc", "amg", "hpccg", "mpibench", "mpigraph", "bonnie", "graph500",
-    "iozone", "fio",
+    "iozone", "fio", "gpfsperf",
 ]
 
 @pytest.mark.parametrize("name", _EXPECTED_BUILDERS)
@@ -497,3 +497,66 @@ def test_install_bins_in_place_does_not_fail(tmp_path):
     (bindir / "ior").write_text("#!/bin/sh\n")
     assert install_bins(bindir, bindir, ["ior"], dry_run=False) == ["ior"]
     assert (bindir / "ior").stat().st_mode & 0o755 == 0o755
+
+
+# ---------------------------------------------------------------------------
+# gpfsperf (built from the GPFS samples)
+# ---------------------------------------------------------------------------
+
+def _fake_samples(tmp_path):
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    for f in ("gpfsperf.c", "irreg.c", "irreg.h", "makefile", "README"):
+        (samples / f).write_text("x")
+    (samples / "gpfsperf").write_text("prebuilt")   # shipped binary
+    return samples
+
+
+def test_gpfsperf_fetch_copies_sources_not_prebuilt_binary(tmp_path, monkeypatch):
+    import cbench.builders.gpfsperf as mod
+    b = get_builder("gpfsperf")
+    monkeypatch.setattr(b, "samples_dir", _fake_samples(tmp_path))
+    src = b.fetch(tmp_path / "src")
+    assert (src / "gpfsperf.c").exists() and (src / "makefile").exists()
+    assert not (src / "gpfsperf").exists()
+    assert mod.GpfsperfBuilder.optional
+
+
+def test_gpfsperf_build_runs_the_gpfsperf_target(tmp_path, monkeypatch):
+    import cbench.builders.gpfsperf as mod
+    calls = []
+    monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    out = get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", BuildConfig(cc="gcc"))
+    assert calls == [["make", "gpfsperf", "CC=gcc"]] and out == ["gpfsperf"]
+
+
+def test_gpfsperf_requires_gpfs_samples(tmp_path, monkeypatch):
+    b = get_builder("gpfsperf")
+    monkeypatch.setattr(b, "samples_dir", tmp_path / "nope")
+    assert any("GPFS not installed" in m for m in b.check_requires())
+    monkeypatch.setattr(b, "samples_dir", _fake_samples(tmp_path))
+    assert not any("GPFS" in m for m in b.check_requires())
+
+
+def test_build_all_skips_optional_builder_without_prereqs(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+    from cbench.cli.main import cli
+    import cbench.builders.gpfsperf as mod
+    import cbench.cli.build as build_mod
+    monkeypatch.setattr(mod.GpfsperfBuilder, "samples_dir", tmp_path / "nope")
+    monkeypatch.setattr(build_mod, "_run_one", lambda name, *a, **kw: True)
+    res = CliRunner().invoke(cli, ["build", "all", "--prefix", str(tmp_path / "p"),
+                                   "--srcdir", str(tmp_path / "s"), "--dry-run"])
+    assert res.exit_code == 0, res.output
+    assert "SKIPPED" in res.output and "gpfsperf" in res.output
+
+
+def test_gpfsperf_build_cflags_override(tmp_path, monkeypatch):
+    import cbench.builders.gpfsperf as mod
+    calls = []
+    monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    cfg = BuildConfig(cc="gcc", extra={"cflags": "-O2 -DGPFS_LINUX -DRDMA"})
+    get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", cfg)
+    assert calls == [["make", "gpfsperf", "CC=gcc", "CFLAGS=-O2 -DGPFS_LINUX -DRDMA"]]

@@ -83,7 +83,7 @@ Six subgroups wired into `cli/main.py`:
 `_here_to_jinja(text)` converts legacy `TOKEN_HERE` syntax in `*.in` template files to `{{ TOKEN }}` at load time — existing Perl templates work without modification. `RUN_SIZES` is the canonical list of proc counts used across generation and filtering.
 
 ### 8. Benchmark builders (`builders/`)
-Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkBuilder` base class provides `fetch()`, `build()`, `check_requires()`, and `update_source()`. `update_source()` calls `git_pull()` from `_util.py` for git-cloned sources; tarball sources always return False. `BuildLock` (in `cli/build.py`) caches successful builds in `<prefix>/build.lock` (JSON) keyed by source URL + SHA-256 config hash. Available builders: `stream`, `imb`, `osu`, `ior`, `hpl`, `hpcc`, `npb`, `amg`, `hpccg`, `mpibench`, `mpigraph`, `graph500`, `bonnie`, `iozone`, `fio`.
+Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkBuilder` base class provides `fetch()`, `build()`, `check_requires()`, and `update_source()`. `update_source()` calls `git_pull()` from `_util.py` for git-cloned sources; tarball sources always return False. `BuildLock` (in `cli/build.py`) caches successful builds in `<prefix>/build.lock` (JSON) keyed by source URL + SHA-256 config hash. Available builders: `stream`, `imb`, `osu`, `ior`, `hpl`, `hpcc`, `npb`, `amg`, `hpccg`, `mpibench`, `mpigraph`, `graph500`, `bonnie`, `iozone`, `fio`, `gpfsperf` (optional — needs GPFS; see §15).
 
 To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`, set `name`, `description`, `source_url`, implement `fetch()` and `build()`, then import in `builders/__init__.py`.
 
@@ -137,19 +137,33 @@ gen-jobs specifics:
 `gen-jobs --profile NAME [--group G ...]` treats a profile as a *virtual testset*: each member renders from its home template (`<home>_<bench>.in`), but every job goes under `$CBENCHTEST/<profile>/<ident>/`, so `start-jobs`, `parse` and `query` take `--testset <profile>` unchanged.
 
 Groups in `io-default`:
-- `node-local`: fio, bonnie. This is the default group; iozone joins in PR B.
+- `node-local`: fio, bonnie, iozone. This is the default group.
 - `parallel`: ior1mNtoN, mdtest.
-- `gpfs`: gpfsperf, from PR B.
+- `gpfs`: gpfsperf.
 
-`--group all` selects every group. A group whose `io_targets` key is unset is skipped with a warning. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
+`--group all` selects every group. A group whose target isn't available is skipped with a warning. The `gpfs` target is `io_targets.gpfs`, else `io_targets.parallel` when the node facts say it's GPFS (`iosizing._gpfs_alias`), so gen-jobs resolves node values before choosing groups. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
 
 **`io_threads(nv, cfg)`** is the single concurrency rule for every IO benchmark:
-- What it sets: fio `--numjobs`, bonnie instances (`BONNIE_INSTANCES`, with sizes split across them), and the mdtest top ppn level. iozone and gpfsperf threads join in PR B.
+- What it sets: fio `--numjobs`, bonnie instances (`BONNIE_INSTANCES`, with sizes split across them), iozone `-t`, gpfsperf `-th`, and the mdtest top ppn level.
 - The count: all CPUs on the smallest node. `io_threads_basis: logical` (the default) or `physical` uses physical cores from nodecheck facts v2, falling back to logical with a warning.
 - The cap: `io_threads_max` if set. There is no built-in cap.
 - snb applies the same rule locally (`_detect_physical_cores()`, `cap_threads`).
 
-nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core id pairs) and `aggregate.cores`; v1 files still load. A physical-core mismatch at equal logical count (SMT differs) counts as heterogeneous. fio and bonnie are `_SINGLE_INSTANCE`: one job per testset or profile, not one per ppn × size.
+nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core id pairs) and `aggregate.cores`; v1 files still load. A physical-core mismatch at equal logical count (SMT differs) counts as heterogeneous. fio, bonnie, iozone and gpfsperf are `_SINGLE_INSTANCE`: one job per testset or profile, not one per ppn × size.
+
+**iozone** (`templates/iolocal_iozone.in`, `parsers/iozone.py`):
+- Runs throughput mode `-i 0 -i 1 -i 2 -t N`, with 2× RAM ÷ N per thread, rounded up to the record size, which is the fio profile block size.
+- The parser records each test's "Children see" aggregate in MiB/s; without `iozone test complete.` the job is `ERROR(STARTED)`.
+- The binary is looked up in `bin/`, `bin/hwtests/` (where the builder installs it), then PATH.
+
+**gpfsperf** (`templates/iogpfs_gpfsperf.in`):
+- Runs create seq, read seq, read rand and write rand on one 2× RAM file, with `-r` = the profile block size (8m on GPFS).
+- The parser prefixes metrics `<op>_<pattern>_` when one output holds several operations.
+- The job uses `$CBENCHTEST/bin/gpfsperf` if you built one, else the binary GPFS ships in `/usr/lpp/mmfs/samples/perf`.
+- The `gpfsperf` builder copies those samples and runs `make gpfsperf`. You only need it for variants such as RDMA; `--extra cflags=...` replaces the makefile CFLAGS.
+- Builders with `optional = True` (gpfsperf) are SKIPPED by `build all` when their prerequisites are missing.
+
+Token gotcha: `TOKEN_HERE` must end at a word boundary. A token glued to a unit (`SIZE_HEREm`) is not substituted, so size tokens carry their unit (`IOZONE_SIZE=1668m`).
 
 ### 13. HPL input files in gen-jobs (`hplsizing.py`)
 Port of Perl `xhpl_gen_innerloop`/`hpcc_gen_innerloop`. For `xhpl`, `xhpl2`, `xhplintel` (→ `HPL.dat` from `templates/xhpl_dat.in`) and `hpcc` (→ `hpccinf.txt` from `hpccinf_txt.in`), gen-jobs writes the input file into each job dir (job scripts `cd` there). N: one per `memory_util_factors` entry via `compute_n()`, from the MIN MemTotal (`--nodefacts`) or explicit `memory_per_node_mb` — same no-silent-defaults rule and fail-before-render check as IO. `shakedown` uses a single 0.45 factor (and `MEM_UTIL_FACTORS` is overridden so the job echoes it). P×Q: `utils.compute_pq()` (Perl `compute_PQ`: square, else first Q in (√n, 3√n] dividing n); a proc count with no grid is skipped with a warning (none of `RUN_SIZES` hit this). `XHPL_BIN`/`XHPL2_BIN`/`XHPLINTEL_BIN`/`HPCC_BIN` are bare binary names — templates prefix `CBENCHTEST_BIN_HERE/`.

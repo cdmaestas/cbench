@@ -9,7 +9,8 @@
 #
 # NOTE: bash syntax is used here
 #
-# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf (else the GPFS samples build)
+# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf if you built one (e.g. for
+# RDMA via `cbench build run gpfsperf`), else the binary GPFS ships
 
 GPFSPERF=CBENCHTEST_BIN_HERE/gpfsperf
 [ -x "$GPFSPERF" ] || GPFSPERF=/usr/lpp/mmfs/samples/perf/gpfsperf
