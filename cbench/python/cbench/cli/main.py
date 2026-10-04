@@ -63,6 +63,8 @@ _DEFAULT_SKIP: dict[str, set[str]] = {"iometadata": {"fileop"}}
 #: single-node, non-MPI benchmarks generated once (numprocs 1), not per ppn x size;
 #: they size their own concurrency from the IO thread count
 _SINGLE_INSTANCE = {"fio", "bonnie", "iozone", "gpfsperf"}
+#: whole-node MPI suites generated at ppn = IO threads, one job per node count
+_NODE_SWEEP = {"io500"}
 
 
 def _cfg(config: Optional[str]) -> ClusterConfig:
@@ -115,6 +117,9 @@ cli.add_command(serve_cmd)
                    ".json path); sizes IO tests from the real compute nodes")
 @click.option("--fio-runtime", type=click.IntRange(min=1), default=None, metavar="SECONDS",
               help="Time cap per fio data job (default: cluster.yaml fio_runtime_s, else 300)")
+@click.option("--io500-stonewall", type=click.IntRange(min=1), default=None, metavar="SECONDS",
+              help="IO500 stonewall per write phase (default: cluster.yaml io500_stonewall_s, "
+                   "else 300; below 300 IO500 marks the run [INVALID])")
 def gen_jobs(
     testset: Optional[str],
     profile: Optional[str],
@@ -129,6 +134,7 @@ def gen_jobs(
     match: Optional[str],
     nodefacts: Optional[str],
     fio_runtime: Optional[int],
+    io500_stonewall: Optional[int],
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset or IO profile."""
     from cbench import hplsizing, iosizing, profiles
@@ -142,6 +148,8 @@ def gen_jobs(
     cfg = _cfg(config)
     if fio_runtime:
         cfg.fio_runtime_s = fio_runtime
+    if io500_stonewall:
+        cfg.io500_stonewall_s = io500_stonewall
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
     match_re = _safe_regex(match, "--match")
@@ -219,7 +227,7 @@ def gen_jobs(
             f"testset '{out_ts}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
             "NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly in cluster.yaml"
         )
-    threaded = [b for b in benchmark_templates if b in _SINGLE_INSTANCE]
+    threaded = [b for b in benchmark_templates if b in _SINGLE_INSTANCE | _NODE_SWEEP]
     if threaded and not nv.cpus:
         raise click.ClickException(
             f"testset '{out_ts}' sizes {', '.join(threaded)} concurrency from node CPUs: pass "
@@ -268,6 +276,8 @@ def gen_jobs(
                 io_extra = iosizing.iozone_tokens(nv, cfg, testset=home, benchmark=bench)
             elif bench == "gpfsperf":
                 io_extra = iosizing.gpfsperf_tokens(nv, cfg, testset=home, benchmark=bench)
+            elif bench == "io500":
+                io_extra = iosizing.io500_tokens(nv, cfg, testset=home, benchmark=bench)
             elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
                 io_extra = iosizing.ior_tokens(nv, cfg, ppn=ppn_val, numprocs=numprocs,
                                                testset=home, benchmark=bench)
@@ -354,7 +364,7 @@ def gen_jobs(
             walltime = templates.compute_walltime(numprocs, valid_sizes, cfg)
             launch_cmd = launchers.build_launch_cmd(numprocs, ppn_val, numnodes, cfg)
             for home, bench, out_bench in members:
-                if bench not in _SINGLE_INSTANCE:
+                if bench not in _SINGLE_INSTANCE and bench not in _NODE_SWEEP:
                     emit(home, bench, out_bench, ppn_val, numprocs, numnodes, walltime, launch_cmd)
 
     # Single-node, non-MPI benchmarks: one job at their real concurrency — T
@@ -367,6 +377,21 @@ def gen_jobs(
         walltime = templates.compute_walltime(threads, [threads], cfg)
         for home, bench, out_bench in singles:
             emit(home, bench, out_bench, threads, threads, 1, walltime, launch_cmd)
+
+    # Whole-node MPI suites (IO500): ppn = IO threads, one job per node count
+    # (1, 2, 4, ... up to max_nodes, and max_nodes itself), within --maxprocs.
+    sweeps = [m for m in members if m[1] in _NODE_SWEEP]
+    if sweeps:
+        threads = iosizing.io_threads(nv, cfg)
+        node_counts = sorted({n for n in (2 ** i for i in range(20)) if n <= cfg.max_nodes}
+                             | {cfg.max_nodes})
+        sizes = [threads * n for n in node_counts if not maxprocs or threads * n <= maxprocs]
+        for numprocs in sizes:
+            numnodes = numprocs // threads
+            launch_cmd = launchers.build_launch_cmd(numprocs, threads, numnodes, cfg)
+            walltime = templates.compute_walltime(numprocs, sizes, cfg)
+            for home, bench, out_bench in sweeps:
+                emit(home, bench, out_bench, threads, numprocs, numnodes, walltime, launch_cmd)
 
     if skipped_no_grid:
         console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "

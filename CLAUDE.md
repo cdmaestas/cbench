@@ -83,7 +83,7 @@ Six subgroups wired into `cli/main.py`:
 `_here_to_jinja(text)` converts legacy `TOKEN_HERE` syntax in `*.in` template files to `{{ TOKEN }}` at load time — existing Perl templates work without modification. `RUN_SIZES` is the canonical list of proc counts used across generation and filtering.
 
 ### 8. Benchmark builders (`builders/`)
-Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkBuilder` base class provides `fetch()`, `build()`, `check_requires()`, and `update_source()`. `update_source()` calls `git_pull()` from `_util.py` for git-cloned sources; tarball sources always return False. `BuildLock` (in `cli/build.py`) caches successful builds in `<prefix>/build.lock` (JSON) keyed by source URL + SHA-256 config hash. Available builders: `stream`, `imb`, `osu`, `ior`, `hpl`, `hpcc`, `npb`, `amg`, `hpccg`, `mpibench`, `mpigraph`, `graph500`, `bonnie`, `iozone`, `fio`, `gpfsperf` (optional — needs GPFS; see §15).
+Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkBuilder` base class provides `fetch()`, `build()`, `check_requires()`, and `update_source()`. `update_source()` calls `git_pull()` from `_util.py` for git-cloned sources; tarball sources always return False. `BuildLock` (in `cli/build.py`) caches successful builds in `<prefix>/build.lock` (JSON) keyed by source URL + SHA-256 config hash. Available builders: `stream`, `imb`, `osu`, `ior`, `hpl`, `hpcc`, `npb`, `amg`, `hpccg`, `mpibench`, `mpigraph`, `graph500`, `bonnie`, `iozone`, `fio`, `gpfsperf` (optional — needs GPFS; see §15), `io500`.
 
 To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`, set `name`, `description`, `source_url`, implement `fetch()` and `build()`, then import in `builders/__init__.py`.
 
@@ -164,6 +164,12 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 - The job uses `$CBENCHTEST/bin/gpfsperf` if you built one, else the binary GPFS ships in `/usr/lpp/mmfs/samples/perf`.
 - The `gpfsperf` builder copies those samples and runs `make gpfsperf`. You only need it for variants such as RDMA; `--extra cflags=...` replaces the makefile CFLAGS.
 - Builders with `optional = True` (gpfsperf) are SKIPPED by `build all` when their prerequisites are missing.
+
+**io500 profile** (`--profile io500`, group `parallel`, `templates/io500_io500.in`):
+- Writes an `io500.ini` with the datadir on the parallel target and `stonewall-time` = `io500_stonewall_s` (default 300; `gen-jobs --io500-stonewall`), then runs `io500` through the MPI launcher and removes the datadir.
+- io500 is `_NODE_SWEEP`: generated at ppn = `io_threads`, one job per node count (powers of two up to `max_nodes`, plus `max_nodes`), within `--maxprocs`.
+- The `io500` builder clones IO500/io500 and runs its `prepare.sh`, which needs network, mpicc and autotools, and installs only `io500`.
+- `Io500Parser` reads current `[SCORE ]`/`kiops` output (older `[SCORE]`/`kIOPS` too), ignores `[SCOREX]`, and puts io500's `[INVALID]` flag (stonewall < 300 s) in `status_detail`.
 
 Token gotcha: `TOKEN_HERE` must end at a word boundary. A token glued to a unit (`SIZE_HEREm`) is not substituted, so size tokens carry their unit (`IOZONE_SIZE=1668m`).
 

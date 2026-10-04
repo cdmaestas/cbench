@@ -76,6 +76,8 @@ _SCHEMA: dict = {
         "fio_seq_bs": {"type": "string", "pattern": r"^\d+[kKmMgG]$"},
         # per-job time cap for the fio data jobs
         "fio_runtime_s": {"type": "integer", "minimum": 1},
+        # IO500 stonewall (seconds per write phase); < 300 marks the run [INVALID]
+        "io500_stonewall_s": {"type": "integer", "minimum": 1},
         # IO thread/job count for every IO benchmark (iosizing.io_threads):
         # all CPUs of the chosen basis, optionally capped
         "io_threads_max": {"type": "integer", "minimum": 1},
@@ -154,6 +156,7 @@ class ClusterConfig:
     remotecmd_exec_cmd: str = ""
     io_targets: dict[str, str] = field(default_factory=dict)
     fio_runtime_s: int = 300
+    io500_stonewall_s: int = 300
     io_profile: str = "auto"
     io_seq_bs: str = ""
     io_threads_max: Optional[int] = None
