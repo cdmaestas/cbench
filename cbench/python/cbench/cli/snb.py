@@ -44,6 +44,8 @@ def _detect_cores() -> int:
 # ---------------------------------------------------------------------------
 
 _FIO_DIRECT_SIZE = "1g"  # historical fixed size used on the O_DIRECT path
+_FIO_DIRECT_SIZE_BYTES = 1024 ** 3
+_FIO_CAPACITY_FRACTION = 0.9  # never plan to fill more than 90% of a target
 
 
 def _read_memtotal_bytes(meminfo_path: "str | Path" = Path("/proc/meminfo")) -> int:
@@ -120,11 +122,32 @@ def _fio_buffered_size_bytes(
     """
     numjobs = max(1, numjobs)
     target_aggregate = 2 * mem_total_bytes
-    free_cap = int(free_bytes * 0.9)
+    free_cap = int(free_bytes * _FIO_CAPACITY_FRACTION)
     caveat = target_aggregate > free_cap
     aggregate = min(target_aggregate, free_cap)
     per_job = max(aggregate // numjobs, 1)
     return per_job, caveat
+
+
+def _fio_direct_space_shortfall(numjobs: int, free_bytes: int) -> "tuple[int, int] | None":
+    """(needed, usable) bytes when the O_DIRECT runs won't fit, else None.
+
+    Each fio job lays out its own --size file and the target is emptied between
+    the sequential (1 job) and random (*numjobs*) runs, so the peak is
+    numjobs x the fixed direct size. Usable space is 90% of free.
+    """
+    needed = _FIO_DIRECT_SIZE_BYTES * max(1, numjobs)
+    usable = int(free_bytes * _FIO_CAPACITY_FRACTION)
+    return (needed, usable) if needed > usable else None
+
+
+def _clean_fio_dir(fio_dir: Path, log_fh) -> None:
+    """Remove fio's data files so the next run starts from an empty target."""
+    for tmp in fio_dir.glob("*"):
+        try:
+            tmp.unlink()
+        except OSError as e:
+            _logmsg(log_fh, f"WARNING: could not remove fio temp file {tmp}: {e}")
 
 
 def _fio_benchmark_name(fstype: str, path: "str | Path") -> str:
@@ -379,12 +402,14 @@ def _parse_fio_out(outfile: Path) -> dict[str, float]:
     return result.metrics if result.status == "PASSED" else {}
 
 
-def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, dict[str, float]]]":
-    """Split a per-target fio output file into (benchmark, status_detail, metrics).
+def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, str, dict[str, float]]]":
+    """Split a per-target fio output file into (benchmark, status, status_detail, metrics).
 
     The run side writes a '### CBENCH FS-TARGET path=.. fstype=.. odirect=.. caveat=..'
-    marker before each target's fio output. If no markers are present (e.g. an
-    older single-target file) returns one ('snb_fio', '', metrics) entry.
+    marker before each target's fio output. A target skipped for lack of space
+    has a marker with ``skipped=insufficient_space`` and comes back as a NOTICE
+    with no metrics. If no markers are present (e.g. an older single-target
+    file) returns one ('snb_fio', 'PASSED', '', metrics) entry.
     """
     if not outfile.exists():
         return []
@@ -393,27 +418,34 @@ def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, dict[str, float]]
     text = outfile.read_text(errors="replace")
     if _FIO_TARGET_MARKER not in text:
         metrics = _parse_fio_out(outfile)
-        return [("snb_fio", "", metrics)] if metrics else []
+        return [("snb_fio", "PASSED", "", metrics)] if metrics else []
 
-    results: list[tuple[str, str, dict[str, float]]] = []
+    results: list[tuple[str, str, str, dict[str, float]]] = []
     header: "dict[str, str] | None" = None
     buf: list[str] = []
 
     def _flush() -> None:
         if header is None:
             return
+        path = header.get("path", "")
+        fstype = header.get("fstype", "unknown")
+        if header.get("skipped"):
+            detail = (
+                f"path={path} fstype={fstype} skipped: {header['skipped'].replace('_', ' ')} "
+                f"(need {header.get('need_kb', '?')} kB, usable {header.get('usable_kb', '?')} kB)"
+            )
+            results.append((_fio_benchmark_name(fstype, path), "NOTICE", detail, {}))
+            return
         parsed = FioParser().parse("\n".join(buf))
         if parsed.status != "PASSED" or not parsed.metrics:
             return
-        path = header.get("path", "")
-        fstype = header.get("fstype", "unknown")
         detail = (
             f"path={path} fstype={fstype} "
             f"odirect={header.get('odirect', '?')} caveat={header.get('caveat', '0')}"
         )
         if header.get("caveat") == "1":
             detail += " (result may be cache-influenced)"
-        results.append((_fio_benchmark_name(fstype, path), detail, parsed.metrics))
+        results.append((_fio_benchmark_name(fstype, path), "PASSED", detail, parsed.metrics))
 
     for line in text.splitlines():
         if line.startswith(_FIO_TARGET_MARKER):
@@ -478,8 +510,10 @@ def _collect_snb_metrics(
         metrics: dict[str, float],
         units: dict[str, str],
         status_detail: str = "",
+        status: str = "PASSED",
     ) -> None:
-        if metrics:
+        # a NOTICE (e.g. fio target skipped for space) is kept with no metrics
+        if metrics or status != "PASSED":
             results.append(DBResult(
                 cluster=cluster,
                 testset="snb",
@@ -489,7 +523,7 @@ def _collect_snb_metrics(
                 numprocs=numcores,
                 ppn=numcores,
                 numnodes=1,
-                status="PASSED",
+                status=status,
                 status_detail=status_detail,
                 metrics=metrics,
                 metric_units=units,
@@ -526,12 +560,13 @@ def _collect_snb_metrics(
         "read_lat_avg_us": "us", "write_lat_avg_us": "us",
         "read_lat_p99_us": "us", "write_lat_p99_us": "us",
     }
-    for benchmark, detail, fio_metrics in _parse_fio_targets(outfile("fio")):
+    for benchmark, status, detail, fio_metrics in _parse_fio_targets(outfile("fio")):
         _make(
             benchmark,
             fio_metrics,
             {k: fio_units.get(k, "") for k in fio_metrics},
             status_detail=detail,
+            status=status,
         )
 
     # hpcc
@@ -955,6 +990,27 @@ def run_cmd(
                     caveat = False
                     if direct:
                         size_arg = _FIO_DIRECT_SIZE
+                        free_bytes = shutil.disk_usage(str(tgt)).free if tgt.is_dir() else None
+                        short = (_fio_direct_space_shortfall(fio_numjobs, free_bytes)
+                                 if free_bytes is not None else None)
+                        if short:
+                            need_kb, usable_kb = short[0] // 1024, short[1] // 1024
+                            _logmsg(log, f"WARNING: skipping fio on {fstype} ({tgt}): needs "
+                                         f"{need_kb} kB ({fio_numjobs} x {_FIO_DIRECT_SIZE}) but only "
+                                         f"{usable_kb} kB usable (90% of free)")
+                            marker = (f"{_FIO_TARGET_MARKER} path={tgt} fstype={fstype} odirect=1 "
+                                      f"skipped=insufficient_space need_kb={need_kb} "
+                                      f"usable_kb={usable_kb}")
+                            if not dry_run:
+                                with open(out("fio"), "a") as fh:
+                                    fh.write(marker + "\n")
+                                try:
+                                    fio_dir.rmdir()
+                                except OSError as e:
+                                    _logmsg(log, f"WARNING: could not remove fio temp dir {fio_dir}: {e}")
+                            else:
+                                _logmsg(log, f"DRYRUN: {marker}")
+                            continue
                     else:
                         mem_total = _read_memtotal_bytes()
                         free_bytes = shutil.disk_usage(str(tgt)).free if not dry_run else 100 * 1024**3
@@ -989,6 +1045,11 @@ def run_cmd(
                          "--directory", str(fio_dir), "--output-format=normal"],
                         out("fio"), overwrite=False, dry_run=dry_run, log_fh=log,
                     )
+                    # Empty the target before the random run so the sequential
+                    # file never coexists with the numjobs random files (the
+                    # sizing above budgets one run's files, not both).
+                    if not dry_run:
+                        _clean_fio_dir(fio_dir, log)
                     runcmd(
                         [str(fio_bin), "--name=rand_rw", "--rw=randrw", "--bs=4k",
                          f"--size={size_arg}", f"--numjobs={fio_numjobs}", "--iodepth=32",
@@ -998,11 +1059,7 @@ def run_cmd(
                     )
 
                     if not dry_run:
-                        for tmp in fio_dir.glob("*"):
-                            try:
-                                tmp.unlink()
-                            except OSError as e:
-                                _logmsg(log, f"WARNING: could not remove fio temp file {tmp}: {e}")
+                        _clean_fio_dir(fio_dir, log)
                         try:
                             fio_dir.rmdir()
                         except OSError as e:
