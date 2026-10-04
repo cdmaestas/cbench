@@ -8,6 +8,17 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **iozone in the `io-default` profile's `node-local` group**, run in iozone's throughput
+  mode with one thread per IO thread. Each thread writes its share of 2× RAM, and
+  the record size comes from the fio profile. A new `iozone` parser reads the
+  results; the nodehwtest parser is unchanged.
+- **gpfsperf as the `gpfs` group:** sequential create, sequential and random read,
+  and random write on one file of 2× RAM, with `-th` set to the IO thread count.
+  - It runs on `io_targets.gpfs`, or on `io_targets.parallel` when nodecheck saw
+    that it's GPFS.
+  - It uses the `gpfsperf` binary GPFS ships. A new optional `gpfsperf` builder
+    compiles one from the GPFS samples for variants such as RDMA, and
+    `build all` skips it on hosts without GPFS.
 - `gen-jobs --fio-runtime SECONDS` sets the fio time cap for one generation, so
   cluster.yaml doesn't need editing.
 - `start-jobs --interactive --echo-output` streams each job's output to the terminal
@@ -36,8 +47,8 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   run starts.
 - **fio workload profiles** set the sequential block size: `ai` 1m, `general` 4m,
   `hpc` 8m, `streaming` 16m. `auto` (the default) picks `hpc` on parallel
-  filesystems and `general` elsewhere. Set it with cluster.yaml `fio_profile` or
-  `snb run --fio-profile`; `fio_seq_bs` sets an exact size. The profile used is
+  filesystems and `general` elsewhere. Set it with cluster.yaml `io_profile` or
+  `snb run --io-profile`; `io_seq_bs` sets an exact size. The profile used is
   recorded with each result.
 - Packages now `Recommend` `fio` (RPM and DEB).
 - **Node-aware fio I/O testing in `cbench snb`.** New repeatable `--fs-target PATH`
@@ -124,13 +135,28 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **IOR `io_ior*` transfer size follows the IO profile.** It was a fixed `-t 128m`; it's now
+  the profile's block size, which is `-t 8m` on parallel filesystems with the default
+  `auto`. `-b` rounds up to a multiple of it, and `iosanity` keeps `-t 1m`. IOR results
+  aren't directly comparable with runs at `-t 128m`.
+- **`fio_profile` / `fio_seq_bs` renamed to `io_profile` / `io_seq_bs`**, and snb's
+  `--fio-profile` to `--io-profile`, since the setting now drives iozone, gpfsperf and
+  IOR as well. The old names still work: cluster.yaml prints a deprecation warning,
+  and setting both is an error.
+- **The gpfsperf parser handles several operations in one output.** When there's more
+  than one, metrics are prefixed `<op>_<pattern>_` (for example `read_rand_iops`).
+  Before, each operation overwrote the last. A single operation keeps the old names.
 - **fio jobs and bonnie instances now follow the IO thread rule.** fio previously used at
   most 16 jobs and bonnie always ran 3 instances; both now use every CPU unless
   `io_threads_max` is set. bonnie's per-instance `-s`/`-r` shrink to match, so the total
   stays 2× RAM, and results on nodes with other than 3 CPUs aren't comparable with
   earlier runs.
-- **gen-jobs generates bonnie once per testset** (`bonnie-1ppn-1`) instead of once per
-  ppn × size, like fio.
+- **Single-node IO jobs (fio, bonnie, iozone, gpfsperf) are generated once, at their real
+  concurrency:** `<bench>-<T>ppn-<T>` on one node, where T is the IO thread count, for
+  example `fio-local-4ppn-4`.
+  - Before, fio and bonnie jobs were named `…-1ppn-1`, and the batch script asked the
+    scheduler for 1 task, which can confine a multi-threaded run to one core.
+  - bonnie was previously generated once per ppn × size.
 - **snb fio metrics renamed and corrected.** The old `read_iops`/`write_iops` were
   the *sequential* job's IOPS from its first job block, and the bandwidth came from
   the last run. Results are now reported per job: `seq_{read,write}_bw_MiB_s`,

@@ -65,12 +65,68 @@ _CPU_RE = re.compile(
 )
 
 
+# Any line naming a gpfsperf invocation — its own echo, or cbench's
+# "Cbench joblaunch cmd line: /path/gpfsperf read rand ./f ..." — starts the
+# section for that operation.
+_OP_RE = re.compile(r"gpfsperf(?:-mpi)?\s+(create|read|write|uncache)\s+(\w+)\s+\S+")
+
+# iogpfs_gpfsperf.in brackets its run with these lines
+_JOB_START = "Cbench gpfsperf: profile="
+_JOB_END = "Cbench gpfsperf: finished"
+
+_PER_OP = ("throughput_MB_s", "iops", "latency_avg_ms", "thread_utilization",
+           "bytes_transferred", "cpu_user_pct", "cpu_sys_pct", "cpu_idle_pct", "cpu_wait_pct")
+
+
+def _section_metrics(lines: list[str]) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for line in lines:
+        m = _PROCS_RE.match(line)
+        if m:
+            metrics["nprocesses"] = float(m.group(1))
+            metrics["nthreads_per_process"] = float(m.group(2))
+            continue
+        m = _RESULT_FULL_RE.match(line)
+        if m:
+            metrics["throughput_MB_s"] = float(m.group(1)) / 1024.0
+            metrics["iops"] = float(m.group(2))
+            metrics["latency_avg_ms"] = float(m.group(3))
+            metrics["thread_utilization"] = float(m.group(4))
+            if m.group(5):
+                metrics["bytes_transferred"] = float(m.group(5))
+            continue
+        m = _RESULT_IOPS_RE.match(line)
+        if m:
+            metrics["throughput_MB_s"] = float(m.group(1)) / 1024.0
+            metrics["iops"] = float(m.group(2))
+            metrics["thread_utilization"] = float(m.group(3))
+            continue
+        m = _RESULT_MIN_RE.match(line)
+        if m:
+            metrics["throughput_MB_s"] = float(m.group(1)) / 1024.0
+            metrics["thread_utilization"] = float(m.group(2))
+            continue
+        m = _CPU_RE.match(line)
+        if m:
+            metrics["cpu_user_pct"] = float(m.group(1))
+            metrics["cpu_sys_pct"] = float(m.group(2))
+            metrics["cpu_idle_pct"] = float(m.group(3))
+            metrics["cpu_wait_pct"] = float(m.group(4))
+    return metrics
+
+
 class GpfsperfParser(BenchmarkParser):
     """Parses gpfsperf IBM GPFS/Spectrum Scale benchmark output.
 
     Handles single-node and MPI (gpfsperf-mpi) output.  Throughput is
     stored as MB/s (converted from the native Kbytes/sec).  IOPS and
     average latency (ms) are captured when present.
+
+    Output covering several operations (the gen-jobs iogpfs_gpfsperf job runs
+    create seq, read seq, read rand, write rand) is split per operation and
+    the per-operation metrics are prefixed ``<op>_<pattern>_`` (e.g.
+    ``read_rand_iops``); a single operation keeps the unprefixed names. A
+    gen-jobs job without its end line is ERROR(STARTED).
     """
 
     names = ["gpfsperf"]
@@ -80,68 +136,43 @@ class GpfsperfParser(BenchmarkParser):
             for line in stdout.splitlines():
                 if "CBENCH NOTICE" in line:
                     return ParseResult(status="NOTICE", status_detail=line.strip())
+        if _JOB_START in stdout and _JOB_END not in stdout:
+            return ParseResult(status="ERROR(STARTED)",
+                               status_detail="gpfsperf job did not finish (still running or killed)")
 
-        metrics: dict[str, float] = {}
-        operation = ""
-        access_pattern = ""
-
+        sections: list[tuple[str, str, list[str]]] = []
         for line in stdout.splitlines():
-            # Command echo — extract operation and access pattern
-            if not operation:
-                m = _CMD_RE.match(line)
-                if m:
-                    operation = m.group(1).lower()
-                    access_pattern = m.group(2).lower()
-                    continue
-
-            # Config: process/thread counts
-            m = _PROCS_RE.match(line)
+            m = _OP_RE.search(line)
             if m:
-                metrics["nprocesses"] = float(m.group(1))
-                metrics["nthreads_per_process"] = float(m.group(2))
+                op, pattern = m.group(1).lower(), m.group(2).lower()
+                # the cbench cmd-line echo and gpfsperf's own echo name the same op
+                if not sections or sections[-1][:2] != (op, pattern):
+                    sections.append((op, pattern, []))
                 continue
+            if sections:
+                sections[-1][2].append(line)
+        if not sections:  # no invocation line at all: parse the whole output
+            sections = [("", "", stdout.splitlines())]
 
-            # Result lines — try most specific format first
-            m = _RESULT_FULL_RE.match(line)
-            if m:
-                metrics["throughput_MB_s"] = float(m.group(1)) / 1024.0
-                metrics["iops"] = float(m.group(2))
-                metrics["latency_avg_ms"] = float(m.group(3))
-                metrics["thread_utilization"] = float(m.group(4))
-                if m.group(5):
-                    metrics["bytes_transferred"] = float(m.group(5))
-                continue
-
-            m = _RESULT_IOPS_RE.match(line)
-            if m:
-                metrics["throughput_MB_s"] = float(m.group(1)) / 1024.0
-                metrics["iops"] = float(m.group(2))
-                metrics["thread_utilization"] = float(m.group(3))
-                continue
-
-            m = _RESULT_MIN_RE.match(line)
-            if m:
-                metrics["throughput_MB_s"] = float(m.group(1)) / 1024.0
-                metrics["thread_utilization"] = float(m.group(2))
-                continue
-
-            # Optional CPU utilization
-            m = _CPU_RE.match(line)
-            if m:
-                metrics["cpu_user_pct"] = float(m.group(1))
-                metrics["cpu_sys_pct"] = float(m.group(2))
-                metrics["cpu_idle_pct"] = float(m.group(3))
-                metrics["cpu_wait_pct"] = float(m.group(4))
-                continue
-
-        if "throughput_MB_s" not in metrics:
+        parsed = [(op, pat, _section_metrics(body)) for op, pat, body in sections]
+        parsed = [(op, pat, m) for op, pat, m in parsed if "throughput_MB_s" in m]
+        if not parsed:
             return ParseResult(status="NOTSTARTED")
 
-        detail = f"operation={operation} pattern={access_pattern}" if operation else ""
+        if len(parsed) == 1:
+            op, pat, metrics = parsed[0]
+            detail = f"operation={op} pattern={pat}" if op else ""
+            return ParseResult(status="PASSED", metrics=metrics, status_detail=detail)
+
+        metrics: dict[str, float] = {}
+        for op, pat, m in parsed:
+            for k, v in m.items():
+                metrics[f"{op}_{pat}_{k}" if k in _PER_OP else k] = v
+        detail = "operations=" + ",".join(f"{op}_{pat}" for op, pat, _ in parsed)
         return ParseResult(status="PASSED", metrics=metrics, status_detail=detail)
 
     def metric_units(self) -> dict[str, str]:
-        return {
+        base = {
             "throughput_MB_s": "MB/s",
             "iops": "ops/s",
             "latency_avg_ms": "ms",
@@ -154,3 +185,8 @@ class GpfsperfParser(BenchmarkParser):
             "cpu_idle_pct": "%",
             "cpu_wait_pct": "%",
         }
+        units = dict(base)
+        for op in ("create", "read", "write", "uncache"):
+            for pat in ("seq", "rand", "randhint", "strided", "backwards"):
+                units.update({f"{op}_{pat}_{k}": base[k] for k in _PER_OP})
+        return units

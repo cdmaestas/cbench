@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -16,7 +17,9 @@ _VALID_BATCH_METHODS = ["slurm", "torque", "pbspro", "lsf", "moab", "local"]
 _VALID_LAUNCH_METHODS = ["openmpi", "mpiexec", "slurm", "alps", "yod"]
 _VALID_REMOTE_METHODS = ["pdsh", "ssh"]
 _VALID_RCMD_MODULES = ["ssh", "exec"]
-_VALID_FIO_PROFILES = ["auto", "ai", "general", "hpc", "streaming"]  # cbench.fioprofile
+_VALID_IO_PROFILES = ["auto", "ai", "general", "hpc", "streaming"]  # cbench.fioprofile
+#: deprecated cluster.yaml key -> current key (both accepted; not both at once)
+_KEY_ALIASES = {"fio_profile": "io_profile", "fio_seq_bs": "io_seq_bs"}
 _VALID_FILTER_MODULES = ["openmpi", "slurm", "torque", "mvapich", "mpiexec", "cray", "misc"]
 
 _SCHEMA: dict = {
@@ -64,11 +67,15 @@ _SCHEMA: dict = {
             "propertyNames": {"pattern": r"^[A-Za-z0-9_\-]+$"},
             "additionalProperties": {"type": "string", "pattern": r"^/"},
         },
-        # fio job set (cbench.fioprofile): per-job time cap, sequential block
-        # size profile, and an exact sequential block size override
-        "fio_runtime_s": {"type": "integer", "minimum": 1},
-        "fio_profile": {"type": "string", "enum": _VALID_FIO_PROFILES},
+        # IO workload profile (cbench.fioprofile): sets the sequential block /
+        # record / transfer size for fio, iozone, gpfsperf and IOR;
+        # io_seq_bs overrides it exactly. fio_* names are deprecated aliases.
+        "io_profile": {"type": "string", "enum": _VALID_IO_PROFILES},
+        "io_seq_bs": {"type": "string", "pattern": r"^\d+[kKmMgG]$"},
+        "fio_profile": {"type": "string", "enum": _VALID_IO_PROFILES},
         "fio_seq_bs": {"type": "string", "pattern": r"^\d+[kKmMgG]$"},
+        # per-job time cap for the fio data jobs
+        "fio_runtime_s": {"type": "integer", "minimum": 1},
         # IO thread/job count for every IO benchmark (iosizing.io_threads):
         # all CPUs of the chosen basis, optionally capped
         "io_threads_max": {"type": "integer", "minimum": 1},
@@ -147,8 +154,8 @@ class ClusterConfig:
     remotecmd_exec_cmd: str = ""
     io_targets: dict[str, str] = field(default_factory=dict)
     fio_runtime_s: int = 300
-    fio_profile: str = "auto"
-    fio_seq_bs: str = ""
+    io_profile: str = "auto"
+    io_seq_bs: str = ""
     io_threads_max: Optional[int] = None
     io_threads_basis: str = "logical"
     parse_filter_include: list[str] = field(
@@ -211,6 +218,14 @@ def load_config(path: Optional[str | Path] = None) -> ClusterConfig:
             if "max_ppn_procs" in data:
                 data["max_ppn_procs"] = {str(k): v for k, v in data["max_ppn_procs"].items()}
             _validate_config(data, candidate)
+            for old, new in _KEY_ALIASES.items():
+                if old in data:
+                    if new in data:
+                        raise ConfigError(f"{candidate}: set {new} or its deprecated alias {old}, "
+                                          "not both")
+                    warnings.warn(f"{candidate}: {old} is deprecated, use {new}",
+                                  DeprecationWarning, stacklevel=2)
+                    data[new] = data.pop(old)
             cfg = ClusterConfig(**{k: v for k, v in data.items() if k in ClusterConfig.__dataclass_fields__})
             cfg.explicit_keys = frozenset(data)
             return cfg

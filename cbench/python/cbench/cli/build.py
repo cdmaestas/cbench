@@ -394,6 +394,14 @@ def build_all(prefix, srcdir, parallel: int, **kwargs) -> None:
 
     names = sorted(REGISTRY)
     results: dict[str, bool] = {}
+    skipped: dict[str, list[str]] = {}
+    for name in list(names):
+        builder = REGISTRY[name]()
+        if builder.optional:
+            missing = builder.check_requires()
+            if missing:
+                skipped[name] = missing
+                names.remove(name)
 
     if parallel <= 1:
         for name in names:
@@ -419,6 +427,8 @@ def build_all(prefix, srcdir, parallel: int, **kwargs) -> None:
     for name, ok in sorted(results.items()):
         status = "[green]OK[/green]" if ok else "[red]FAILED[/red]"
         console.print(f"  {status}  {name}")
+    for name, missing in sorted(skipped.items()):
+        console.print(f"  [yellow]SKIPPED[/yellow]  {name} (optional; missing {', '.join(missing)})")
 
     if not all(results.values()):
         sys.exit(1)

@@ -15,9 +15,11 @@ count with the same runtime as a cap. ``--runtime`` does not cover fio's file
 layout, so O_DIRECT data files are kept small (256 MiB per job). The caller empties the target directory
 between jobs so only one job's files exist at a time.
 
-Sequential block size comes from a workload profile (``fio_profile``):
-ai 1m, general 4m, hpc 8m, streaming 16m; ``auto`` picks hpc on a parallel
-filesystem and general elsewhere. ``fio_seq_bs`` overrides it exactly.
+Sequential block size comes from the IO workload profile (``io_profile``;
+``fio_profile`` is a deprecated alias): ai 1m, general 4m, hpc 8m,
+streaming 16m; ``auto`` picks hpc on a parallel filesystem and general
+elsewhere. ``io_seq_bs`` overrides it exactly. The same size is iozone's and
+gpfsperf's record size and IOR's transfer size (-t).
 """
 
 from __future__ import annotations

@@ -145,8 +145,9 @@ def test_select_groups():
 def test_io_default_composition():
     p = profiles.get_profile("io-default")
     names = {g: [m.benchmark for m in grp.members] for g, grp in p.groups.items()}
-    assert names["node-local"] == ["fio", "bonnie"]
+    assert names["node-local"] == ["fio", "bonnie", "iozone"]
     assert names["parallel"] == ["ior1mNtoN", "mdtest"]
+    assert names["gpfs"] == ["gpfsperf"]
 
 
 @pytest.mark.parametrize("bench, cls", [
@@ -191,16 +192,19 @@ def genv(tmp_path):
 def test_profile_default_is_node_local(genv):
     res = genv.run("--profile", "io-default")
     assert res.exit_code == 0, res.output
-    assert genv.jobs() == ["bonnie-local-1ppn-1", "fio-local-1ppn-1"]
-    s = genv.script("fio-local-1ppn-1")
-    assert 'Cbench benchmark: fio-local"' in s and "/io-default/p1/fio-local-1ppn-1" in s
+    assert genv.jobs() == ["bonnie-local-4ppn-4", "fio-local-4ppn-4", "iozone-local-4ppn-4"]
+    s = genv.script("fio-local-4ppn-4")
+    assert 'Cbench benchmark: fio-local"' in s and "/io-default/p1/fio-local-4ppn-4" in s
     assert "numjobs=4\n" in s
 
 
 def test_profile_all_groups_skips_unconfigured_targets(genv):
-    res = genv.run("--profile", "io-default", "--group", "all")
+    # facts say the parallel target is xfs here, and there is no io_targets.gpfs
+    facts = _facts()
+    facts["aggregate"]["targets"]["parallel"]["fstype"] = "xfs"
+    res = genv.run("--profile", "io-default", "--group", "all", facts=facts)
     assert res.exit_code == 0, res.output
-    assert "skipping group 'gpfs'" in res.output
+    assert "skipping group 'gpfs'" in res.output and "is not GPFS" in res.output
     assert "generating groups node-local, parallel" in res.output
     jobs = genv.jobs()
     assert "ior1mNtoN-parallel-4ppn-4" in jobs and "mdtest-parallel-4ppn-4" in jobs
@@ -215,8 +219,9 @@ def test_profile_group_without_target_is_an_error_when_only_one(genv):
 def test_profile_threads_follow_cap_and_basis(genv):
     res = genv.run("--profile", "io-default", cfg_extra="io_threads_basis: physical\n")
     assert res.exit_code == 0, res.output
-    assert "numjobs=2\n" in genv.script("fio-local-1ppn-1")       # facts: 2 physical cores
-    assert "instances=2\n" in genv.script("bonnie-local-1ppn-1")
+    # facts: 2 physical cores -> 2 threads, and the job name says so
+    assert "numjobs=2\n" in genv.script("fio-local-2ppn-2")
+    assert "instances=2\n" in genv.script("bonnie-local-2ppn-2")
     res = genv.run("--profile", "io-default", cfg_extra="io_threads_max: 1\n")
     assert "numjobs=1\n" in genv.script("fio-local-1ppn-1")
 
@@ -229,8 +234,8 @@ def test_profile_and_testset_are_exclusive(genv):
 
 def test_profile_jobs_parse_as_one_testset(genv):
     genv.run("--profile", "io-default")
-    job = genv.tmp / "io-default" / "p1" / "fio-local-1ppn-1"
-    (job / "fio-local-1ppn-1.o1").write_text(
+    job = genv.tmp / "io-default" / "p1" / "fio-local-4ppn-4"
+    (job / "fio-local-4ppn-4.o1").write_text(
         "Cbench fio: profile=general seq_bs=4m numjobs=4 size=256m direct=1 runtime=300s\n"
         "rand_rw: (groupid=0, jobs=4): err= 0: pid=2: Sat Oct  3 21:09:00 2026\n"
         "  read: IOPS=1460, BW=5857KiB/s (5998kB/s)(1716MiB/300003msec)\n"
@@ -238,7 +243,7 @@ def test_profile_jobs_parse_as_one_testset(genv):
     res = CliRunner().invoke(cli, ["parse", "--testset", "io-default", "--ident", "p1", "--no-db",
                                    "--cbenchtest", str(genv.tmp)])
     assert res.exit_code == 0, res.output
-    assert "fio-local-1ppn-1" in res.output and "PASSED" in res.output
+    assert "fio-local-4ppn-4" in res.output and "PASSED" in res.output
 
 
 def test_snb_detect_physical_cores(tmp_path):
@@ -258,12 +263,23 @@ def test_genjobs_fio_runtime_flag_overrides_config(genv):
     res = genv.run("--profile", "io-default", "--fio-runtime", "30",
                    cfg_extra="fio_runtime_s: 600\n")
     assert res.exit_code == 0, res.output
-    assert "runtime=30\n" in genv.script("fio-local-1ppn-1")
+    assert "runtime=30\n" in genv.script("fio-local-4ppn-4")
 
 
 def test_interactive_header_names_the_sh_script(genv):
     res = genv.run("--profile", "io-default", "--run-type", "both")
     assert res.exit_code == 0, res.output
-    job = genv.tmp / "io-default" / "p1" / "fio-local-1ppn-1"
-    assert "fio-local-1ppn-1/fio-local-1ppn-1.sh" in (job / "fio-local-1ppn-1.sh").read_text()
-    assert "fio-local-1ppn-1/fio-local-1ppn-1.slurm" in (job / "fio-local-1ppn-1.slurm").read_text()
+    job = genv.tmp / "io-default" / "p1" / "fio-local-4ppn-4"
+    assert "fio-local-4ppn-4/fio-local-4ppn-4.sh" in (job / "fio-local-4ppn-4.sh").read_text()
+    assert "fio-local-4ppn-4/fio-local-4ppn-4.slurm" in (job / "fio-local-4ppn-4.slurm").read_text()
+
+
+def test_single_node_jobs_request_their_thread_count(genv):
+    """fio/bonnie run T threads on 1 node: the job name and the batch request
+    say T, not 1 (a 1-task Slurm allocation can pin a 4-thread job to 1 core)."""
+    res = genv.run("--profile", "io-default")
+    assert res.exit_code == 0, res.output
+    assert genv.jobs() == ["bonnie-local-4ppn-4", "fio-local-4ppn-4", "iozone-local-4ppn-4"]
+    s = genv.script("fio-local-4ppn-4")
+    assert "--ntasks-per-node=4" in s or "--ntasks-per-node 4" in s
+    assert "-N 1" in s or "--nodes=1" in s or "-N1" in s
