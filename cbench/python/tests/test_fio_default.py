@@ -83,15 +83,29 @@ def test_has_metadata_engines():
 # config
 # ---------------------------------------------------------------------------
 
-def test_config_fio_keys(tmp_path):
+def test_config_io_profile_keys(tmp_path):
     f = tmp_path / "cluster.yaml"
-    f.write_text("fio_runtime_s: 60\nfio_profile: streaming\nfio_seq_bs: 2m\n")
+    f.write_text("fio_runtime_s: 60\nio_profile: streaming\nio_seq_bs: 2m\n")
     cfg = load_config(f)
-    assert (cfg.fio_runtime_s, cfg.fio_profile, cfg.fio_seq_bs) == (60, "streaming", "2m")
-    assert ClusterConfig().fio_runtime_s == 300 and ClusterConfig().fio_profile == "auto"
+    assert (cfg.fio_runtime_s, cfg.io_profile, cfg.io_seq_bs) == (60, "streaming", "2m")
+    assert ClusterConfig().fio_runtime_s == 300 and ClusterConfig().io_profile == "auto"
 
 
-@pytest.mark.parametrize("bad", ["fio_profile: fast", "fio_runtime_s: 0", "fio_seq_bs: 8MB"])
+def test_config_deprecated_fio_profile_alias(tmp_path):
+    f = tmp_path / "cluster.yaml"
+    f.write_text("fio_profile: hpc\nfio_seq_bs: 2m\n")
+    with pytest.warns(DeprecationWarning, match="is deprecated") as rec:
+        cfg = load_config(f)
+    assert {str(w.message).split(": ")[-1] for w in rec} == {
+        "fio_profile is deprecated, use io_profile", "fio_seq_bs is deprecated, use io_seq_bs"}
+    assert (cfg.io_profile, cfg.io_seq_bs) == ("hpc", "2m")
+    f.write_text("fio_profile: hpc\nio_profile: ai\n")
+    with pytest.raises(ConfigError, match="not both"):
+        load_config(f)
+
+
+@pytest.mark.parametrize("bad", ["io_profile: fast", "fio_profile: fast", "fio_runtime_s: 0",
+                                 "io_seq_bs: 8MB"])
 def test_config_fio_keys_validated(tmp_path, bad):
     f = tmp_path / "cluster.yaml"
     f.write_text(bad + "\n")
@@ -208,7 +222,7 @@ def test_snb_fio_profile_and_runtime_flags(tmp_path, monkeypatch):
 
 def test_snb_cluster_yaml_profile(tmp_path, monkeypatch):
     cfg = tmp_path / "cluster.yaml"
-    cfg.write_text("fio_profile: ai\nfio_runtime_s: 30\n")
+    cfg.write_text("io_profile: ai\nfio_runtime_s: 30\n")
     out = _snb_dry(tmp_path, monkeypatch, fstype="gpfs", config=cfg)
     assert re.search(r"--name=seq_rw\b.*--bs=1m\b.*--runtime=30\b", out)
 
@@ -257,9 +271,9 @@ def test_remote_dispatch_forwards_fio_options():
         ClusterConfig(remotecmd_method="ssh", remotecmd_extraargs=""), remote_node="n1",
         ident="x", destdir="/d", numcores=4, tests="fio", binpath=None, mpi_cmd="mpirun",
         dry_run=True, store=False, config=None, fs_target=("/t",),
-        fio_profile="hpc", fio_runtime=60,
+        io_profile="hpc", fio_runtime=60,
     )
-    assert "--fio-profile hpc" in cmd[-1] and "--fio-runtime 60" in cmd[-1]
+    assert "--io-profile hpc" in cmd[-1] and "--fio-runtime 60" in cmd[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -311,8 +325,8 @@ def genv(tmp_path, monkeypatch):
 def test_genjobs_fio_single_job_sized_from_facts(genv):
     res = genv.run("--nodefacts", "typeA")
     assert res.exit_code == 0, res.output
-    assert [j for j in genv.jobs() if j.startswith("fio")] == ["fio-1ppn-1"]
-    s = genv.script("fio-1ppn-1")
+    assert [j for j in genv.jobs() if j.startswith("fio")] == ["fio-4ppn-4"]
+    s = genv.script("fio-4ppn-4")
     assert "numjobs=4\n" in s and "runtime=300\n" in s and "seqbs=4m\n" in s
     # O_DIRECT 256 MiB per job, buffered fallback 1 GiB; preflight uses the one picked
     assert "size_mb=256\n" in s and "size_mb=1024\n" in s
@@ -324,20 +338,20 @@ def test_genjobs_fio_single_job_sized_from_facts(genv):
 def test_genjobs_fio_profile_from_target_fstype_and_config(genv):
     res = genv.run("--nodefacts", "typeA", facts=_facts(local_fstype="gpfs"))
     assert res.exit_code == 0, res.output
-    assert "seqbs=8m\n" in genv.script("fio-1ppn-1")
-    res = genv.run("--nodefacts", "typeA", cfg_extra="fio_profile: streaming\nfio_runtime_s: 120\n")
-    s = genv.script("fio-1ppn-1")
+    assert "seqbs=8m\n" in genv.script("fio-4ppn-4")
+    res = genv.run("--nodefacts", "typeA", cfg_extra="io_profile: streaming\nfio_runtime_s: 120\n")
+    s = genv.script("fio-4ppn-4")
     assert "seqbs=16m\n" in s and "runtime=120\n" in s
 
 
 def test_genjobs_fio_numjobs_all_cpus_unless_capped(genv):
     res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64, local_free=10**9))
     assert res.exit_code == 0, res.output
-    assert "numjobs=64\n" in genv.script("fio-1ppn-1")
+    assert "numjobs=64\n" in genv.script("fio-64ppn-64")
     res = genv.run("--nodefacts", "typeA", facts=_facts(cpus=64, local_free=10**9),
                    cfg_extra="io_threads_max: 16\n")
     assert res.exit_code == 0, res.output
-    assert "numjobs=16\n" in genv.script("fio-1ppn-1")
+    assert "numjobs=16\n" in genv.script("fio-16ppn-16")
 
 
 def test_genjobs_fio_warns_when_target_short(genv):
@@ -350,7 +364,7 @@ def test_genjobs_fio_warns_when_target_short(genv):
 def test_genjobs_fio_cpus_from_explicit_procs_per_node(genv):
     res = genv.run(cfg_extra="memory_per_node_mb: 7500\n")  # no facts; procs_per_node: 4
     assert res.exit_code == 0, res.output
-    assert "numjobs=4\n" in genv.script("fio-1ppn-1")
+    assert "numjobs=4\n" in genv.script("fio-4ppn-4")
 
 
 def test_genjobs_fio_without_cpu_source_fails_before_rendering(genv):
@@ -376,14 +390,14 @@ def test_genjobs_skips_fileop_unless_matched(genv):
 def test_genjobs_match_filters_jobnames(genv):
     res = genv.run("--nodefacts", "typeA", "--match", "^fio-")
     assert res.exit_code == 0, res.output
-    assert genv.jobs() == ["fio-1ppn-1"]
+    assert genv.jobs() == ["fio-4ppn-4"]
 
 
 def test_iometadata_fio_template_is_valid_bash(genv):
     if shutil.which("bash") is None:
         pytest.skip("bash not installed")
     genv.run("--nodefacts", "typeA")
-    path = next((genv.tmp / "iometadata" / "t1" / "fio-1ppn-1").glob("*.slurm"))
+    path = next((genv.tmp / "iometadata" / "t1" / "fio-4ppn-4").glob("*.slurm"))
     assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
 
 
@@ -430,3 +444,11 @@ def test_parser_reads_avg_latency_in_fio3_field_order():
     assert m["rand_read_lat_avg_us"] == pytest.approx(19706.47)   # clat, not slat/lat
     assert m["rand_write_lat_avg_us"] == pytest.approx(58790.0)   # msec -> usec
     assert m["rand_read_bw_MiB_s"] == pytest.approx(6487 / 1024)
+
+
+def test_snb_io_profile_flag_and_fio_alias(tmp_path, monkeypatch):
+    out = _snb_dry(tmp_path, monkeypatch, "--io-profile", "ai")
+    assert re.search(r"--name=seq_rw\b.*--bs=1m\b", out)
+    (tmp_path / "b").mkdir()
+    out = _snb_dry(tmp_path / "b", monkeypatch, "--fio-profile", "hpc")   # deprecated alias
+    assert re.search(r"--name=seq_rw\b.*--bs=8m\b", out)

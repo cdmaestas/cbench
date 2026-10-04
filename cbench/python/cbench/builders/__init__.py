@@ -39,6 +39,9 @@ class BenchmarkBuilder:
     name: str = ""
     description: str = ""
     source_url: str = ""  # canonical download URL or git repo — used by build cache
+    #: site-specific builders (e.g. gpfsperf needs GPFS installed): `build all`
+    #: skips them when check_requires() reports something missing
+    optional: bool = False
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -96,5 +99,5 @@ def get_builder(name: str) -> "BenchmarkBuilder | None":
 from cbench.builders import (  # noqa: F401 E402
     stream, imb, osu, ior, hpl, npb,
     hpcc, amg, hpccg, mpibench, mpigraph, bonnie, graph500,
-    iozone, fio,
+    iozone, fio, gpfsperf,
 )

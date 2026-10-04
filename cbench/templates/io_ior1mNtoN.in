@@ -10,10 +10,12 @@ IOR_BIN=CBENCHTEST_BIN_HERE/ior
 [ -x "$IOR_BIN" ] || IOR_BIN=CBENCHTEST_BIN_HERE/IOR.posix
 cbench_check_for_bin $IOR_BIN
 
+# The transfer size, -t, comes from the IO profile (io_profile: ai 1m,
+# general 4m, hpc 8m, streaming 16m; auto = hpc on a parallel filesystem).
 # The block size, -b, is computed by gen-jobs so the aggregate written is at
 # least 2x each node's RAM (rounded up to a multiple of -t), capped to the
 # target's free space. See cbench/python/cbench/iosizing.py.
-ALLARGS="-b IOR_BLOCKSIZE_HERE -C -i 4 -t 128m -v -v -r -R -w -W -e -d 30 -g "
+ALLARGS="-b IOR_BLOCKSIZE_HERE -C -i 4 -t IOR_TRANSFER_HERE -v -v -r -R -w -W -e -d 30 -g "
 TESTDIR="TESTDIR_HERE/$JOBID"
 mkdir -p $TESTDIR
 cbench_io_preflight "TESTDIR_HERE" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"

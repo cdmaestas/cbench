@@ -1,0 +1,46 @@
+# iogpfs_gpfsperf job template
+# IBM Storage Scale (GPFS) gpfsperf on the GPFS IO target (io_targets.gpfs,
+# else io_targets.parallel when nodecheck saw it is GPFS): sequential create,
+# sequential read, random read, random write of one file, with one thread per
+# IO thread (all CPUs, or io_threads_max). The file is 2x the node's RAM so the
+# GPFS pagepool can't hold it; the record size is the fio profile's block size
+# (auto on GPFS -> hpc, 8m). gen-jobs fills in the sizes
+# (cbench/python/cbench/iosizing.py). Single node; gpfsperf-mpi is not used.
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf if you built one (e.g. for
+# RDMA via `cbench build run gpfsperf`), else the binary GPFS ships
+
+GPFSPERF=CBENCHTEST_BIN_HERE/gpfsperf
+[ -x "$GPFSPERF" ] || GPFSPERF=/usr/lpp/mmfs/samples/perf/gpfsperf
+cbench_check_for_bin $GPFSPERF
+
+if [ NUM_NODES_HERE -ne 1 ]; then
+	cbench_echo "CBENCH NOTICE: gpfsperf runs on 1 node only"
+	exit
+fi
+
+IO_TARGET_DIR="IO_TARGET_DIR_HERE"
+if [ -z "$IO_TARGET_DIR" ]; then
+	cbench_echo "CBENCH NOTICE: no GPFS IO target (set io_targets.gpfs, or a GPFS io_targets.parallel)"
+	exit 1
+fi
+mkdir -p "$IO_TARGET_DIR" && cd "$IO_TARGET_DIR" || {
+	cbench_echo "CBENCH NOTICE: cannot use IO target $IO_TARGET_DIR"; exit 1; }
+cbench_runin_tempdir
+
+cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
+
+threads=GPFSPERF_THREADS_HERE
+opts="-r GPFSPERF_RECORD_HERE -n GPFSPERF_SIZE_HERE -th $threads"
+file=./gpfsperf.dat
+cbench_echo "Cbench gpfsperf: profile=GPFSPERF_PROFILE_HERE record=GPFSPERF_RECORD_HERE threads=$threads size=GPFSPERF_SIZE_HERE"
+
+for op in "create seq" "read seq" "read rand" "write rand"; do
+	CMD="$GPFSPERF $op $file $opts"
+	cbench_run_cmd $CMD
+done
+rm -f $file
+sync
+cbench_echo "Cbench gpfsperf: finished"
