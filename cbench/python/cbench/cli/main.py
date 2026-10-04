@@ -630,7 +630,9 @@ def parse_cmd(
 
         parser = get_parser(benchmark)
         if parser is None:
-            status_detail = "; ".join(filter_errors) if filter_errors else None
+            # "" (not None): every other row stores "", and NULL would slip past
+            # `status_detail = ''` queries
+            status_detail = "; ".join(filter_errors)
             result = ParseResult(
                 cluster=cfg.cluster_name, testset=testset, ident=ident,
                 jobname=jobname, benchmark=benchmark,

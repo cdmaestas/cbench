@@ -123,8 +123,8 @@ def nodecheck_cmd(
 
     for w in result["verdict"]["warnings"]:
         console.print(f"[yellow]WARNING: {w}[/yellow]")
-    for e in result["verdict"]["errors"]:
-        console.print(f"[red]ERROR: {e}[/red]")
+    for err in result["verdict"]["errors"]:
+        console.print(f"[red]ERROR: {err}[/red]")
     if stderr.strip() and not result["verdict"]["ok"]:
         console.print("[dim]remote stderr:[/dim]")
         for line in stderr.strip().splitlines()[:20]:

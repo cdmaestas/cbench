@@ -152,3 +152,17 @@ def test_job_stops_when_job_dir_is_missing(tmp_path):
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path)
     assert r.returncode == 1
     assert "CBENCH NOTICE: cannot cd to job directory" in r.stdout and "BENCHMARK-RAN" not in r.stdout
+
+
+def test_no_parser_rows_store_empty_detail_not_null(tmp_path):
+    import sqlite3
+    d = tmp_path / "mytest" / "r1" / "unknownbench-2ppn-8"
+    d.mkdir(parents=True)
+    (d / "job.o1").write_text("some output\n")
+    res = CliRunner().invoke(cli, ["parse", "--testset", "mytest", "--ident", "r1",
+                                   "--cbenchtest", str(tmp_path)])
+    assert res.exit_code == 0, res.output
+    from contextlib import closing
+    with closing(sqlite3.connect(tmp_path / "cbench_results.db")) as con:
+        row = con.execute("SELECT status, status_detail FROM runs").fetchone()
+    assert row == ("NO_PARSER", "")

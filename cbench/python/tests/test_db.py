@@ -167,7 +167,8 @@ def test_deduplicate_removes_older_rows(tmp_path):
 
     # Simulate a pre-dedup DB: create schema without the unique index,
     # then insert two rows sharing the same natural key.
-    with _sqlite3.connect(db_path) as con:
+    from contextlib import closing
+    with closing(_sqlite3.connect(db_path)) as con, con:
         con.executescript(_DDL)
         for ts in ("2025-01-01T00:00:00", "2025-06-01T00:00:00"):
             con.execute(

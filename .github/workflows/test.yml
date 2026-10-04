@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - "cbench/python/**"
+      # job templates are rendered and checked by the test suite
+      - "cbench/templates/**"
       - ".github/workflows/test.yml"
   pull_request:
     paths:
       - "cbench/python/**"
+      # job templates are rendered and checked by the test suite
+      - "cbench/templates/**"
       - ".github/workflows/test.yml"
 
 jobs:
