@@ -154,12 +154,12 @@ Groups in `io-default`:
 nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core id pairs) and `aggregate.cores`; v1 files still load. A physical-core mismatch at equal logical count (SMT differs) counts as heterogeneous. fio, bonnie, iozone and gpfsperf are `_SINGLE_INSTANCE`: one job per testset or profile, generated at their real concurrency as `<bench>-<T>ppn-<T>` on 1 node, where T = `io_threads`. That makes the name, the scheduler request (T tasks, not 1, which could pin the job to one core under cgroups) and the parsed ppn agree. gen-jobs renders every job through a local `emit()`; the ppn × size sweep covers the MPI members, and a second pass handles the single-node ones.
 
 **iozone** (`templates/iolocal_iozone.in`, `parsers/iozone.py`):
-- Runs throughput mode `-i 0 -i 1 -i 2 -t N`, with 2× RAM ÷ N per thread, rounded up to the record size, which is the fio profile block size.
-- The parser records each test's "Children see" aggregate in MiB/s; without `iozone test complete.` the job is `ERROR(STARTED)`.
+- Runs throughput mode `-t N` twice, with 2× RAM ÷ N per thread. The first run is `-i 0 -i 1` at the IO profile's record size. The second is `-i 0 -i 2` (random, IOPS) at `-r 4k` (`fioprofile.IOPS_BS`); iozone needs `-i 0` to lay files out first, and the parser keeps the first value of each test, so that layout pass isn't reported.
+- The parser records each test's "Children see" aggregate in MiB/s. Without `iozone test complete.`, or without the job's `Cbench iozone: finished` end line, the job is `ERROR(STARTED)`.
 - The binary is looked up in `bin/`, `bin/hwtests/` (where the builder installs it), then PATH.
 
 **gpfsperf** (`templates/iogpfs_gpfsperf.in`):
-- Runs create seq, read seq, read rand and write rand on one 2× RAM file, with `-r` = the profile block size (8m on GPFS).
+- Runs create seq and read seq over one 2× RAM file at `-r` = the profile block size (8m on GPFS). read rand and write rand use `-r 4k` with `-n` limited to IO threads × 256 MiB, at random offsets across the same file, so the cache is defeated but the run stays bounded.
 - The parser prefixes metrics `<op>_<pattern>_` when one output holds several operations.
 - The job uses `$CBENCHTEST/bin/gpfsperf` if you built one, else the binary GPFS ships in `/usr/lpp/mmfs/samples/perf`.
 - The `gpfsperf` builder copies those samples and runs `make gpfsperf`. You only need it for variants such as RDMA; `--extra cflags=...` replaces the makefile CFLAGS.
@@ -170,6 +170,8 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 - io500 is `_NODE_SWEEP`: generated at ppn = `io_threads`, one job per node count (powers of two up to `max_nodes`, plus `max_nodes`), within `--maxprocs`.
 - The `io500` builder clones IO500/io500 and runs its `prepare.sh`, which needs network, mpicc and autotools, and installs only `io500`.
 - `Io500Parser` reads current `[SCORE ]`/`kiops` output (older `[SCORE]`/`kIOPS` too), ignores `[SCOREX]`, and puts io500's `[INVALID]` flag (stonewall < 300 s) in `status_detail`.
+
+**IOPS tests always use 4k transfers** (`fioprofile.IOPS_BS`): fio `rand_rw`, iozone `-i 2` and gpfsperf read/write rand. The IO profile only sets *sequential* sizes.
 
 Token gotcha: `TOKEN_HERE` must end at a word boundary. A token glued to a unit (`SIZE_HEREm`) is not substituted, so size tokens carry their unit (`IOZONE_SIZE=1668m`).
 
