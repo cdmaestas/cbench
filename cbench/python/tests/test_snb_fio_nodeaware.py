@@ -176,25 +176,33 @@ def test_parse_fio_targets_round_trip(tmp_path):
     results = snb._parse_fio_targets(f)
 
     assert len(results) == 2
-    by_name = {bench: (detail, metrics) for bench, detail, metrics in results}
+    assert {status for _, status, _, _ in results} == {"PASSED"}
+    by_name = {bench: (detail, metrics) for bench, _, detail, metrics in results}
 
     assert "snb_fio_gpfs_scratch" in by_name
     detail1, metrics1 = by_name["snb_fio_gpfs_scratch"]
     assert "fstype=gpfs" in detail1 and "odirect=1" in detail1
     assert "cache-influenced" not in detail1
-    assert metrics1["read_bw_MiB_s"] == pytest.approx(1000.0)
+    # seq_rw job -> sequential bandwidth metrics (cbench.fioprofile job names)
+    assert metrics1["seq_read_bw_MiB_s"] == pytest.approx(1000.0)
 
     assert "snb_fio_ext4_tmp" in by_name
     detail2, metrics2 = by_name["snb_fio_ext4_tmp"]
     assert "caveat=1" in detail2 and "cache-influenced" in detail2
-    assert metrics2["read_bw_MiB_s"] == pytest.approx(2000.0)
+    assert metrics2["seq_read_bw_MiB_s"] == pytest.approx(2000.0)
 
 
-def _fio_dry_run_output(tmp_path, monkeypatch, numcores):
+def _fio_dry_run_output(tmp_path, monkeypatch, numcores, *, free_bytes=1024 * GIB,
+                        odirect=True):
     """Invoke `snb run` fio in dry-run with a faked fio binary; return output."""
     import shutil
     monkeypatch.setattr(
         shutil, "which", lambda name: "/usr/bin/fio" if name == "fio" else None
+    )
+    # pin the O_DIRECT probe and free space so the run doesn't depend on the host
+    monkeypatch.setattr(snb, "_supports_odirect", lambda d: odirect)
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(2 * free_bytes, free_bytes, free_bytes)
     )
     # Pin console width so the long RUNCMD line isn't wrapped (rich reads width
     # at Console construction, so set it on the instance — see rm_failed tests).
@@ -235,3 +243,76 @@ def test_parse_fio_targets_no_marker_backcompat(tmp_path):
     results = snb._parse_fio_targets(f)
     assert len(results) == 1
     assert results[0][0] == "snb_fio"
+
+
+# ---------------------------------------------------------------------------
+# O_DIRECT path space check (1 GiB per job, target emptied between runs)
+# ---------------------------------------------------------------------------
+
+MIB = 1024 ** 2
+
+
+def test_direct_space_fits_returns_none():
+    # 4 jobs x 256 MiB = 1 GiB peak <= 90% of 10 GiB
+    assert snb._fio_direct_space_shortfall(4, free_bytes=10 * GIB) is None
+
+
+def test_direct_space_short_reports_need_and_usable():
+    need, usable = snb._fio_direct_space_shortfall(16, free_bytes=2 * GIB)
+    assert need == 16 * 256 * MIB and usable == int(2 * GIB * 0.9)
+
+
+def test_direct_space_peak_is_random_run_not_seq_plus_random():
+    # 1 GiB peak fits in 90% of 1.2 GiB only because the seq file is removed
+    # before the random run (seq + random would need 1.25 GiB)
+    assert snb._fio_direct_space_shortfall(4, free_bytes=int(1.2 * GIB)) is None
+
+
+def test_direct_target_skipped_when_short(tmp_path, monkeypatch):
+    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=16, free_bytes=2 * GIB)
+    assert "skipping fio" in out and "skipped=insufficient_space" in out
+    assert "--name=rand_rw" not in out and "--name=seq_rw" not in out
+
+
+def test_direct_target_runs_when_space_fits(tmp_path, monkeypatch):
+    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=4, free_bytes=8 * GIB)
+    assert "skipped=" not in out
+    assert re.search(r"--name=rand_rw\b.*--numjobs=4\b", out)
+
+
+def test_buffered_target_not_subject_to_direct_check(tmp_path, monkeypatch):
+    # buffered sizing caps itself to free space; it is never skipped
+    out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=16, free_bytes=8 * GIB,
+                              odirect=False)
+    assert "skipped=" not in out and "--name=rand_rw" in out
+
+
+def test_parse_fio_targets_skipped_target_is_notice(tmp_path):
+    f = tmp_path / "host.snb.fio.out"
+    f.write_text(
+        "### CBENCH FS-TARGET path=/tmp fstype=xfs odirect=1 skipped=insufficient_space "
+        "need_kb=16777216 usable_kb=6845472\n"
+        + _FIO_TWO_TARGETS
+    )
+    results = snb._parse_fio_targets(f)
+    bench, status, detail, metrics = results[0]
+    assert (bench, status, metrics) == ("snb_fio_xfs_tmp", "NOTICE", {})
+    assert "skipped: insufficient space" in detail and "need 16777216 kB" in detail
+    assert [r[1] for r in results[1:]] == ["PASSED", "PASSED"]
+
+
+def test_clean_fio_dir_empties_target(tmp_path):
+    (tmp_path / "seq_rw.0.0").write_bytes(b"x")
+    (tmp_path / "rand_rw.1.0").write_bytes(b"x")
+    snb._clean_fio_dir(tmp_path, None)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_collect_keeps_skipped_target_as_notice_row(tmp_path):
+    (tmp_path / "n1.snb.fio.out").write_text(
+        "### CBENCH FS-TARGET path=/tmp fstype=xfs odirect=1 skipped=insufficient_space "
+        "need_kb=16777216 usable_kb=6845472\n"
+    )
+    rows = snb._collect_snb_metrics(tmp_path, "n1", "zima", "x", 4)
+    assert [(r.benchmark, r.status, r.metrics) for r in rows] == [("snb_fio_xfs_tmp", "NOTICE", {})]
+    assert "insufficient space" in rows[0].status_detail

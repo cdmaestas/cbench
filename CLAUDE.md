@@ -57,7 +57,7 @@ The package is structured around four independent layers:
 ### 2. Benchmark output parsers (`parsers/`)
 Auto-registration via `__init_subclass__`: any subclass of `BenchmarkParser` that sets `names = [...]` is added to `REGISTRY` automatically. Each parser gets a `stdout: str` and returns a `ParseResult(status, metrics)`. Status values: `PASSED`, `ERROR(...)`, `NOTICE`, `NOTSTARTED`, `NO_PARSER`, `FILTER_ERROR`.
 
-To add a new parser: create `parsers/mybench.py`, subclass `BenchmarkParser`, set `names`, import it in `parsers/__init__.py`. Job directories are named `<benchmark>-<ppn>ppn-<np>`; `get_parser()` tries an exact `names` match, then each parser's `alias_spec` regex (full match, ported from Perl `alias_spec()`), e.g. IOR's `(ior|ios).*` catches `ior1mNtoN`. `cbench parse` appends any `CBENCH CAVEAT:` lines from job output to `status_detail`.
+To add a new parser: create `parsers/mybench.py`, subclass `BenchmarkParser`, set `names`, import it in `parsers/__init__.py`. Job directories are named `<benchmark>-<ppn>ppn-<np>`; `get_parser()` tries an exact `names` match, then each parser's `alias_spec` regex (full match, ported from Perl `alias_spec()`), e.g. IOR's `(ior|ios).*` catches `ior1mNtoN`. `cbench parse` appends any `CBENCH CAVEAT:` lines from job output to `status_detail`, and reads each job's newest run (`_job_output_files()`: newest `*.o*`/`slurm-*.out` plus its matching `.e<id>`).
 
 ### 3. Parse filters (`parse_filters/`)
 Seven modules (openmpi, slurm, torque, mvapich, mpiexec, cray, misc) each expose a `FILTERS: dict[str, str]` mapping regex patterns to message templates (`$1`, `$2` for capture groups). `build_filter_set(names)` merges them; `apply_filters(filters, text)` scans line-by-line and returns matched error strings. Wired into `cbench parse` via `--customparse` or `parse_filter_include` in `cluster.yaml`.
@@ -88,7 +88,7 @@ To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`,
 ### 9. Single-node benchmarks (`cli/snb.py`)
 `cbench snb run` executes stream, cachebench, dgemm, mpistreams, linpack, npb, hpcc directly (no job scheduler). `_runcmd()` runs each test via `subprocess.Popen` with a poll loop that emits a "still running (elapsed)" heartbeat every `--heartbeat` seconds (default `_HEARTBEAT_SECS` = 30; `<=0` disables) so long tests are visibly alive, not mistakable for a hang. Linpack uses `_generate_hpl_dat()` to size HPL.dat to ~50% memory; output parsed by `XhplParser`. NPB runs `EP.B.x` and `CG.B.x`, appending to a single `.npb.out` file; output split by "NAS Parallel Benchmarks" sections and parsed by `NpbParser`. `--remote NODE` dispatches via ssh/pdsh using `remotecmd_method` from `cluster.yaml`; node name is validated (rejects `/`, `\\`, `..`, spaces). `--remote-cbench PATH` sets the cbench binary path on the remote.
 
-**Node-aware fio I/O (opt-in).** fio is **not** in the default `--tests` suite — select it explicitly, and it then **requires** one or more `--fs-target PATH` (repeatable; `UsageError` otherwise). For each target, snb detects the filesystem type (`_detect_fstype()` — longest-mountpoint-prefix match in `/proc/self/mountinfo`; `unknown` off-Linux) and probes O_DIRECT support (`_supports_odirect()` — syscall probe). With O_DIRECT it keeps the fixed `--size`; on the buffered fallback it sizes the file to 2× `MemTotal` ÷ numjobs (`_fio_buffered_size_bytes()`), capping to 90% of free space and flagging a cache-influenced caveat. The random-I/O job's `--numjobs` tracks node cores (`min(numcores, 16)`) so each node is driven proportional to its size; the sequential job stays single-stream (`numjobs=1`). Each target's fio output is written to the single `out("fio")` file preceded by a `### CBENCH FS-TARGET path=.. fstype=.. odirect=.. caveat=..` marker; `_parse_fio_targets()` splits it into one result per target with `benchmark = snb_fio_{fstype}_{basename}` (node identity stays in `jobname`) and the path/fstype/caveat recorded in `status_detail`. FS type can't be a metric — the `metrics.value` column is `REAL`-only.
+**Node-aware fio I/O (opt-in).** fio is **not** in the default `--tests` suite — select it explicitly, and it then **requires** one or more `--fs-target PATH` (repeatable; `UsageError` otherwise). For each target, snb detects the filesystem type (`_detect_fstype()` — longest-mountpoint-prefix match in `/proc/self/mountinfo`; `unknown` off-Linux) and probes O_DIRECT support (`_supports_odirect()` — syscall probe). With O_DIRECT it uses a fixed 256 MiB per-job `--size` (`fioprofile.DATA_SIZE` — small because fio's file layout runs before `--runtime` starts) and first checks the target can hold the peak (`_fio_direct_space_shortfall()`: numjobs × 256 MiB within 90% of free) — if not, the target is skipped and recorded as a `NOTICE` row (marker `skipped=insufficient_space need_kb=.. usable_kb=..`); the target dir is emptied between the sequential and random runs (`_clean_fio_dir()`) so their files never coexist. On the buffered fallback it sizes the file to 2× `MemTotal` ÷ numjobs (`_fio_buffered_size_bytes()`), capping to 90% of free space and flagging a cache-influenced caveat. The job set comes from `fioprofile.py` (shared with gen-jobs, §14). Random-I/O and metadata jobs use `--numjobs = min(numcores, 16)`, and the sequential job stays single-stream; `--fio-profile`/`--fio-runtime` override the cluster.yaml `fio_profile`/`fio_runtime_s`. Each target's fio output is written to the single `out("fio")` file preceded by a `### CBENCH FS-TARGET path=.. fstype=.. odirect=.. caveat=..` marker; `_parse_fio_targets()` splits it into one result per target with `benchmark = snb_fio_{fstype}_{basename}` (node identity stays in `jobname`) and the path/fstype/caveat recorded in `status_detail`. FS type can't be a metric — the `metrics.value` column is `REAL`-only.
 
 ### 10. Web dashboard (`cli/serve.py`)
 Flask app (optional `cbench[web]`). Routes: `/` HTML dashboard, `/api/summary`, `/api/results`, `/api/trend`, `/metrics` (Prometheus text format), `/static/<file>` (local assets). `--no-cdn` avoids CDN; `--assets-dir` serves local Bootstrap/Chart.js. Dashboard JS uses `esc()` to HTML-escape all DB-sourced values before `innerHTML` assignment (XSS prevention). Prometheus label values are escaped via `_prom_label()` (`"` → `\"`, `\n` → `\\n`).
@@ -98,6 +98,38 @@ Flask app (optional `cbench[web]`). Routes: `/` HTML dashboard, `/api/summary`, 
 
 ### 12. Node-aware IO sizing in gen-jobs (`iosizing.py`)
 `gen-jobs --nodefacts NAME|PATH` loads a nodecheck facts file; `resolve_node_values()` gives IO sizing the MAX MemTotal, memory-sized work the MIN, and CPU counts the MIN. Without facts, values come from cluster.yaml only if listed in `cfg.explicit_keys` — built-in defaults are never used for sizing, and a sized testset with no memory source fails **before anything is rendered** (jinja `Undefined` would otherwise turn a missing token into an empty string). Tokens go in through `substitute(extra=...)`: `IOR_BLOCKSIZE` (`io_ior*`: `-b = 2×MemTotal/ppn`, rounded UP to a multiple of `-t` 128m), `BONNIE_SIZE_MB`/`BONNIE_RAM_MB` (3 concurrent instances write 2× RAM in aggregate; `-s` up, `-r` down, `-s ≥ 2·-r`), `IO_REQUIRED_KB`, `IO_CAVEAT`, `IO_TARGET_DIR`, and `TESTDIR` for IOR. Rule of thumb: **IO rounds up, memory rounds down.** Sizes that exceed 90% of the free space nodecheck saw are capped, warned at gen time, and carry a `CBENCH CAVEAT:` line. Targets: IOR/mdtest → `io_targets.parallel`, bonnie → `io_targets.node-local`; cluster.yaml decides paths, facts only supply free space when they probed the same path. `iosanity_*` keeps its small fixed size (still uses the target dir). For testsets with an mdtest template, the measured CPU count replaces `procs_per_node` as the top ppn level and higher levels are dropped. Every sized job calls `cbench_io_preflight` (defined in `common_header.in`, **not** `cbench_functions` — that file is deployed separately and could be stale) to `df` the target right before running and exit with `CBENCH NOTICE: insufficient space` if it shrank. `compute_n()` rounds N down (no Perl ×1.02); `cbench utils find-n --nodefacts` uses the MIN MemTotal.
+
+### 14. fio job set (`fioprofile.py`)
+fio is the default node-local IOPS + metadata test, in both `snb` and gen-jobs (`templates/iometadata_fio.in`). Jobs, one fio invocation each, all `--group_reporting`:
+- `seq_rw`: sequential read/write at the profile block size.
+- `rand_rw`: 4k random read/write.
+- `md_create`/`md_stat`/`md_delete`: fio `filecreate`/`filestat`/`filedelete` engines (fio ≥ 3.23; if missing, a caveat, not a failure).
+
+Timing and job counts:
+- Data jobs are `--time_based --runtime=fio_runtime_s` (default 300 s).
+- Metadata jobs are bounded by `nrfiles`, because a time-based delete would run out of files.
+- numjobs = `min(cpus, 16)`.
+- The target is emptied between jobs, so the peak is numjobs × the per-job file: 256 MiB with O_DIRECT. That is small because `--runtime` does not cover fio's up-front file layout, which took ~2.5 min for 4 × 1 GiB on zima xfs. Buffered runs use larger files (snb: 2× MemTotal; the job script: 1 GiB).
+- The job script probes O_DIRECT before its preflight, so it checks the size it will actually use.
+
+Sequential block size comes from `fio_profile`:
+- `ai` 1m, `general` 4m, `hpc` 8m, `streaming` 16m.
+- `auto` (default) picks `hpc` on gpfs/lustre/panfs/beegfs/ceph, else `general`.
+- `fio_seq_bs` overrides it exactly.
+
+`FioParser` splits output by these job names into metrics:
+- `seq_read/write_bw_MiB_s`
+- `rand_{read,write}_{iops,bw_MiB_s,lat_avg_us,lat_p99_us}`
+- `create/stat/delete_ops`
+
+Other fio output falls back to generic first-block metrics.
+
+gen-jobs specifics:
+- It generates fio once per testset (`_SINGLE_INSTANCE`, `fio-<ppn>ppn-1`).
+- `iosizing.fio_tokens()` needs a CPU count (facts or explicit `procs_per_node`) and warns at gen time if the node-local target is short.
+- The job probes O_DIRECT itself and falls back to buffered I/O with a `CBENCH CAVEAT`.
+- The job script prints `Cbench fio: profile=…` at start and `Cbench fio: finished` at end. `FioParser` returns `ERROR(STARTED)` for output with the first and not the second (snb output has neither).
+- `fileop` is in `_DEFAULT_SKIP` (the Perl tools still use its template), so it is generated only via `--match`, which filters job names (Perl parity).
 
 ### 13. HPL input files in gen-jobs (`hplsizing.py`)
 Port of Perl `xhpl_gen_innerloop`/`hpcc_gen_innerloop`. For `xhpl`, `xhpl2`, `xhplintel` (→ `HPL.dat` from `templates/xhpl_dat.in`) and `hpcc` (→ `hpccinf.txt` from `hpccinf_txt.in`), gen-jobs writes the input file into each job dir (job scripts `cd` there). N: one per `memory_util_factors` entry via `compute_n()`, from the MIN MemTotal (`--nodefacts`) or explicit `memory_per_node_mb` — same no-silent-defaults rule and fail-before-render check as IO. `shakedown` uses a single 0.45 factor (and `MEM_UTIL_FACTORS` is overridden so the job echoes it). P×Q: `utils.compute_pq()` (Perl `compute_PQ`: square, else first Q in (√n, 3√n] dividing n); a proc count with no grid is skipped with a warning (none of `RUN_SIZES` hit this). `XHPL_BIN`/`XHPL2_BIN`/`XHPLINTEL_BIN`/`HPCC_BIN` are bare binary names — templates prefix `CBENCHTEST_BIN_HERE/`.
