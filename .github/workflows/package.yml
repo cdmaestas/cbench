@@ -14,6 +14,11 @@ on:
     types: [published]
   workflow_dispatch:
 
+# Least privilege for GITHUB_TOKEN; a job that needs more asks for it
+# (attach-to-release: contents: write).
+permissions:
+  contents: read
+
 jobs:
   # -------------------------------------------------------------------------
   # Generate man pages once; all package jobs download and reuse them.
@@ -60,8 +65,10 @@ jobs:
 
       - name: Set version from tag
         if: github.event_name == 'release'
+        env:
+          # via env, not an expression spliced into the script: a tag name may contain $(...)
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
           TAG="${TAG#v}"
           # RPM forbids hyphens in version; replace with dots (e.g. 2.1.0-rc1 → 2.1.0.rc1)
           echo "VERSION=${TAG//-/.}" >> "$GITHUB_ENV"
@@ -86,9 +93,9 @@ jobs:
           PKG_TYPE: ${{ matrix.type }}
         run: |
           if [ "$PKG_TYPE" = rpm ]; then
-            rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec && grep -qx 'fio' /tmp/rec
+            rpm -qp --recommends "$(find _dist -name '*.rpm')" > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec && grep -qx 'fio' /tmp/rec
           else
-            rec=$(dpkg-deb -f $(find _dist -name '*.deb') Recommends); echo "$rec"
+            rec=$(dpkg-deb -f "$(find _dist -name '*.deb')" Recommends); echo "$rec"
             echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules' && echo "$rec" | grep -qw 'fio'
           fi
 
@@ -115,8 +122,10 @@ jobs:
 
       - name: Set version from tag
         if: github.event_name == 'release'
+        env:
+          # via env, not an expression spliced into the script: a tag name may contain $(...)
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
           TAG="${TAG#v}"
           RPM_VER="${TAG//-/.}"
           # Patch Version: field in the spec
@@ -145,7 +154,7 @@ jobs:
 
       - name: Verify MPI recommends (native RPM)
         working-directory: cbench/python/packaging
-        run: rpm -qp --recommends $(find _dist -name '*.rpm') > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec && grep -qx 'fio' /tmp/rec
+        run: rpm -qp --recommends "$(find _dist -name '*.rpm')" > /tmp/rec; cat /tmp/rec; grep -qx 'openmpi-devel' /tmp/rec && grep -qx 'environment-modules' /tmp/rec && grep -qx 'fio' /tmp/rec
 
       - uses: actions/upload-artifact@v4
         with:
@@ -170,8 +179,10 @@ jobs:
 
       - name: Set version from tag
         if: github.event_name == 'release'
+        env:
+          # via env, not an expression spliced into the script: a tag name may contain $(...)
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
           TAG="${TAG#v}"
           # Patch Version: in debian/control
           awk -v v="Version: $TAG" \
@@ -204,7 +215,7 @@ jobs:
       - name: Verify MPI recommends (native DEB)
         working-directory: cbench/python/packaging
         run: |
-          rec=$(dpkg-deb -f $(find _dist -name '*.deb') Recommends); echo "$rec"
+          rec=$(dpkg-deb -f "$(find _dist -name '*.deb')" Recommends); echo "$rec"
           echo "$rec" | grep -q 'openmpi-bin' && echo "$rec" | grep -q 'libopenmpi-dev' && echo "$rec" | grep -q 'environment-modules' && echo "$rec" | grep -qw 'fio'
 
       - uses: actions/upload-artifact@v4
