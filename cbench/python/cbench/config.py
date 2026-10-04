@@ -16,6 +16,7 @@ _VALID_BATCH_METHODS = ["slurm", "torque", "pbspro", "lsf", "moab", "local"]
 _VALID_LAUNCH_METHODS = ["openmpi", "mpiexec", "slurm", "alps", "yod"]
 _VALID_REMOTE_METHODS = ["pdsh", "ssh"]
 _VALID_RCMD_MODULES = ["ssh", "exec"]
+_VALID_FIO_PROFILES = ["auto", "ai", "general", "hpc", "streaming"]  # cbench.fioprofile
 _VALID_FILTER_MODULES = ["openmpi", "slurm", "torque", "mvapich", "mpiexec", "cray", "misc"]
 
 _SCHEMA: dict = {
@@ -63,6 +64,11 @@ _SCHEMA: dict = {
             "propertyNames": {"pattern": r"^[A-Za-z0-9_\-]+$"},
             "additionalProperties": {"type": "string", "pattern": r"^/"},
         },
+        # fio job set (cbench.fioprofile): per-job time cap, sequential block
+        # size profile, and an exact sequential block size override
+        "fio_runtime_s": {"type": "integer", "minimum": 1},
+        "fio_profile": {"type": "string", "enum": _VALID_FIO_PROFILES},
+        "fio_seq_bs": {"type": "string", "pattern": r"^\d+[kKmMgG]$"},
         "parse_filter_include": {
             "type": "array",
             "items": {"type": "string", "enum": _VALID_FILTER_MODULES},
@@ -136,6 +142,9 @@ class ClusterConfig:
     remotecmd_rcmd: str = "ssh"
     remotecmd_exec_cmd: str = ""
     io_targets: dict[str, str] = field(default_factory=dict)
+    fio_runtime_s: int = 300
+    fio_profile: str = "auto"
+    fio_seq_bs: str = ""
     parse_filter_include: list[str] = field(
         default_factory=lambda: ["openmpi", "slurm", "mpiexec", "torque", "mvapich", "misc"]
     )

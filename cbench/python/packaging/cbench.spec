@@ -30,6 +30,9 @@ Requires:       python3-jsonschema >= 4.0
 # Keep in sync with debian/control Recommends and the Makefile fpm targets.
 Recommends:     openmpi-devel
 Recommends:     environment-modules
+# fio: the default node-local IOPS/metadata test (snb fio, iometadata_fio).
+# RHEL/Rocky AppStream and Fedora ship it as `fio`; cbench can also build it.
+Recommends:     fio
 
 # Optional: web dashboard
 # Requires:     python3-flask >= 2.0
@@ -44,7 +47,8 @@ run single-node benchmarks, and serve a web dashboard.
 Open MPI is recommended (not required) for building and running the MPI
 benchmarks. RHEL installs it outside PATH: `module load mpi/openmpi-x86_64`
 (environment-modules, also recommended) or add /usr/lib64/openmpi/bin to
-PATH. Sites using another MPI can install with --setopt=install_weak_deps=False.
+PATH. fio is recommended for the node-local I/O tests. Sites using another
+MPI can install with --setopt=install_weak_deps=False.
 
 %install
 # Install cbench package only (no bundled deps — distro packages handle them)
