@@ -228,9 +228,9 @@ def test_random_job_numjobs_tracks_numcores(tmp_path, monkeypatch):
     assert re.search(r"--name=seq_rw\b.*--numjobs=1\b", out)
 
 
-def test_random_job_numjobs_capped_at_16(tmp_path, monkeypatch):
+def test_random_job_numjobs_uses_all_cores_without_cap(tmp_path, monkeypatch):
     out = _fio_dry_run_output(tmp_path, monkeypatch, numcores=64)
-    assert re.search(r"--name=rand_rw\b.*--numjobs=16\b", out)
+    assert re.search(r"--name=rand_rw\b.*--numjobs=64\b", out)
 
 
 def test_parse_fio_targets_no_marker_backcompat(tmp_path):

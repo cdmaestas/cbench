@@ -17,8 +17,9 @@ cbench_runin_tempdir
 
 bonnie="CBENCHTEST_BIN_HERE/bonnie++"
 # -s (per-instance file size) and -r (per-instance RAM) are computed by gen-jobs
-# so the 3 concurrent instances write 2x the node's RAM in aggregate, capped to
-# the target's free space. See cbench/python/cbench/iosizing.py.
+# so the concurrent instances (one per IO thread: all CPUs, or io_threads_max)
+# write 2x the node's RAM in aggregate, capped to the target's free space.
+# See cbench/python/cbench/iosizing.py.
 opts="-d . -s BONNIE_SIZE_MB_HERE -r BONNIE_RAM_MB_HERE"
 
 # when running as root, bonnie++ will complain. so you need to
@@ -27,7 +28,7 @@ opts="-d . -s BONNIE_SIZE_MB_HERE -r BONNIE_RAM_MB_HERE"
 #opts="$opts -u 947"
 #chown -R 947.947 .
 
-# this is pretty lame right now as it only works on a single 4 core node.
+# bonnie++ is single-node; concurrency comes from the instance count instead
 if [ NUM_NODES_HERE -ne 1 ]; then
         cbench_echo "CBENCH NOTICE: bonnie++ only runs on 1 node currently"
         exit
@@ -35,16 +36,15 @@ fi
 
 cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 
-CMD="$bonnie $opts -p3"
+instances=BONNIE_INSTANCES_HERE
+CMD="$bonnie $opts -p$instances"
 cbench_run_cmd $CMD
 sync
 
 CMD="$bonnie $opts -y s"
-cbench_run_cmd $CMD &
-CMD="$bonnie $opts -y s"
-cbench_run_cmd $CMD &
-CMD="$bonnie $opts -y s"
-cbench_run_cmd $CMD &
+for i in $(seq 1 $instances); do
+	cbench_run_cmd $CMD &
+done
 
 wait
 sync

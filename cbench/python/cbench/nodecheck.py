@@ -34,7 +34,8 @@ from typing import Callable, Optional
 
 from cbench.hostlist import compress
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2          # v2 adds per-node physical cores ("cores")
+SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 MEM_TOLERANCE = 0.02
 STALE_DAYS = 30
 CONNECT_TIMEOUT = 10
@@ -57,6 +58,10 @@ def build_probe_script(targets: dict[str, str]) -> str:
     """Return the POSIX sh probe run on each node (prints key=value lines)."""
     lines = [
         'echo "cpus=$(grep -c ^processor /proc/cpuinfo)"',
+        # physical cores = distinct (physical id, core id) pairs; 0 where
+        # cpuinfo lacks them (some ARM/VMs) and logical CPUs are all we know
+        "echo \"cores=$(awk -F': *' '/^physical id/{p=$2} /^core id/{print p\":\"$2}' "
+        "/proc/cpuinfo | sort -u | wc -l | tr -d ' ')\"",
         "echo \"memtotal_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)\"",
         "echo \"model=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)\"",
     ]
@@ -236,7 +241,7 @@ def analyze(
             "or exclude them with --ignore"
         )
 
-    aggregate: dict = {"cpus": None, "memtotal_kb": None, "models": [], "targets": {}}
+    aggregate: dict = {"cpus": None, "cores": None, "memtotal_kb": None, "models": [], "targets": {}}
     heterogeneous = False
 
     if responded:
@@ -244,6 +249,9 @@ def analyze(
         mem = {h: _int(per_host[h].get("memtotal_kb")) or 0 for h in responded}
         models = {h: per_host[h].get("model", "") for h in responded}
         aggregate["cpus"] = {"min": min(cpus.values()), "max": max(cpus.values())}
+        cores = {h: _int(per_host[h].get("cores")) or 0 for h in responded}
+        if all(cores.values()):
+            aggregate["cores"] = {"min": min(cores.values()), "max": max(cores.values())}
         aggregate["memtotal_kb"] = {"min": min(mem.values()), "max": max(mem.values())}
         aggregate["models"] = sorted(set(models.values()))
 
@@ -251,6 +259,11 @@ def analyze(
             heterogeneous = True
             errors_or_warn = f"CPU count differs: {_groups_by(cpus)}"
             (warnings if allow_heterogeneous else errors).append(errors_or_warn)
+        elif aggregate["cores"] and aggregate["cores"]["min"] != aggregate["cores"]["max"]:
+            # same logical count, different physical cores: SMT on some nodes only
+            heterogeneous = True
+            msg = f"physical core count differs (SMT setting?): {_groups_by(cores)}"
+            (warnings if allow_heterogeneous else errors).append(msg)
         mmax = aggregate["memtotal_kb"]["max"]
         if mmax and (mmax - aggregate["memtotal_kb"]["min"]) / mmax > MEM_TOLERANCE:
             heterogeneous = True
@@ -307,18 +320,20 @@ def group_summary(per_host: dict[str, dict[str, str]], responded: list[str], tar
         f = per_host[h]
         key = (
             f.get("cpus", ""),
+            f.get("cores", ""),
             f.get("model", ""),
             tuple(f.get(f"target.{n}.fstype", "MISSING") for n in sorted(targets)),
         )
         groups.setdefault(key, []).append(h)
     rows = []
-    for (cpus, model, fstypes), hosts in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+    for (cpus, cores, model, fstypes), hosts in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         mems = [(_int(per_host[h].get("memtotal_kb")) or 0) / 1048576 for h in hosts]
         mem = f"{min(mems):.1f}" if max(mems) - min(mems) < 0.05 else f"{min(mems):.1f}-{max(mems):.1f}"
         rows.append({
             "hosts": compress(hosts),
             "count": len(hosts),
             "cpus": cpus,
+            "cores": cores if cores not in ("", "0") else "?",
             "mem_gib": mem,
             "model": model,
             "targets": dict(zip(sorted(targets), fstypes)),
@@ -387,10 +402,10 @@ def load_facts(
         facts = json.loads(path.read_text())
     except json.JSONDecodeError as e:
         raise NodecheckError(f"node facts file {path} is not valid JSON: {e}") from e
-    if facts.get("schema_version") != SCHEMA_VERSION:
+    if facts.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS:
         raise NodecheckError(
             f"node facts file {path} has schema_version {facts.get('schema_version')!r}, "
-            f"expected {SCHEMA_VERSION} — re-run `cbench nodecheck`"
+            f"expected one of {SUPPORTED_SCHEMA_VERSIONS} — re-run `cbench nodecheck`"
         )
     if not facts.get("verdict", {}).get("ok"):
         raise NodecheckError(
