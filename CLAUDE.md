@@ -122,6 +122,7 @@ Timing and job counts:
 Sequential block size comes from `io_profile` (deprecated alias `fio_profile`; snb `--io-profile`, alias `--fio-profile`):
 - `ai` 1m, `general` 4m, `hpc` 8m, `streaming` 16m.
 - `auto` (default) picks `hpc` on gpfs/lustre/panfs/beegfs/ceph, else `general`.
+- `auto` is block-size aware (`fioprofile.auto_profile`): when a target's block size is known, it moves up to the smallest profile that is a whole multiple of it. The size is the larger of `block_kb` (statfs `f_bsize`, which on GPFS is the file system block size) and `stripe_kb` (Lustre `lfs getstripe -d -S`). nodecheck facts v4 record both per target, plus `suggested_profile`/`profile_note`. gen-jobs uses them through `iosizing.seq_profile()` and prints a `NOTE` via `NodeValues.notes` when `auto` moved. snb uses a local `os.statvfs` (`_local_block_kb`). Explicit `io_profile`/`io_seq_bs` are never moved; nodecheck's `profile_report()` warns when they aren't a multiple.
 - `io_seq_bs` (deprecated alias `fio_seq_bs`) overrides it exactly.
 - The same size is iozone's and gpfsperf's record size and IOR's `io_ior*` transfer size `-t`, whose `-b` rounds up to a multiple of it. `iosanity`/`shakedown` keep fixed sizes.
 - `load_config` maps the deprecated aliases (`_KEY_ALIASES`) with a DeprecationWarning; setting both names is a ConfigError.
@@ -148,7 +149,7 @@ Groups in `io-default`:
 - `parallel`: ior1mNtoN, mdtest.
 - `gpfs`: gpfsperf.
 
-`--group all` selects every group. A group whose target isn't available is skipped with a warning. The `gpfs` target is `io_targets.gpfs`, else `io_targets.parallel` when the node facts say it's GPFS (`iosizing._gpfs_alias`), so gen-jobs resolves node values before choosing groups. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
+`--group all` selects every group. Custom profiles come from cluster.yaml `io_profiles`. The config schema checks the structure, and `profiles.custom_profiles()` refuses a built-in name, a member with no `<testset>_<benchmark>.in` template, an unknown default group, or two members that would get the same job name. Their groups have `route_members=True`: gen-jobs passes `group.target` as `target=` to every `iosizing.*_tokens()`/`target_tokens()`, so that target sets `IO_TARGET_DIR`/`TESTDIR`, the free-space cap and the block-aware profile. Built-in groups pass `None`, which keeps `target_name_for(benchmark)`. A group whose target isn't available is skipped with a warning. The `gpfs` target is `io_targets.gpfs`, else `io_targets.parallel` when the node facts say it's GPFS (`iosizing._gpfs_alias`), so gen-jobs resolves node values before choosing groups. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
 
 **`io_threads(nv, cfg)`** is the single concurrency rule for every IO benchmark:
 - What it sets: fio `--numjobs`, bonnie instances (`BONNIE_INSTANCES`, with sizes split across them), iozone `-t`, gpfsperf `-th`, and the mdtest top ppn level.

@@ -21,8 +21,13 @@ neither lays out files of its own.
 Sequential block size comes from the IO workload profile (``io_profile``;
 ``fio_profile`` is a deprecated alias): ai 1m, general 4m, hpc 8m,
 streaming 16m; ``auto`` picks hpc on a parallel filesystem and general
-elsewhere. ``io_seq_bs`` overrides it exactly. The same size is iozone's and
-gpfsperf's record size and IOR's transfer size (-t).
+elsewhere, then -- when the filesystem's block size (or Lustre stripe size)
+is known from nodecheck or a local statvfs -- moves up to the smallest
+profile whose size is a whole multiple of it, so sequential transfers never
+split a block (e.g. 16 MiB GPFS blocks: hpc 8m -> streaming 16m).
+``io_seq_bs`` overrides it exactly, and an explicit profile is never moved.
+The same size is iozone's and gpfsperf's record size and IOR's transfer
+size (-t).
 """
 
 from __future__ import annotations
@@ -64,10 +69,59 @@ def numjobs(threads: int) -> int:
     return max(1, int(threads))
 
 
-def seq_block_size(profile: str, fstype: str | None, override: str = "") -> tuple[str, str]:
-    """(resolved profile name, sequential block size)."""
+_UNITS_KB = {"k": 1, "m": 1024, "g": 1024 ** 2}
+
+
+def size_kb(size: str) -> int:
+    """'4m' -> 4096 (KiB); accepts k/m/g suffixes as io_seq_bs does."""
+    return int(size[:-1]) * _UNITS_KB[size[-1].lower()]
+
+
+def human_kb(kb: int) -> str:
+    """4096 -> '4 MiB', 512 -> '512 KiB'."""
+    for unit, div in (("GiB", 1024 ** 2), ("MiB", 1024)):
+        if kb >= div and kb % div == 0:
+            return f"{kb // div} {unit}"
+    return f"{kb} KiB"
+
+
+def align_kb(target: dict | None) -> int | None:
+    """The size sequential transfers should be a whole multiple of on a
+    target: the larger of its block size and (Lustre) stripe size, from
+    nodecheck facts; None when unknown."""
+    if not target:
+        return None
+    sizes = [v for v in (target.get("block_kb"), target.get("stripe_kb")) if v]
+    return max(sizes) if sizes else None
+
+
+def auto_profile(fstype: str | None, align: int | None = None) -> tuple[str, str]:
+    """(profile, note) that ``auto`` resolves to on a target.
+
+    hpc on a parallel filesystem, else general; when ``align`` (KiB) is known
+    and that size isn't a whole multiple of it, the smallest larger profile
+    that is. ``note`` explains a move, or that no profile fits; "" otherwise.
+    """
+    base = "hpc" if (fstype or "").lower() in PARALLEL_FSTYPES else "general"
+    base_kb = size_kb(PROFILES[base])
+    if not align or base_kb % align == 0:
+        return base, ""
+    for name in sorted(PROFILES, key=lambda p: size_kb(PROFILES[p])):
+        kb = size_kb(PROFILES[name])
+        if kb >= base_kb and kb % align == 0:
+            return name, (f"{base} ({PROFILES[base]}) is not a multiple of the "
+                          f"{human_kb(align)} block size; auto uses {name} ({PROFILES[name]})")
+    return base, (f"no IO profile is a multiple of the {human_kb(align)} block size; "
+                  f"auto keeps {base} ({PROFILES[base]})")
+
+
+def seq_block_size(profile: str, fstype: str | None, override: str = "",
+                   align: int | None = None) -> tuple[str, str]:
+    """(resolved profile name, sequential block size). ``align`` (KiB) makes
+    ``auto`` block-size aware (see auto_profile); explicit profiles and
+    ``override`` are used as given."""
     if profile == "auto":
-        profile = "hpc" if (fstype or "").lower() in PARALLEL_FSTYPES else "general"
+        profile, _ = auto_profile(fstype, align)
     if profile not in PROFILES:
         raise ValueError(f"unknown fio profile {profile!r}; choose from {', '.join(PROFILE_CHOICES)}")
     return profile, (override or PROFILES[profile])

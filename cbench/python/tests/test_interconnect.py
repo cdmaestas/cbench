@@ -190,8 +190,8 @@ def _facts(**agg_extra):
             "aggregate": agg}
 
 
-def test_schema_v3_is_current_and_older_still_load(tmp_path):
-    assert nc.SCHEMA_VERSION == 3 and set(nc.SUPPORTED_SCHEMA_VERSIONS) == {1, 2, 3}
+def test_schema_v3_and_older_still_load(tmp_path):
+    assert nc.SCHEMA_VERSION >= 3 and {1, 2, 3} <= set(nc.SUPPORTED_SCHEMA_VERSIONS)
     for v in (1, 2, 3):
         f = _facts()
         f["schema_version"] = v

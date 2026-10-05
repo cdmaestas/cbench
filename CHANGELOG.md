@@ -8,6 +8,25 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Custom IO profiles in cluster.yaml** (`io_profiles`): named bundles for
+  `gen-jobs --profile`, with groups of `<testset>_<benchmark>` members, an optional
+  `suffix` for job names and optional `default_groups`. In a custom group, the group's
+  `target` decides where every member writes (e.g. fio on GPFS, or IOR on an extra
+  `io_targets.nvme`), with sizing, free-space caps and the block-aware `auto` profile
+  taken from that target. Built-in profiles are unchanged. A custom profile can't reuse
+  a built-in name; a missing template, unknown default group or clashing job names are
+  reported before anything is generated.
+- **IO profile discovery:** `cbench nodecheck` records each IO target's block size
+  (statfs; the file system block size on GPFS) and, on Lustre, its stripe size (facts
+  schema v4). It prints which IO profile `io_profile: auto` will use for each target,
+  and warns when an explicit `io_profile`/`io_seq_bs` isn't a whole multiple of the
+  block size.
+  - `auto` is now block-size aware in gen-jobs and `snb`: it moves up to the smallest
+    profile that is a whole multiple of the block size, so sequential transfers never
+    split a block. For example, 16 MiB GPFS blocks get `streaming` (16m) instead of
+    `hpc` (8m).
+  - gen-jobs prints a `NOTE` when `auto` moved. Explicit settings are never changed,
+    and facts without block sizes behave as before.
 - **Job heartbeat:** gen-jobs job scripts rewrite `<jobdir>/<jobname>.heartbeat`
   every `job_heartbeat_s` seconds (default 60) with "still running, elapsed …", and
   interactive runs also print it to the terminal, so a long silent benchmark is visibly

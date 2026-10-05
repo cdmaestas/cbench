@@ -181,10 +181,11 @@ def gen_jobs(
     # Members to generate: (home testset whose template is used, template
     # benchmark, benchmark name in the job name). Jobs are written under
     # out_ts — the testset, or the profile acting as a virtual testset.
-    members: list[tuple[str, str, str]] = []
+    # (home testset, template benchmark, job benchmark name, target override)
+    members: list[tuple[str, str, str, str | None]] = []
     if profile:
         try:
-            prof = profiles.get_profile(profile)
+            prof = profiles.get_profile(profile, cfg.io_profiles, templates_dir)
             selected = profiles.select_groups(prof, groups)
         except profiles.ProfileError as exc:
             raise click.UsageError(str(exc)) from exc
@@ -201,7 +202,9 @@ def gen_jobs(
             if not group.members:
                 console.print(f"[yellow]WARNING: group '{gname}' has no benchmarks yet[/yellow]")
                 continue
-            members += [(m.home, m.benchmark, profiles.job_benchmark(m, group)) for m in group.members]
+            target = group.target if group.route_members else None
+            members += [(m.home, m.benchmark, profiles.job_benchmark(m, group), target)
+                        for m in group.members]
             used.append(gname)
         if not members:
             raise click.ClickException(f"profile '{profile}': nothing to generate for groups "
@@ -209,7 +212,7 @@ def gen_jobs(
         console.print(f"Profile {profile}: generating groups {', '.join(used)}")
     else:
         out_ts = testset
-        members = [(testset, t.stem[len(testset) + 1:], t.stem[len(testset) + 1:])
+        members = [(testset, t.stem[len(testset) + 1:], t.stem[len(testset) + 1:], None)
                    for t in sorted(templates_dir.glob(f"{testset}_*.in"))]
         if not members:
             console.print(f"[red]No templates found for testset '{testset}' in {templates_dir}[/red]")
@@ -224,9 +227,9 @@ def gen_jobs(
             if skipped_default:
                 console.print(f"Skipping {', '.join(skipped_default)} by default "
                               f"(superseded; select with --match)")
-    benchmark_templates = [bench for _home, bench, _out in members]
+    benchmark_templates = [bench for _home, bench, _out, _target in members]
 
-    sized = [b for home, b, _o in members if iosizing.needs_io_sizing(home, b)]
+    sized = [b for home, b, _o, _t in members if iosizing.needs_io_sizing(home, b)]
     if sized and not nv.mem_io_kb:
         raise click.ClickException(
             f"testset '{out_ts}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
@@ -265,31 +268,32 @@ def gen_jobs(
     total = 0
 
     def emit(home: str, bench: str, out_bench: str, ppn_val: int, numprocs: int,
-             numnodes: int, walltime: str, launch_cmd: str) -> None:
-        """Render and write one job (every run type) for a member at (ppn, numprocs)."""
+             numnodes: int, walltime: str, launch_cmd: str, target: str | None = None) -> None:
+        """Render and write one job (every run type) for a member at (ppn, numprocs).
+        ``target``: a custom profile group's io_targets key, overriding the
+        benchmark's usual target."""
         nonlocal total
         jobname = f"{out_bench}-{ppn_val}ppn-{numprocs}"
         if match_re and not match_re.search(jobname):
             return
         try:
+            kw = {"testset": home, "benchmark": bench, "target": target}
             if bench == "fio":
-                io_extra, warning = iosizing.fio_tokens(nv, cfg, testset=home,
-                                                        benchmark=bench)
+                io_extra, warning = iosizing.fio_tokens(nv, cfg, **kw)
                 if warning:
                     gen_warnings.add(f"{jobname}: {warning}")
             elif bench == "iozone":
-                io_extra = iosizing.iozone_tokens(nv, cfg, testset=home, benchmark=bench)
+                io_extra = iosizing.iozone_tokens(nv, cfg, **kw)
             elif bench == "gpfsperf":
-                io_extra = iosizing.gpfsperf_tokens(nv, cfg, testset=home, benchmark=bench)
+                io_extra = iosizing.gpfsperf_tokens(nv, cfg, **kw)
             elif bench == "io500":
-                io_extra = iosizing.io500_tokens(nv, cfg, testset=home, benchmark=bench)
+                io_extra = iosizing.io500_tokens(nv, cfg, **kw)
             elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
-                io_extra = iosizing.ior_tokens(nv, cfg, ppn=ppn_val, numprocs=numprocs,
-                                               testset=home, benchmark=bench)
+                io_extra = iosizing.ior_tokens(nv, cfg, ppn=ppn_val, numprocs=numprocs, **kw)
             elif iosizing.needs_io_sizing(home, bench):
-                io_extra = iosizing.bonnie_tokens(nv, cfg, testset=home, benchmark=bench)
-            elif iosizing.target_name_for(bench):
-                io_extra = iosizing.target_tokens(nv, bench)
+                io_extra = iosizing.bonnie_tokens(nv, cfg, **kw)
+            elif target or iosizing.target_name_for(bench):
+                io_extra = iosizing.target_tokens(nv, bench, target)
             else:
                 io_extra = {}
         except iosizing.IOSizingError as exc:
@@ -370,9 +374,10 @@ def gen_jobs(
             numnodes = max(1, math.ceil(numprocs / ppn_val))
             walltime = templates.compute_walltime(numprocs, valid_sizes, cfg)
             launch_cmd = launchers.build_launch_cmd(numprocs, ppn_val, numnodes, cfg)
-            for home, bench, out_bench in members:
+            for home, bench, out_bench, target in members:
                 if bench not in _SINGLE_INSTANCE and bench not in _NODE_SWEEP:
-                    emit(home, bench, out_bench, ppn_val, numprocs, numnodes, walltime, launch_cmd)
+                    emit(home, bench, out_bench, ppn_val, numprocs, numnodes, walltime, launch_cmd,
+                         target)
 
     # Single-node, non-MPI benchmarks: one job at their real concurrency — T
     # IO threads on 1 node, named <bench>-<T>ppn-<T> — so the name, the
@@ -382,8 +387,8 @@ def gen_jobs(
         threads = iosizing.io_threads(nv, cfg)
         launch_cmd = launchers.build_launch_cmd(threads, threads, 1, cfg)
         walltime = templates.compute_walltime(threads, [threads], cfg)
-        for home, bench, out_bench in singles:
-            emit(home, bench, out_bench, threads, threads, 1, walltime, launch_cmd)
+        for home, bench, out_bench, target in singles:
+            emit(home, bench, out_bench, threads, threads, 1, walltime, launch_cmd, target)
 
     # Whole-node MPI suites (IO500): ppn = IO threads, one job per node count
     # (1, 2, 4, ... up to max_nodes, and max_nodes itself), within --maxprocs.
@@ -397,13 +402,16 @@ def gen_jobs(
             numnodes = numprocs // threads
             launch_cmd = launchers.build_launch_cmd(numprocs, threads, numnodes, cfg)
             walltime = templates.compute_walltime(numprocs, sizes, cfg)
-            for home, bench, out_bench in sweeps:
-                emit(home, bench, out_bench, threads, numprocs, numnodes, walltime, launch_cmd)
+            for home, bench, out_bench, target in sweeps:
+                emit(home, bench, out_bench, threads, numprocs, numnodes, walltime, launch_cmd,
+                     target)
 
     if skipped_no_grid:
         console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "
                       f"{len(skipped_no_grid)} job(s), not generated: "
                       f"{', '.join(skipped_no_grid)}[/yellow]")
+    for note in sorted(nv.notes):
+        console.print(f"NOTE: io_profile {note}")
     for w in sorted(gen_warnings):
         console.print(f"[yellow]WARNING: {w}[/yellow]")
     for c in sorted(caveats):

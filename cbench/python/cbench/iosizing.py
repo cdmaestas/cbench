@@ -62,6 +62,9 @@ class NodeValues:
     #: "interconnect=ib gpfs_transport=rdma" from facts v3 (nodecheck); jobs print
     #: it as a CBENCH LABEL line and `cbench parse` keeps it in status_detail
     labels: str = ""
+    #: gen-time notes (e.g. io_profile auto moved up to fit a block size),
+    #: collected while sizing jobs and printed once by gen-jobs
+    notes: set = field(default_factory=set)
 
 
 def _resolve_targets(cfg, facts_targets: dict, warnings: list) -> dict:
@@ -198,20 +201,35 @@ def _free_cap_kb(nv: NodeValues, target: str | None) -> tuple[int | None, bool |
     return int(free * CAPACITY_FRACTION), t.get("shared")
 
 
-def ior_tokens(nv: NodeValues, cfg, *, ppn: int, numprocs: int, testset: str,
-               benchmark: str) -> dict:
-    """IOR -t from the IO profile (auto on a parallel filesystem -> hpc, 8m) and
-    -b so each node writes >= 2x RAM, rounded up to a multiple of -t."""
+def seq_profile(nv: NodeValues, cfg, target: str | None,
+                fstype: str | None = None) -> tuple[str, str]:
+    """(profile, sequential block size) for a target: cfg.io_profile, with
+    ``auto`` moved up to a whole multiple of the block / stripe size the node
+    facts recorded for it (cbench.fioprofile.auto_profile)."""
     from cbench import fioprofile
 
+    t = nv.targets.get(target or "", {})
+    fstype = fstype or t.get("fstype")
+    align = fioprofile.align_kb(t)
+    if cfg.io_profile == "auto" and not cfg.io_seq_bs:
+        _, note = fioprofile.auto_profile(fstype, align)
+        if note:
+            nv.notes.add(f"target '{target}' ({t.get('path', '?')}): {note}")
+    return fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs, align)
+
+
+def ior_tokens(nv: NodeValues, cfg, *, ppn: int, numprocs: int, testset: str,
+               benchmark: str,
+                target: str | None = None) -> dict:
+    """IOR -t from the IO profile (auto on a parallel filesystem -> hpc, 8m) and
+    -b so each node writes >= 2x RAM, rounded up to a multiple of -t."""
     mem_kb = _require_mem(nv, testset, benchmark)
-    target_fs = nv.targets.get(target_name_for(benchmark) or "", {}).get("fstype")
-    profile, transfer = fioprofile.seq_block_size(cfg.io_profile, target_fs, cfg.io_seq_bs)
+    target = target or target_name_for(benchmark)
+    profile, transfer = seq_profile(nv, cfg, target)
     t = _block_mib(transfer)
     want_mib = 2 * mem_kb / 1024 / ppn
     b_mib = max(t, math.ceil(want_mib / t) * t)
     caveat = ""
-    target = target_name_for(benchmark)
     cap_kb, shared = _free_cap_kb(nv, target)
     # aggregate written to the target: whole job on a shared fs, per node on local
     divisor = numprocs if shared else ppn
@@ -229,10 +247,11 @@ def ior_tokens(nv: NodeValues, cfg, *, ppn: int, numprocs: int, testset: str,
         "IO_REQUIRED_KB": str(b_mib * divisor * 1024),
         "IO_CAVEAT": _shell_safe(caveat),
     }
-    return {**tokens, **target_tokens(nv, benchmark)}
+    return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
-def bonnie_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
+def bonnie_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                target: str | None = None) -> dict:
     """bonnie++ -s/-r so the concurrent instances (one per IO thread) write 2x
     RAM in aggregate.
 
@@ -243,7 +262,7 @@ def bonnie_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
     size = math.ceil(2 * mem_mib / n)
     ram = math.floor(mem_mib / n)
     caveat = ""
-    target = target_name_for(benchmark)
+    target = target or target_name_for(benchmark)
     cap_kb, _shared = _free_cap_kb(nv, target)  # bonnie is single-node: per-node space
     if cap_kb is not None and size * n * 1024 > cap_kb:
         capped = max(1, cap_kb // 1024 // n)
@@ -260,10 +279,11 @@ def bonnie_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
         "IO_REQUIRED_KB": str(size * n * 1024),
         "IO_CAVEAT": _shell_safe(caveat),
     }
-    return {**tokens, **target_tokens(nv, benchmark)}
+    return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
-def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[dict, str]:
+def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                target: str | None = None) -> tuple[dict, str]:
     """Tokens for iometadata_fio.in, plus a gen-time warning ("" if none).
 
     numjobs = io_threads (all CPUs, optional cap); the sequential block size comes from the
@@ -281,9 +301,8 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
             "(from `cbench nodecheck`) or set procs_per_node explicitly in cluster.yaml"
         )
     njobs = fioprofile.numjobs(io_threads(nv, cfg))
-    target = target_name_for(benchmark)
-    fstype = nv.targets.get(target or "", {}).get("fstype")
-    profile, seq_bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
+    target = target or target_name_for(benchmark)
+    profile, seq_bs = seq_profile(nv, cfg, target)
     need_kb = fioprofile.peak_bytes(njobs) // 1024
     warning = ""
     cap_kb, _shared = _free_cap_kb(nv, target)
@@ -301,7 +320,7 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
         "FIO_MD_NRFILES": str(fioprofile.MD_NRFILES),
         "IO_CAVEAT": "",
     }
-    return {**tokens, **target_tokens(nv, benchmark)}, warning
+    return {**tokens, **target_tokens(nv, benchmark, target)}, warning
 
 
 def _block_mib(bs: str) -> int:
@@ -310,7 +329,8 @@ def _block_mib(bs: str) -> int:
     return {"k": max(1, n // 1024), "m": n, "g": n * 1024}[unit]
 
 
-def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
+def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                target: str | None = None) -> dict:
     """iozone throughput mode: one thread per IO thread, each writing its share
     of 2x RAM (rounded UP to the record size), capped to the target's free
     space with a caveat. Sequential tests use the IO profile's block size as
@@ -319,9 +339,8 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
 
     mem_kb = _require_mem(nv, testset, benchmark)
     n = io_threads(nv, cfg)
-    target = target_name_for(benchmark)
-    fstype = nv.targets.get(target or "", {}).get("fstype")
-    profile, bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
+    target = target or target_name_for(benchmark)
+    profile, bs = seq_profile(nv, cfg, target)
     rec = _block_mib(bs)
     size = max(rec, math.ceil(2 * mem_kb / 1024 / n / rec) * rec)   # MiB per thread
     caveat = ""
@@ -340,10 +359,11 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
         "IO_REQUIRED_KB": str(size * n * 1024),
         "IO_CAVEAT": _shell_safe(caveat),
     }
-    return {**tokens, **target_tokens(nv, benchmark)}
+    return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
-def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
+def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                target: str | None = None) -> dict:
     """gpfsperf: one file of 2x RAM (defeats the GPFS pagepool, which is
     smaller than RAM), -th = IO threads; sequential ops use -r = the profile
     block size (auto on GPFS -> hpc 8m), random ops -r 4k over a bounded -n
@@ -352,9 +372,9 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dic
 
     mem_kb = _require_mem(nv, testset, benchmark)
     n = io_threads(nv, cfg)
-    target = target_name_for(benchmark)
+    target = target or target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype") or "gpfs"
-    profile, bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
+    profile, bs = seq_profile(nv, cfg, target, fstype)
     rec = _block_mib(bs)
     size = max(rec, math.ceil(2 * mem_kb / 1024 / rec) * rec)   # MiB, whole file
     caveat = ""
@@ -376,18 +396,20 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dic
         "IO_REQUIRED_KB": str(size * 1024),
         "IO_CAVEAT": _shell_safe(caveat),
     }
-    return {**tokens, **target_tokens(nv, benchmark)}
+    return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
-def io500_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
+def io500_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                target: str | None = None) -> dict:
     """IO500 runs for a fixed time (the stonewall), so only the target and the
     stonewall are set; a stonewall under 300 s makes IO500 flag the run [INVALID]."""
-    return {"IO500_STONEWALL": str(cfg.io500_stonewall_s), **target_tokens(nv, benchmark)}
+    return {"IO500_STONEWALL": str(cfg.io500_stonewall_s), **target_tokens(nv, benchmark, target)}
 
 
-def target_tokens(nv: NodeValues, benchmark: str) -> dict:
-    """IO_TARGET_DIR (and TESTDIR for IOR) from the configured io_targets."""
-    target = target_name_for(benchmark)
+def target_tokens(nv: NodeValues, benchmark: str, target: str | None = None) -> dict:
+    """IO_TARGET_DIR (and TESTDIR for IOR) from the configured io_targets:
+    ``target`` (a custom profile group's), else the benchmark's default."""
+    target = target or target_name_for(benchmark)
     path = nv.targets.get(target or "", {}).get("path") if target else None
     if not path:
         return {"IO_TARGET_DIR": ""}
