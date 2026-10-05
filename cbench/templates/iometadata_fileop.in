@@ -7,7 +7,8 @@
 
 cbench_check_for_bin CBENCHTEST_BIN_HERE/fileop
 
-cbench_runin_tempdir
+# per-job scratch dir, removed when the job exits or is killed
+cbench_scratch_dir "$PWD/job$JOBID" cd
 
 tst="CBENCHTEST_BIN_HERE/fileop"
 opts="-t -f 20"

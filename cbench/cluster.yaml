@@ -17,6 +17,7 @@ memory_util_factors: [0.25, 0.80, 0.85]
 joblaunch_method: openmpi  # openmpi | mpiexec | slurm | yod | alps
 joblaunch_cmd: ""  # empty: openmpi uses orterun, or mpirun on Open MPI 5 (picked at run time)
 joblaunch_extraargs: ""
+job_heartbeat_s: 60         # seconds between <jobdir>/<job>.heartbeat updates; 0 = off
 batch_method: slurm  # slurm | torque | pbspro | lsf | moab | loadleveler | cletorque
 batch_cmd: ""
 batch_extraargs: ""

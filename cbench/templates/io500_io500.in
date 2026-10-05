@@ -19,7 +19,8 @@ if [ -z "$IO_TARGET_DIR" ]; then
 	exit 1
 fi
 DATADIR="$IO_TARGET_DIR/io500.$JOBID"
-mkdir -p "$DATADIR" || { cbench_echo "CBENCH NOTICE: cannot create $DATADIR"; exit 1; }
+# removed when the job exits or is killed
+cbench_scratch_dir "$DATADIR"
 
 # IO500 reads its settings from an ini file; results land under ./results
 cat > io500.ini <<EOF
@@ -39,5 +40,4 @@ cbench_echo "Cbench io500: stonewall=IO500_STONEWALL_HERE datadir=$DATADIR"
 CMD="JOBLAUNCH_CMD_HERE $IO500 io500.ini"
 cbench_run_cmd $CMD
 
-rm -rf "$DATADIR"
 sync
