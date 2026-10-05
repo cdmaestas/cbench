@@ -527,8 +527,37 @@ def test_gpfsperf_build_runs_the_gpfsperf_target(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
     monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: None)       # no MPI here
     out = get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", BuildConfig(cc="gcc"))
     assert calls == [["make", "gpfsperf", "CC=gcc"]] and out == ["gpfsperf"]
+
+
+def _gpfsperf_build(tmp_path, monkeypatch, *, have_mpicc, **extra):
+    import cbench.builders.gpfsperf as mod
+    calls = []
+    monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: f"/opt/mpi/bin/{name}" if have_mpicc else None)
+    cfg = BuildConfig(cc="gcc", mpicc="mpicc", extra=extra)
+    return calls, get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", cfg)
+
+
+def test_gpfsperf_also_builds_mpi_version_without_mpich_lib(tmp_path, monkeypatch):
+    calls, out = _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=True)
+    assert calls == [["make", "gpfsperf", "CC=gcc"],
+                     ["make", "gpfsperf-mpi", "MPCC=mpicc", "MPLIBS="]]
+    assert out == ["gpfsperf", "gpfsperf-mpi"]
+
+
+def test_gpfsperf_mpi_options(tmp_path, monkeypatch):
+    calls, out = _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=True, mplibs="-lmpich",
+                                 cflags="-O2 -DGPFS_LINUX")
+    assert calls[1] == ["make", "gpfsperf-mpi", "MPCC=mpicc", "MPLIBS=-lmpich",
+                        "CFLAGS=-O2 -DGPFS_LINUX"]
+    calls, out = _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=True, mpi="no")
+    assert out == ["gpfsperf"] and len(calls) == 1
+    with pytest.raises(RuntimeError, match="mpicc not found"):
+        _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=False, mpi="yes")
 
 
 def test_gpfsperf_requires_gpfs_samples(tmp_path, monkeypatch):

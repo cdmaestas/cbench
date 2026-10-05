@@ -16,6 +16,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
     dir on the GPFS target and capped to free space.
   - `--group gpfs` stays single-node gpfsperf; `--group all` now includes the
     multi-node sweep.
+  - GPFS doesn't ship `gpfsperf-mpi`, so `cbench build run gpfsperf` now also builds it
+    when `mpicc` is found. It passes `MPLIBS=` because the makefile's `-lmpich` is
+    MPICH-only. `--extra mpi=no|yes` and `--extra mplibs=...` control this.
 - **Custom IO profiles in cluster.yaml** (`io_profiles`): named bundles for
   `gen-jobs --profile`, with groups of `<testset>_<benchmark>` members, an optional
   `suffix` for job names and optional `default_groups`. In a custom group, the group's

@@ -174,8 +174,8 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 
 **gpfsperf-mpi** (`templates/iogpfs_gpfsperfmpi.in`, io-default group `gpfs-mpi`, also in the `iogpfs` testset):
 - `_NODE_SWEEP` like io500: one job per node count at ppn = `io_threads`, one MPI rank per IO thread with `-th 1`, so job names are `gpfsperfmpi-<T>ppn-<T*nodes>`.
-- Same four ops as gpfsperf on one shared file in a `cbench_scratch_dir` on the GPFS target. `iosizing._gpfsperf_sizing()` (shared with single-node gpfsperf) sizes it to 2× the RAM of all the job's nodes, with random ops bounded to ranks × 256 MiB. `-n` is treated as the job's total, which is still to verify on zima.
-- Binary: `$CBENCHTEST/bin/gpfsperf-mpi`, else `/usr/lpp/mmfs/samples/perf/gpfsperf-mpi`. The builder doesn't build it yet; the makefile target is unverified.
+- Same four ops as gpfsperf on one shared file in a `cbench_scratch_dir` on the GPFS target. `iosizing._gpfsperf_sizing()` (shared with single-node gpfsperf) sizes it to 2× the RAM of all the job's nodes, with random ops bounded to ranks × 256 MiB. `-n` is the job's total; the samples README says all processes work on the same file at different offsets, with `-n` defaulting to the file size.
+- Binary: `$CBENCHTEST/bin/gpfsperf-mpi`, else `/usr/lpp/mmfs/samples/perf/gpfsperf-mpi`. GPFS does NOT ship it prebuilt (checked on zimabg1, GPFS 5.x samples), so build it: the `gpfsperf` builder also runs `make gpfsperf-mpi MPCC=<mpicc> MPLIBS=` when mpicc exists. The makefile's `MPLIBS = -lmpich` is MPICH-only, and mpicc links its own MPI. `--extra mpi=no` skips it, `mpi=yes` requires it, and `mplibs=` overrides.
 - `GpfsperfParser` takes it via `alias_spec = gpfsperfmpi` and uses the same `Cbench gpfsperf:` start/end lines; `nprocesses` is job-level.
 
 **io500 profile** (`--profile io500`, group `parallel`, `templates/io500_io500.in`):

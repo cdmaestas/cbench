@@ -118,7 +118,7 @@ cbench build update imb   # update a single benchmark
 > "source unchanged". Use `cbench build run <name> --force` to unconditionally
 > re-download and rebuild a tarball source.
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, only needed for a custom variant such as different compiler flags; GPFS RDMA needs no special build; `build all` skips it on hosts without GPFS).
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, the single-node binary ships with GPFS, so the build is needed for `gpfsperf-mpi` (built when `mpicc` is found) or a custom variant; GPFS RDMA needs no special build; `build all` skips it on hosts without GPFS).
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
 
