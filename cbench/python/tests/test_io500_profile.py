@@ -161,7 +161,7 @@ def test_io500_ini_datadir_and_stonewall(genv):
     s = genv.script("io500-parallel-4ppn-4")
     assert f'IO_TARGET_DIR="{GPFS}"' in s and 'DATADIR="$IO_TARGET_DIR/io500.$JOBID"' in s
     assert "stonewall-time = 60\n" in s and "datadir = $DATADIR\n" in s
-    assert 'rm -rf "$DATADIR"' in s
+    assert 'cbench_scratch_dir "$DATADIR"' in s  # removed on exit, even when killed
     assert not re.findall(r"\b[A-Z][A-Z0-9_]*_HERE\w*", s)
 
 

@@ -48,6 +48,56 @@ cbench_io_preflight()
 	cbench_echo "Cbench IO preflight: $dir has ${have_kb} kB free, job needs ${need_kb} kB"
 }
 
+# Scratch data cleanup. IO jobs write their data into per-job scratch dirs; a
+# job killed by the scheduler (time limit, scancel) or by Ctrl-C would leave
+# that data behind, and later jobs' preflights would find the space gone. Dirs
+# registered with cbench_scratch_dir are removed when the script exits for any
+# reason it can catch (normal end, exit, INT, TERM, HUP); SIGKILL can't be
+# trapped, so a job killed outright still leaves its data. Defined here (not in
+# cbench_functions) for the same reason as cbench_io_preflight.
+#   usage: cbench_scratch_dir DIR [cd]   (create DIR, remove it on exit; cd into it)
+CBENCH_SCRATCH_DIRS=()
+cbench_scratch_dir()
+{
+	local dir="$1"
+	case "$dir" in
+		""|/|.|..)
+			cbench_echo "CBENCH NOTICE: refusing to use '$dir' as a scratch dir"
+			exit 1 ;;
+	esac
+	mkdir -p "$dir" || {
+		cbench_echo "CBENCH NOTICE: cannot create scratch dir $dir"; exit 1; }
+	# absolute, so cleanup works from any cwd
+	dir=$(cd "$dir" && pwd -P)
+	CBENCH_SCRATCH_DIRS+=("$dir")
+	if [ "$2" == "cd" ]; then
+		cd "$dir" || exit 1
+	fi
+}
+cbench_scratch_cleanup()
+{
+	local rc=$? dir pids
+	trap - EXIT INT TERM HUP
+	# stop background benchmark instances (bonnie++) still writing into the dirs
+	pids=$(jobs -p)
+	if [ -n "$pids" ]; then
+		kill $pids 2>/dev/null
+		wait 2>/dev/null
+	fi
+	# leave the dirs before removing them
+	cd / || true
+	for dir in "${CBENCH_SCRATCH_DIRS[@]}"; do
+		[ -d "$dir" ] || continue
+		rm -rf -- "$dir" && cbench_echo "Cbench scratch cleanup: removed $dir"
+	done
+	return $rc
+}
+trap cbench_scratch_cleanup EXIT
+# a caught signal exits (128+N) so the EXIT trap runs the cleanup
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # set OMP_NUM_THREADS appropriate to the job
 export OMP_NUM_THREADS=NUM_THREADS_PER_PROCESS_HERE
 cbench_echo "Cbench OMP_NUM_THREADS: $OMP_NUM_THREADS"
