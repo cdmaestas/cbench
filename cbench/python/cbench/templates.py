@@ -215,6 +215,8 @@ def substitute(
         "TORQUE_NODESPEC": f"{numnodes}:ppn={ppn}",
         # Run type
         "RUN_TYPE": run_type.upper(),
+        # transport labels from nodecheck facts (gen-jobs --nodefacts); "" = none
+        "CBENCH_LABELS": "",
         # Misc
         "MEM_UTIL_FACTORS": ",".join(str(f) for f in cfg.memory_util_factors),
         "PREAMBLE": "",

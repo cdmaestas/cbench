@@ -8,6 +8,17 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Interconnect check in nodecheck** (facts schema v3), without needing root. Each node
+  records its interconnect and GPFS transport:
+  - **Interconnect:** `ib`, `roce` or `tcp`, from the active RDMA ports in
+    `/sys/class/infiniband`.
+  - **GPFS transport:** `rdma` or `tcp`, from `verbsRdma`/`verbsPorts` in
+    `/var/mmfs/gen/mmfs.cfg`. This is the configured setting, not a live check.
+
+  A node that differs from the rest, such as one fallen back to TCP, fails the check
+  unless `--allow-heterogeneous` is set. Jobs generated with `--nodefacts` print
+  `CBENCH LABEL: interconnect=… gpfs_transport=…`, and `cbench parse` keeps it in
+  `status_detail`. Facts files from v1/v2 still load (no label).
 - **io500 profile:** `cbench gen-jobs --profile io500` runs IO500 on the parallel target.
   - It generates one job per node count (1, 2, 4, … up to `max_nodes`) at ppn equal to
     the IO thread count.

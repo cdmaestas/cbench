@@ -290,6 +290,8 @@ def gen_jobs(
             raise click.ClickException(str(exc)) from exc
         if io_extra.get("IO_CAVEAT"):
             caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
+        if nv.labels:
+            io_extra = {**io_extra, "CBENCH_LABELS": nv.labels}
         hpl_spec = hplsizing.input_spec(bench)
         hpl_input = None
         if hpl_spec:
@@ -650,7 +652,8 @@ def parse_cmd(
                 status = parsed.status
                 status_detail = parsed.status_detail
             # gen-jobs writes a CBENCH CAVEAT line when it had to shrink a run
-            # (e.g. IO capped to free space); keep it with the result.
+            # (e.g. IO capped to free space) and a CBENCH LABEL line with the
+            # interconnect / GPFS transport nodecheck saw; keep them with the result.
             caveats = _caveat_lines(stdout)
             if caveats:
                 status_detail = "; ".join(filter(None, [status_detail, *caveats]))
@@ -726,12 +729,14 @@ def _job_output_files(job_dir: Path) -> tuple[Path | None, Path | None]:
 
 
 def _caveat_lines(stdout: str) -> list[str]:
-    """Unique ``CBENCH CAVEAT:`` lines from job output, in order."""
+    """Unique ``CBENCH CAVEAT:`` and ``CBENCH LABEL:`` lines from job output, in order."""
     seen: dict[str, None] = {}
     for line in stdout.splitlines():
-        idx = line.find("CBENCH CAVEAT:")
-        if idx >= 0:
-            seen.setdefault(line[idx:].strip(), None)
+        for marker in ("CBENCH CAVEAT:", "CBENCH LABEL:"):
+            idx = line.find(marker)
+            if idx >= 0:
+                seen.setdefault(line[idx:].strip(), None)
+                break
     return list(seen)
 
 

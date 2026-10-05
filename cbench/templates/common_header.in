@@ -48,6 +48,16 @@ cbench_io_preflight()
 	cbench_echo "Cbench IO preflight: $dir has ${have_kb} kB free, job needs ${need_kb} kB"
 }
 
+# interconnect / GPFS transport the node facts recorded (gen-jobs --nodefacts);
+# `cbench parse` keeps the line in the result's status_detail. Labels are
+# lowercase key=value pairs; empty, or uppercase (the bare token a Perl-rendered
+# script leaves), prints nothing.
+CBENCH_LABELS="CBENCH_LABELS_HERE"
+case "$CBENCH_LABELS" in
+	""|*[A-Z]*) ;;
+	*) cbench_echo "CBENCH LABEL: $CBENCH_LABELS" ;;
+esac
+
 # set OMP_NUM_THREADS appropriate to the job
 export OMP_NUM_THREADS=NUM_THREADS_PER_PROCESS_HERE
 cbench_echo "Cbench OMP_NUM_THREADS: $OMP_NUM_THREADS"

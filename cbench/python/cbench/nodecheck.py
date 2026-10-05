@@ -13,6 +13,9 @@ Homogeneity policy:
   * CPU model mismatch is a warning only
   * every IO target must exist on every node with the same fstype (hard error)
   * an unreachable node is a hard error (it cannot be verified)
+  * every node must have the same interconnect (active RDMA link layers, else
+    tcp) and the same GPFS transport (rdma/tcp) -- a node that fell back to
+    TCP is a classic slow outlier; ``allow_heterogeneous`` makes it a warning
 
 With ``allow_heterogeneous`` the CPU/memory mismatch is downgraded to a warning
 and consumers pick conservative values: IO sizing uses the MAX MemTotal (so
@@ -34,8 +37,8 @@ from typing import Callable
 
 from cbench.hostlist import compress
 
-SCHEMA_VERSION = 2          # v2 adds per-node physical cores ("cores")
-SUPPORTED_SCHEMA_VERSIONS = (1, 2)
+SCHEMA_VERSION = 3          # v2: physical cores ("cores"); v3: interconnect + GPFS transport
+SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3)
 MEM_TOLERANCE = 0.02
 STALE_DAYS = 30
 CONNECT_TIMEOUT = 10
@@ -54,6 +57,90 @@ class NodecheckError(Exception):
 # probe script + transport
 # ---------------------------------------------------------------------------
 
+# Interconnect probe: no root and no extra tools.
+#  * RDMA ports from sysfs: rdma.<dev>/<port>=<link_layer>|<state>|<rate>
+#    (link_layer InfiniBand -> ib, Ethernet -> RoCE; state "4: ACTIVE")
+#  * GPFS verbs settings from /var/mmfs/gen/mmfs.cfg, which is world-readable
+#    (mmlsconfig needs root). Settings under a [node,...] section apply only to
+#    the nodes named there; one naming other nodes (or a node class, which can't
+#    be resolved without root) is flagged as gpfs.verbs_scoped=1.
+#    This is the configuration, not proof GPFS is using RDMA right now.
+_MMFS_CFG = "/var/mmfs/gen/mmfs.cfg"
+_INTERCONNECT_PROBE = [
+    "for p in /sys/class/infiniband/*/ports/*; do",
+    '  [ -r "$p/state" ] || continue',
+    '  d=${p%/ports/*}; d=${d##*/}; n=${p##*/}',
+    '  echo "rdma.$d/$n=$(cat "$p/link_layer" 2>/dev/null)|$(cat "$p/state" 2>/dev/null)'
+    '|$(cat "$p/rate" 2>/dev/null)"',
+    "done",
+    f"if [ -r {_MMFS_CFG} ]; then",
+    "  awk -v h=\"$(hostname -s 2>/dev/null || hostname)\" '"
+    "BEGIN{ap=1; amb=0} "
+    "/^\\[.*\\]$/{s=substr($0,2,length($0)-2); ap=(s==\"common\"); "
+    "n=split(s,a,\",\"); for(i=1;i<=n;i++){x=a[i]; sub(/\\..*/,\"\",x); if(x==h) ap=1} next} "
+    "$1==\"verbsRdma\"{if(ap) v=$2; else amb=1} "
+    "$1==\"verbsPorts\"{if(ap){$1=\"\"; sub(/^ +/,\"\"); vp=$0} else amb=1} "
+    "END{print \"gpfs.cfg=1\"; print \"gpfs.verbs_rdma=\" v; print \"gpfs.verbs_ports=\" vp; "
+    "print \"gpfs.verbs_scoped=\" amb}"
+    f"' {_MMFS_CFG}",
+    f"elif [ -e {_MMFS_CFG} ]; then",
+    '  echo "gpfs.cfg=unreadable"',
+    "fi",
+]
+
+_LINK_LAYERS = {"infiniband": "ib", "ethernet": "roce"}
+
+
+def _rdma_ports(facts: dict[str, str]) -> dict[str, tuple[str, bool, str]]:
+    """{'mlx5_0/1': (link, active, rate)} from a host's rdma.* probe keys."""
+    ports = {}
+    for key, value in facts.items():
+        if key.startswith("rdma."):
+            ll, _, rest = value.partition("|")
+            state, _, rate = rest.partition("|")
+            link = _LINK_LAYERS.get(ll.strip().lower(), ll.strip().lower() or "rdma")
+            ports[key[len("rdma."):]] = (link, "ACTIVE" in state.upper(), rate.strip())
+    return ports
+
+
+def interconnect(facts: dict[str, str]) -> tuple[str, str | None, list[str]]:
+    """(interconnect, gpfs_transport, notes) for one host's probe output.
+
+    interconnect: the link layers of the ACTIVE RDMA ports ("ib", "roce",
+    "ib+roce"), else "tcp". gpfs_transport: None without GPFS config,
+    "unknown" when mmfs.cfg is unreadable, else "rdma" when verbsRdma is
+    enabled and one of its verbsPorts (any port if none listed) is ACTIVE,
+    else "tcp".
+    """
+    notes: list[str] = []
+    ports = _rdma_ports(facts)
+    active = {name: link for name, (link, up, _) in ports.items() if up}
+    ic = "+".join(sorted(set(active.values()))) or "tcp"
+
+    cfg = facts.get("gpfs.cfg")
+    if cfg is None:
+        return ic, None, notes
+    if cfg != "1":
+        notes.append(f"{_MMFS_CFG} is not readable; GPFS transport unknown")
+        return ic, "unknown", notes
+    if facts.get("gpfs.verbs_scoped") == "1":
+        notes.append(f"{_MMFS_CFG} sets verbs options for other node sections or node classes; "
+                     "this node's GPFS transport may differ (check `mmlsconfig verbsRdma`)")
+    if facts.get("gpfs.verbs_rdma", "").lower() not in ("enable", "yes", "true"):
+        return ic, "tcp", notes
+    listed = []
+    for tok in facts.get("gpfs.verbs_ports", "").split():
+        dev, _, rest = tok.partition("/")
+        listed.append(f"{dev}/{rest.split('/')[0] or '1'}")
+    usable = [p for p in listed if p in active] if listed else list(active)
+    if usable:
+        return ic, "rdma", notes
+    want = " ".join(listed) if listed else "any RDMA port"
+    notes.append(f"GPFS verbsRdma is enabled but {want} is not ACTIVE; GPFS uses TCP "
+                 "(or does not start) on this node")
+    return ic, "tcp", notes
+
+
 def build_probe_script(targets: dict[str, str]) -> str:
     """Return the POSIX sh probe run on each node (prints key=value lines)."""
     lines = [
@@ -65,6 +152,7 @@ def build_probe_script(targets: dict[str, str]) -> str:
         "echo \"memtotal_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)\"",
         "echo \"model=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)\"",
     ]
+    lines += _INTERCONNECT_PROBE
     for name, path in sorted(targets.items()):
         q = shlex.quote(path)
         lines += [
@@ -241,7 +329,8 @@ def analyze(
             "or exclude them with --ignore"
         )
 
-    aggregate: dict = {"cpus": None, "cores": None, "memtotal_kb": None, "models": [], "targets": {}}
+    aggregate: dict = {"cpus": None, "cores": None, "memtotal_kb": None, "models": [], "targets": {},
+                       "interconnect": None, "gpfs_transport": None}
     heterogeneous = False
 
     if responded:
@@ -287,6 +376,31 @@ def analyze(
                     "outliers with --ignore, or pass --allow-heterogeneous"
                 )
 
+        # interconnect / GPFS transport: a node that fell back to TCP is an outlier
+        ics, gpfs, notes = {}, {}, {}
+        for h in responded:
+            ics[h], gpfs[h], notes[h] = interconnect(per_host[h])
+        for h in responded:
+            for note in notes[h]:
+                warnings.append(f"{h}: {note}")
+        gpfs = {h: v for h, v in gpfs.items() if v is not None}
+        for label, values in (("interconnect", ics), ("GPFS transport", gpfs)):
+            if len(set(values.values())) > 1:
+                heterogeneous = True
+                msg = f"{label} differs: {_groups_by(values)}"
+                (warnings if allow_heterogeneous else errors).append(msg)
+        aggregate["interconnect"] = (next(iter(set(ics.values()))) if len(set(ics.values())) == 1
+                                     else "mixed")
+        if gpfs:
+            aggregate["gpfs_transport"] = (next(iter(set(gpfs.values())))
+                                           if len(set(gpfs.values())) == 1 else "mixed")
+        if heterogeneous and not allow_heterogeneous and not any(
+                e.startswith("node set is heterogeneous") for e in errors):
+            errors.append(
+                "node set is heterogeneous — run nodecheck per hardware type, exclude "
+                "outliers with --ignore, or pass --allow-heterogeneous"
+            )
+
         for name, path in sorted(targets.items()):
             fs = {h: per_host[h].get(f"target.{name}.fstype", "MISSING") or "MISSING" for h in responded}
             free = {h: _int(per_host[h].get(f"target.{name}.free_kb")) or 0 for h in responded}
@@ -318,15 +432,19 @@ def group_summary(per_host: dict[str, dict[str, str]], responded: list[str], tar
     groups: dict[tuple, list[str]] = {}
     for h in responded:
         f = per_host[h]
+        ic, gpfs, _ = interconnect(f)
         key = (
             f.get("cpus", ""),
             f.get("cores", ""),
             f.get("model", ""),
             tuple(f.get(f"target.{n}.fstype", "MISSING") for n in sorted(targets)),
+            ic,
+            gpfs or "-",
         )
         groups.setdefault(key, []).append(h)
     rows = []
-    for (cpus, cores, model, fstypes), hosts in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+    for (cpus, cores, model, fstypes, ic, gpfs), hosts in sorted(groups.items(),
+                                                                   key=lambda kv: -len(kv[1])):
         mems = [(_int(per_host[h].get("memtotal_kb")) or 0) / 1048576 for h in hosts]
         mem = f"{min(mems):.1f}" if max(mems) - min(mems) < 0.05 else f"{min(mems):.1f}-{max(mems):.1f}"
         rows.append({
@@ -337,6 +455,8 @@ def group_summary(per_host: dict[str, dict[str, str]], responded: list[str], tar
             "mem_gib": mem,
             "model": model,
             "targets": dict(zip(sorted(targets), fstypes)),
+            "interconnect": ic,
+            "gpfs_transport": gpfs,
         })
     return rows
 
