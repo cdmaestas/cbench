@@ -527,8 +527,37 @@ def test_gpfsperf_build_runs_the_gpfsperf_target(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
     monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: None)       # no MPI here
     out = get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", BuildConfig(cc="gcc"))
     assert calls == [["make", "gpfsperf", "CC=gcc"]] and out == ["gpfsperf"]
+
+
+def _gpfsperf_build(tmp_path, monkeypatch, *, have_mpicc, **extra):
+    import cbench.builders.gpfsperf as mod
+    calls = []
+    monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: f"/opt/mpi/bin/{name}" if have_mpicc else None)
+    cfg = BuildConfig(cc="gcc", mpicc="mpicc", extra=extra)
+    return calls, get_builder("gpfsperf").build(tmp_path, tmp_path / "pfx", cfg)
+
+
+def test_gpfsperf_also_builds_mpi_version_without_mpich_lib(tmp_path, monkeypatch):
+    calls, out = _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=True)
+    assert calls == [["make", "gpfsperf", "CC=gcc"],
+                     ["make", "gpfsperf-mpi", "MPCC=mpicc", "MPLIBS="]]
+    assert out == ["gpfsperf", "gpfsperf-mpi"]
+
+
+def test_gpfsperf_mpi_options(tmp_path, monkeypatch):
+    calls, out = _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=True, mplibs="-lmpich",
+                                 cflags="-O2 -DGPFS_LINUX")
+    assert calls[1] == ["make", "gpfsperf-mpi", "MPCC=mpicc", "MPLIBS=-lmpich",
+                        "CFLAGS=-O2 -DGPFS_LINUX"]
+    calls, out = _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=True, mpi="no")
+    assert out == ["gpfsperf"] and len(calls) == 1
+    with pytest.raises(RuntimeError, match="mpicc not found"):
+        _gpfsperf_build(tmp_path, monkeypatch, have_mpicc=False, mpi="yes")
 
 
 def test_gpfsperf_requires_gpfs_samples(tmp_path, monkeypatch):
@@ -650,3 +679,32 @@ def test_wget_tarball_rejects_dot_top_entry(tmp_path):
         with _pytest.raises(RuntimeError, match="top-level entry"):
             wget_tarball("https://example.com/flat.tar.gz", dest, force=True, dry_run=False)
     assert dest.is_dir()
+
+
+def test_iozone_uses_a_pre_placed_tgz_without_downloading(tmp_path, monkeypatch):
+    """Offline hosts (zimabg1 has no internet): drop the tarball into
+    <srcdir>/iozone/ and the builder extracts it instead of downloading."""
+    import io
+    import tarfile as _tarfile
+
+    import cbench.builders._util as util
+    import cbench.builders.iozone as mod
+
+    name = mod._TARBALL_URL.rsplit("/", 1)[1]
+    assert name == "iozone3_511.tgz"
+    dest = tmp_path / "src" / "iozone"
+    dest.mkdir(parents=True)
+    with _tarfile.open(dest / name, "w:gz") as tf:
+        for member in ("iozone3_511/src/current/makefile", "iozone3_511/src/current/iozone.c"):
+            data = b"x\n"
+            info = _tarfile.TarInfo(member)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+
+    def no_download(*a, **kw):
+        raise AssertionError("must not download when the tarball is already there")
+
+    monkeypatch.setattr(util, "download", no_download)
+    src = get_builder("iozone").fetch(tmp_path / "src")
+    assert src == dest / "iozone3_511" / "src" / "current"
+    assert (src / "makefile").is_file() and (src / "iozone.c").is_file()

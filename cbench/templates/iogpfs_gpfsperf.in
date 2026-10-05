@@ -5,12 +5,13 @@
 # IO thread (all CPUs, or io_threads_max). The file is 2x the node's RAM so the
 # GPFS pagepool can't hold it; sequential ops use the IO profile's block size
 # (auto on GPFS -> hpc, 8m), random ops 4k records. gen-jobs fills in the sizes
-# (cbench/python/cbench/iosizing.py). Single node; gpfsperf-mpi is not used.
+# (cbench/python/cbench/iosizing.py). Single node; the multi-node run is
+# iogpfs_gpfsperfmpi (io-default group gpfs-mpi).
 #
 # NOTE: bash syntax is used here
 #
-# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf if you built one (e.g. for
-# RDMA via `cbench build run gpfsperf`), else the binary GPFS ships
+# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf if you built one (a custom
+# variant via `cbench build run gpfsperf`), else the binary GPFS ships
 
 GPFSPERF=CBENCHTEST_BIN_HERE/gpfsperf
 [ -x "$GPFSPERF" ] || GPFSPERF=/usr/lpp/mmfs/samples/perf/gpfsperf

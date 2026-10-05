@@ -118,7 +118,7 @@ cbench build update imb   # update a single benchmark
 > "source unchanged". Use `cbench build run <name> --force` to unconditionally
 > re-download and rebuild a tarball source.
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, only needed for a custom variant such as different compiler flags; GPFS RDMA needs no special build; `build all` skips it on hosts without GPFS).
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, the single-node binary ships with GPFS, so the build is needed for `gpfsperf-mpi` (built when `mpicc` is found) or a custom variant; GPFS RDMA needs no special build; `build all` skips it on hosts without GPFS).
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
 
@@ -174,6 +174,7 @@ A profile bundles IO benchmarks into one testset directory
 ```bash
 cbench gen-jobs --profile io-default --ident io1 --nodefacts compute            # node-local: fio, bonnie, iozone
 cbench gen-jobs --profile io-default --ident io1 --group parallel --group gpfs  # ior + mdtest; gpfsperf
+cbench gen-jobs --profile io-default --ident io1 --group gpfs-mpi --nodefacts compute  # gpfsperf-mpi, one job per node count
 cbench gen-jobs --profile io-default --ident io1 --group all
 cbench gen-jobs --profile io500      --ident io1 --io500-stonewall 300          # one job per node count
 cbench gen-jobs --profile io-default --ident quick --fio-runtime 30             # short fio runs

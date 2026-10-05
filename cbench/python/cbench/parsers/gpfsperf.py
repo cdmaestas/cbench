@@ -126,10 +126,13 @@ class GpfsperfParser(BenchmarkParser):
     create seq, read seq, read rand, write rand) is split per operation and
     the per-operation metrics are prefixed ``<op>_<pattern>_`` (e.g.
     ``read_rand_iops``); a single operation keeps the unprefixed names. A
-    gen-jobs job without its end line is ERROR(STARTED).
+    gen-jobs job without its end line is ERROR(STARTED); one with its end line
+    but no result at all (every run failed) is ERROR(NO RESULTS).
     """
 
     names = ["gpfsperf"]
+    #: gen-jobs' multi-node job (iogpfs_gpfsperfmpi) prints the same output
+    alias_spec = r"gpfsperfmpi"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         if "CBENCH NOTICE" in stdout:
@@ -157,6 +160,13 @@ class GpfsperfParser(BenchmarkParser):
         parsed = [(op, pat, _section_metrics(body)) for op, pat, body in sections]
         parsed = [(op, pat, m) for op, pat, m in parsed if "throughput_MB_s" in m]
         if not parsed:
+            if _JOB_END in stdout:
+                # the job ran to its end line but no operation produced a
+                # result: every launch or run failed (seen on zima when
+                # orterun could not start its remote daemons)
+                return ParseResult(status="ERROR(NO RESULTS)",
+                                   status_detail="gpfsperf job finished without results; "
+                                                 "every run failed (see the job output)")
             return ParseResult(status="NOTSTARTED")
 
         if len(parsed) == 1:
