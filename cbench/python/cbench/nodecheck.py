@@ -37,8 +37,8 @@ from typing import Callable
 
 from cbench.hostlist import compress
 
-SCHEMA_VERSION = 3          # v2: physical cores ("cores"); v3: interconnect + GPFS transport
-SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3)
+SCHEMA_VERSION = 4          # v2: cores; v3: interconnect + GPFS transport; v4: target block size
+SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4)
 MEM_TOLERANCE = 0.02
 STALE_DAYS = 30
 CONNECT_TIMEOUT = 10
@@ -141,6 +141,50 @@ def interconnect(facts: dict[str, str]) -> tuple[str, str | None, list[str]]:
     return ic, "tcp", notes
 
 
+def suggest_profile(target: dict) -> tuple[str, str]:
+    """(profile, reason) that ``io_profile: auto`` resolves to on a probed
+    target -- by filesystem type, moved up to a whole multiple of its block /
+    stripe size (cbench.fioprofile.auto_profile)."""
+    from cbench import fioprofile
+
+    align = fioprofile.align_kb(target)
+    profile, note = fioprofile.auto_profile(target.get("fstype"), align)
+    if not note:
+        kind = ("parallel filesystem" if (target.get("fstype") or "").lower()
+                in fioprofile.PARALLEL_FSTYPES else "local/other filesystem")
+        note = f"{kind}" + (f", {fioprofile.human_kb(align)} block" if align else "")
+    return profile, note
+
+
+def profile_report(targets: dict, cfg) -> list[str]:
+    """Lines for nodecheck's IO profile suggestion: one per target, plus a
+    warning when an explicit io_profile / io_seq_bs isn't a whole multiple
+    of a target's block size."""
+    from cbench import fioprofile
+
+    lines = []
+    explicit = getattr(cfg, "explicit_keys", frozenset())
+    for name, t in sorted(targets.items()):
+        if not t.get("suggested_profile"):
+            continue
+        prof = t["suggested_profile"]
+        align = fioprofile.align_kb(t)
+        lines.append(f"{name} ({t['path']}, {t['fstype']}"
+                     + (f", {fioprofile.human_kb(align)} block" if align else "")
+                     + f"): {prof} ({fioprofile.PROFILES[prof]}) — {t['profile_note']}")
+        if align and ("io_profile" in explicit or "io_seq_bs" in explicit):
+            try:
+                cprof, cbs = fioprofile.seq_block_size(cfg.io_profile, t["fstype"], cfg.io_seq_bs, align)
+            except ValueError:
+                continue
+            if fioprofile.size_kb(cbs) % align:
+                what = f"io_seq_bs {cbs}" if cfg.io_seq_bs else f"io_profile {cprof} ({cbs})"
+                lines.append(f"  WARNING: cluster.yaml {what} is not a multiple of {name}'s "
+                             f"{fioprofile.human_kb(align)} block size; use io_profile: auto "
+                             f"or {prof}")
+    return lines
+
+
 def build_probe_script(targets: dict[str, str]) -> str:
     """Return the POSIX sh probe run on each node (prints key=value lines)."""
     lines = [
@@ -160,11 +204,21 @@ def build_probe_script(targets: dict[str, str]) -> str:
             f"  fs=$(findmnt -n -o FSTYPE -T {q} 2>/dev/null | head -1)",
             f'  [ -n "$fs" ] || fs=$(stat -f -c %T {q} 2>/dev/null)',
             f"  free=$(df -Pk {q} 2>/dev/null | awk 'NR==2{{print $4}}')",
+            # preferred IO size (statfs f_bsize; the block size on GPFS) and,
+            # on Lustre, the directory's stripe size: the IO profile's block
+            # size should be a whole multiple of them
+            f"  bs=$(stat -f -c %s {q} 2>/dev/null)",
+            "  ss=",
+            '  if [ "$fs" = lustre ] && command -v lfs >/dev/null 2>&1; then',
+            f"    ss=$(lfs getstripe -d -S {q} 2>/dev/null | grep -o '[0-9][0-9]*' | head -1)",
+            "  fi",
             "else",
-            "  fs=MISSING; free=0",
+            "  fs=MISSING; free=0; bs=; ss=",
             "fi",
             f'echo "target.{name}.fstype=${{fs:-MISSING}}"',
             f'echo "target.{name}.free_kb=${{free:-0}}"',
+            f'echo "target.{name}.block_bytes=${{bs}}"',
+            f'echo "target.{name}.stripe_bytes=${{ss}}"',
         ]
     lines.append(f'echo "{_SENTINEL}"')
     return "\n".join(lines) + "\n"
@@ -411,12 +465,22 @@ def analyze(
             if len(set(present.values())) > 1:
                 errors.append(f"IO target '{name}' ({path}) has mixed fstypes: {_groups_by(present)}")
             uniform = next(iter(set(present.values()))) if len(set(present.values())) == 1 else None
-            aggregate["targets"][name] = {
+            entry = {
                 "path": path,
                 "fstype": uniform,
                 "shared": bool(uniform and _is_shared(uniform)),
                 "free_kb_min": min(free.values()),
             }
+            # block / stripe size (KiB): the largest any node reported, so a
+            # profile that is a multiple of it is a multiple everywhere
+            for key in ("block", "stripe"):
+                vals = [_int(per_host[h].get(f"target.{name}.{key}_bytes")) for h in responded]
+                vals = [v // 1024 for v in vals if v and v >= 1024]
+                if vals:
+                    entry[f"{key}_kb"] = max(vals)
+            if uniform:
+                entry["suggested_profile"], entry["profile_note"] = suggest_profile(entry)
+            aggregate["targets"][name] = entry
 
     verdict = {
         "ok": not errors,
