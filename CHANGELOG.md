@@ -104,6 +104,13 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **A killed IO job left its data on the target**, so later jobs' space preflights
+  found less free space. IO job scripts now create their data dirs with
+  `cbench_scratch_dir` (in `common_header.in`), and an `EXIT` trap removes them on a
+  normal end, `exit`, or SIGINT/SIGTERM/SIGHUP (scheduler time limit, `scancel`,
+  Ctrl-C), first stopping background instances such as bonnie++. SIGKILL can't be
+  trapped. Covers fio, iozone, bonnie++, mdtest, gpfsperf, io500, the IOR jobs,
+  miranda and fileop.
 - **Rebuilding a tarball-based benchmark failed with `Permission denied`** (seen with
   iozone, whose tarball has read-only files): the source was re-extracted over the
   previous tree on every build.
