@@ -442,7 +442,7 @@ Endpoints: `/` HTML dashboard, `/api/results` `/api/summary` `/api/trend` JSON A
 
 **Batch schedulers:** SLURM, Torque/PBS, PBS Pro, LSF, Moab, Cray CLE Torque, local (no scheduler — runs scripts directly with `bash`)
 
-**MPI launchers:** OpenMPI (`orterun`), mpiexec, SLURM (`srun`), yod, ALPS (`aprun`)
+**MPI launchers:** Open MPI (`orterun` on 4.x and earlier, `mpirun` on 5.x; picked on the compute node at run time — set `CBENCH_OMPI_RUN` or `joblaunch_cmd` to force one), mpiexec, SLURM (`srun`), yod, ALPS (`aprun`)
 
 ---
 

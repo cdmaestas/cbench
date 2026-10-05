@@ -79,6 +79,9 @@ Six subgroups wired into `cli/main.py`:
 - `serve` — Flask web dashboard (optional `cbench[web]` extra)
 - `utils run-sizes` / `find-pq` / `find-n` / `npb-procs` — sizing utilities
 
+### 7a. MPI launch command (`launchers.py`)
+`build_launch_cmd()` fills `JOBLAUNCH_CMD_HERE` from `joblaunch_method`. For `openmpi` without `joblaunch_cmd` it emits `${CBENCH_OMPI_RUN:-orterun} --map-by ppr:<ppn>:node -np <np>`: `common_header.in` sets `CBENCH_OMPI_RUN` on the compute node (`orterun` if on PATH, else `mpirun`, since Open MPI 5 has no `orterun`; a non-Open-MPI `mpirun` gets a `CBENCH CAVEAT`). An environment `CBENCH_OMPI_RUN` wins. The Perl toolchain still emits `orterun -npernode`.
+
 ### 7. Templates (`templates.py`)
 `_here_to_jinja(text)` converts legacy `TOKEN_HERE` syntax in `*.in` template files to `{{ TOKEN }}` at load time — existing Perl templates work without modification. `RUN_SIZES` is the canonical list of proc counts used across generation and filtering.
 
