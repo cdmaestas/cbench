@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 from types import SimpleNamespace
@@ -257,6 +258,10 @@ def test_snb_local_block_kb(tmp_path, monkeypatch):
 
 
 def test_snb_dry_run_uses_block_aware_auto(tmp_path, monkeypatch):
+    # fio need not be installed: the dry run only prints the commands
+    monkeypatch.setattr(shutil, "which", lambda n: "/usr/bin/fio" if n == "fio" else None)
+    monkeypatch.setattr(shutil, "disk_usage",
+                        lambda p: shutil._ntuple_diskusage(2048 * 1024 ** 3, 0, 1024 * 1024 ** 3))
     monkeypatch.setattr(snb.console, "width", 10000)
     monkeypatch.setattr(snb, "_supports_odirect", lambda d: True)
     monkeypatch.setattr(snb, "_detect_fstype", lambda p, *a: "gpfs")
