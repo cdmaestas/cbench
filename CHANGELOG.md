@@ -151,6 +151,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **fio metadata jobs share one file set.** md_stat and md_delete now act on the files
+  md_create made (`--filename_format=md.$jobnum.$filenum` plus `--create_on_open=1`),
+  in both `snb` and gen-jobs. Before, each wrote out its own files before its timed
+  phase, which doubled the setup and meant stat and delete never touched the created
+  files. The target is no longer emptied between the three.
+- `FioParser` reports a failed fio job (`fio: pid=.., err=..`, e.g. md_stat with no
+  files to stat) as `ERROR(FIO)`, with the error in `status_detail` and whatever did
+  parse kept. It used to be PASSED with that job's metrics missing.
 - **Failures that used to pass silently now stop with an error:**
   - `start-jobs`: a failed batch submission (submit command exits nonzero, or can't
     be run) raises an error instead of counting as submitted.

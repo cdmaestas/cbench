@@ -13,7 +13,10 @@ Data jobs are time-based (``fio_runtime_s``, default 300 s) so run time does not
 grow with core count or a slow target; metadata jobs are bounded by their file
 count with the same runtime as a cap. ``--runtime`` does not cover fio's file
 layout, so O_DIRECT data files are kept small (256 MiB per job). The caller empties the target directory
-between jobs so only one job's files exist at a time.
+between jobs so only one job's files exist at a time -- except between the
+metadata jobs (``MD_KEEP_FILES``): md_stat and md_delete work on the files
+md_create made, so each phase measures its operation on the same file set and
+neither lays out files of its own.
 
 Sequential block size comes from the IO workload profile (``io_profile``;
 ``fio_profile`` is a deprecated alias): ai 1m, general 4m, hpc 8m,
@@ -45,6 +48,12 @@ RAND_BS = IOPS_BS
 #: bytes each IO thread moves in a bounded random test (gpfsperf rand -n)
 IOPS_BYTES_PER_THREAD_MIB = 256
 MD_NRFILES = 1000                # files per metadata job
+#: shared file names for md_create/md_stat/md_delete (fio expands the $ keys,
+#: so a shell caller must keep them literal). Without it each job names its
+#: files after itself and lays out its own set before the timed phase.
+MD_FILENAME_FORMAT = "md.$jobnum.$filenum"
+#: jobs whose files the next job uses: don't empty the target after these
+MD_KEEP_FILES = frozenset({"md_create", "md_stat"})
 MD_ENGINES = ("filecreate", "filestat", "filedelete")
 DEFAULT_RUNTIME_S = 300
 
@@ -89,15 +98,19 @@ def data_jobs(
 def metadata_jobs(
     fio: str, directory: str, *, njobs: int, runtime_s: int, nrfiles: int = MD_NRFILES,
 ) -> list[tuple[str, list[str]]]:
+    # create_on_open: md_create creates during the timed run, not at layout,
+    # and md_stat/md_delete skip layout and act on md_create's (empty) files;
+    # without it fio would first write each 4k file out. If the files are
+    # missing, stat/delete fail with err=2 rather than creating them.
     common = [
         "--filesize=4k", f"--nrfiles={nrfiles}", "--openfiles=1", f"--numjobs={njobs}",
-        f"--directory={directory}", f"--runtime={runtime_s}", "--group_reporting",
+        f"--directory={directory}", f"--filename_format={MD_FILENAME_FORMAT}",
+        "--create_on_open=1", f"--runtime={runtime_s}", "--group_reporting",
         "--output-format=normal",
     ]
     return [
-        # create_on_open: the create happens during the run, not at layout
         ("md_create", [fio, "--name=md_create", "--ioengine=filecreate", "--rw=write",
-                       "--create_on_open=1", "--fallocate=none", *common]),
+                       "--fallocate=none", *common]),
         ("md_stat", [fio, "--name=md_stat", "--ioengine=filestat", *common]),
         ("md_delete", [fio, "--name=md_delete", "--ioengine=filedelete", *common]),
     ]

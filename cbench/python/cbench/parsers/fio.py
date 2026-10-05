@@ -22,6 +22,7 @@ Typical output structure::
 
 from __future__ import annotations
 
+import os
 import re
 
 from cbench.parsers.base import BenchmarkParser, ParseResult
@@ -94,6 +95,13 @@ def _clat_to_us(avg: str, unit: str) -> float:
 
 # Job block header: "rand_rw: (groupid=0, jobs=4): err= 0: pid=1234: ..."
 _JOB_HEADER_RE = re.compile(r"^(\S+): \(groupid=\d+, jobs=\d+\)")
+
+# A fio job that fails prints this instead of a result block, e.g.
+# "fio: pid=7, err=2/file:engines/fileoperations.c:194, func=stat(./md.0.0) type=1,
+#  error=No such file or directory" (md_stat with md_create's files missing).
+# fio truncates that line (~128 chars), so a long path can cut off "error=":
+# take the errno and the operation, and the message from os.strerror.
+_FIO_ERR_RE = re.compile(r"^fio: pid=\d+, err=(\d+)/(?:.*?func=(\w+)\()?")
 
 # iometadata_fio.in brackets its run with these lines; output with the first and
 # not the second is a job that died or is still running.
@@ -177,7 +185,8 @@ class FioParser(BenchmarkParser):
     Output without those job names (any other fio job) falls back to generic
     per-direction metrics from the first job block. PASSED if anything parsed;
     NOTSTARTED if no fio output is detected; ERROR(STARTED) for a gen-jobs fio
-    job whose output has the start line but not the end line.
+    job whose output has the start line but not the end line; ERROR(FIO), with
+    whatever did parse, when fio reports a failed job (``fio: pid=.., err=..``).
     """
 
     names = ["fio"]
@@ -209,6 +218,13 @@ class FioParser(BenchmarkParser):
         else:
             metrics = _direction_metrics(lines)
 
+        # one entry per distinct failure (each job clone repeats it)
+        errors = list(dict.fromkeys(
+            f"fio {m.group(2) or 'job'}: {os.strerror(int(m.group(1)))} (err={m.group(1)})"
+            for m in map(_FIO_ERR_RE.match, lines) if m))
+        if errors:
+            return ParseResult(status="ERROR(FIO)", status_detail="; ".join(errors),
+                               metrics=metrics)
         if not metrics:
             return ParseResult(status="NOTSTARTED")
         return ParseResult(status="PASSED", metrics=metrics)
