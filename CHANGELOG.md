@@ -8,6 +8,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Multi-node gpfsperf-mpi** (`io-default` group `gpfs-mpi`, also in the `iogpfs`
+  testset). gen-jobs creates one job per node count (1, 2, 4 … `max_nodes`).
+  - Each job runs one MPI rank per IO thread on every node (`-th 1`), through the
+    same four operations as gpfsperf.
+  - The shared file is 2× the RAM of all the job's nodes, placed in a per-job scratch
+    dir on the GPFS target and capped to free space.
+  - `--group gpfs` stays single-node gpfsperf; `--group all` now includes the
+    multi-node sweep.
 - **Custom IO profiles in cluster.yaml** (`io_profiles`): named bundles for
   `gen-jobs --profile`, with groups of `<testset>_<benchmark>` members, an optional
   `suffix` for job names and optional `default_groups`. In a custom group, the group's

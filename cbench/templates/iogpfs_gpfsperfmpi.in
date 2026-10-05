@@ -1,0 +1,51 @@
+# iogpfs_gpfsperfmpi job template
+# IBM Storage Scale (GPFS) gpfsperf-mpi across nodes on the GPFS IO target
+# (io_targets.gpfs, else io_targets.parallel when nodecheck saw it is GPFS):
+# sequential create, sequential read, random read, random write of one shared
+# file, with one MPI rank per IO thread on each node (all CPUs, or
+# io_threads_max) and -th 1. gen-jobs makes one job per node count. The file is
+# 2x the RAM of all the job's nodes so no GPFS pagepool can hold it; sequential
+# ops use the IO profile's block size (auto on GPFS -> hpc 8m, or larger to fit
+# the file system block size), random ops 4k records over a bounded amount.
+# gen-jobs fills in the sizes (cbench/python/cbench/iosizing.py).
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf-mpi if you built one, else the
+# one in the GPFS samples (/usr/lpp/mmfs/samples/perf)
+
+GPFSPERFMPI=CBENCHTEST_BIN_HERE/gpfsperf-mpi
+[ -x "$GPFSPERFMPI" ] || GPFSPERFMPI=/usr/lpp/mmfs/samples/perf/gpfsperf-mpi
+cbench_check_for_bin $GPFSPERFMPI
+
+IO_TARGET_DIR="IO_TARGET_DIR_HERE"
+if [ -z "$IO_TARGET_DIR" ]; then
+	cbench_echo "CBENCH NOTICE: no GPFS IO target (set io_targets.gpfs, or a GPFS io_targets.parallel)"
+	exit 1
+fi
+# the shared file lives on GPFS, seen by every rank; removed when the job
+# exits or is killed
+DATADIR="$IO_TARGET_DIR/gpfsperfmpi.$JOBID"
+cbench_scratch_dir "$DATADIR"
+
+cbench_io_preflight "$DATADIR" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
+
+file="$DATADIR/gpfsperf.dat"
+# sequential ops stream the whole file at the profile's block size; random
+# (IOPS) ops use 4k records at random offsets across it, moving a bounded
+# amount (-n) so they finish in reasonable time. -n is the job's total.
+seq_opts="-r GPFSPERF_RECORD_HERE -n GPFSPERF_SIZE_HERE -th 1"
+iops_opts="-r GPFSPERF_IOPS_RECORD_HERE -n GPFSPERF_IOPS_BYTES_HERE -th 1"
+cbench_echo "Cbench gpfsperf: profile=GPFSPERF_PROFILE_HERE record=GPFSPERF_RECORD_HERE iops_record=GPFSPERF_IOPS_RECORD_HERE ranks=NUM_PROCS_HERE nodes=NUM_NODES_HERE size=GPFSPERF_SIZE_HERE iops_bytes=GPFSPERF_IOPS_BYTES_HERE"
+
+for op in "create seq" "read seq"; do
+	CMD="JOBLAUNCH_CMD_HERE $GPFSPERFMPI $op $file $seq_opts"
+	cbench_run_cmd $CMD
+done
+for op in "read rand" "write rand"; do
+	CMD="JOBLAUNCH_CMD_HERE $GPFSPERFMPI $op $file $iops_opts"
+	cbench_run_cmd $CMD
+done
+rm -f "$file"
+sync
+cbench_echo "Cbench gpfsperf: finished"

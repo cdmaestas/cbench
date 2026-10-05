@@ -147,7 +147,8 @@ gen-jobs specifics:
 Groups in `io-default`:
 - `node-local`: fio, bonnie, iozone. This is the default group.
 - `parallel`: ior1mNtoN, mdtest.
-- `gpfs`: gpfsperf.
+- `gpfs`: gpfsperf (single node).
+- `gpfs-mpi`: gpfsperf-mpi across nodes (opt-in; `--group all` includes it).
 
 `--group all` selects every group. Custom profiles come from cluster.yaml `io_profiles`. The config schema checks the structure, and `profiles.custom_profiles()` refuses a built-in name, a member with no `<testset>_<benchmark>.in` template, an unknown default group, or two members that would get the same job name. Their groups have `route_members=True`: gen-jobs passes `group.target` as `target=` to every `iosizing.*_tokens()`/`target_tokens()`, so that target sets `IO_TARGET_DIR`/`TESTDIR`, the free-space cap and the block-aware profile. Built-in groups pass `None`, which keeps `target_name_for(benchmark)`. A group whose target isn't available is skipped with a warning. The `gpfs` target is `io_targets.gpfs`, else `io_targets.parallel` when the node facts say it's GPFS (`iosizing._gpfs_alias`), so gen-jobs resolves node values before choosing groups. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
 
@@ -170,6 +171,12 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 - The job uses `$CBENCHTEST/bin/gpfsperf` if you built one, else the binary GPFS ships in `/usr/lpp/mmfs/samples/perf`.
 - The `gpfsperf` builder copies those samples and runs `make gpfsperf`. You only need it for a custom variant (`--extra cflags=...` replaces the makefile CFLAGS). GPFS RDMA (`verbsRdma`) is done by the GPFS daemon and needs no special gpfsperf build; nodecheck records the transport instead (§11).
 - Builders with `optional = True` (gpfsperf) are SKIPPED by `build all` when their prerequisites are missing.
+
+**gpfsperf-mpi** (`templates/iogpfs_gpfsperfmpi.in`, io-default group `gpfs-mpi`, also in the `iogpfs` testset):
+- `_NODE_SWEEP` like io500: one job per node count at ppn = `io_threads`, one MPI rank per IO thread with `-th 1`, so job names are `gpfsperfmpi-<T>ppn-<T*nodes>`.
+- Same four ops as gpfsperf on one shared file in a `cbench_scratch_dir` on the GPFS target. `iosizing._gpfsperf_sizing()` (shared with single-node gpfsperf) sizes it to 2× the RAM of all the job's nodes, with random ops bounded to ranks × 256 MiB. `-n` is treated as the job's total, which is still to verify on zima.
+- Binary: `$CBENCHTEST/bin/gpfsperf-mpi`, else `/usr/lpp/mmfs/samples/perf/gpfsperf-mpi`. The builder doesn't build it yet; the makefile target is unverified.
+- `GpfsperfParser` takes it via `alias_spec = gpfsperfmpi` and uses the same `Cbench gpfsperf:` start/end lines; `nprocesses` is job-level.
 
 **io500 profile** (`--profile io500`, group `parallel`, `templates/io500_io500.in`):
 - Writes an `io500.ini` with the datadir on the parallel target and `stonewall-time` = `io500_stonewall_s` (default 300; `gen-jobs --io500-stonewall`), then runs `io500` through the MPI launcher and removes the datadir.

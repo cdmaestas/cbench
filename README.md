@@ -174,6 +174,7 @@ A profile bundles IO benchmarks into one testset directory
 ```bash
 cbench gen-jobs --profile io-default --ident io1 --nodefacts compute            # node-local: fio, bonnie, iozone
 cbench gen-jobs --profile io-default --ident io1 --group parallel --group gpfs  # ior + mdtest; gpfsperf
+cbench gen-jobs --profile io-default --ident io1 --group gpfs-mpi --nodefacts compute  # gpfsperf-mpi, one job per node count
 cbench gen-jobs --profile io-default --ident io1 --group all
 cbench gen-jobs --profile io500      --ident io1 --io500-stonewall 300          # one job per node count
 cbench gen-jobs --profile io-default --ident quick --fio-runtime 30             # short fio runs

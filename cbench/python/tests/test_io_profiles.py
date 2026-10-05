@@ -134,7 +134,7 @@ def test_load_facts_accepts_v1_and_v2(tmp_path):
 def test_select_groups():
     p = profiles.get_profile("io-default")
     assert profiles.select_groups(p, ()) == ["node-local"]          # user: default is local
-    assert profiles.select_groups(p, ("all",)) == ["node-local", "parallel", "gpfs"]
+    assert profiles.select_groups(p, ("all",)) == ["node-local", "parallel", "gpfs", "gpfs-mpi"]
     assert profiles.select_groups(p, ("parallel", "parallel")) == ["parallel"]
     with pytest.raises(profiles.ProfileError):
         profiles.select_groups(p, ("bogus",))

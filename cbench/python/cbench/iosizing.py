@@ -176,11 +176,12 @@ def target_name_for(benchmark: str) -> str | None:
 
 
 def needs_io_sizing(testset: str, benchmark: str) -> bool:
-    """IOR throughput tests, bonnie, iozone and gpfsperf get 2x-memory sizing
+    """IOR throughput tests, bonnie, iozone and gpfsperf(-mpi) get 2x-memory sizing
     (iosanity stays small)."""
     if testset == "iosanity":
         return False
-    return benchmark.startswith("ior") or benchmark in ("bonnie", "iozone", "gpfsperf")
+    return benchmark.startswith("ior") or benchmark in ("bonnie", "iozone", "gpfsperf",
+                                                         "gpfsperfmpi")
 
 
 def _require_mem(nv: NodeValues, testset: str, benchmark: str) -> int:
@@ -362,40 +363,59 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
     return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
-def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
-                target: str | None = None) -> dict:
-    """gpfsperf: one file of 2x RAM (defeats the GPFS pagepool, which is
-    smaller than RAM), -th = IO threads; sequential ops use -r = the profile
-    block size (auto on GPFS -> hpc 8m), random ops -r 4k over a bounded -n
-    (IO threads x 256 MiB); capped to free space with a caveat."""
+def _gpfsperf_sizing(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                     target: str | None, nodes: int, workers: int) -> tuple[dict, str]:
+    """Shared gpfsperf / gpfsperf-mpi sizing: one file of 2x the RAM of the
+    job's ``nodes`` (defeats the GPFS pagepool, which is smaller than RAM),
+    sequential ops at the profile block size, random ops 4k over a bounded
+    -n (``workers`` x 256 MiB); capped to free space with a caveat.
+    Returns (tokens, target)."""
     from cbench import fioprofile
 
     mem_kb = _require_mem(nv, testset, benchmark)
-    n = io_threads(nv, cfg)
     target = target or target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype") or "gpfs"
     profile, bs = seq_profile(nv, cfg, target, fstype)
     rec = _block_mib(bs)
-    size = max(rec, math.ceil(2 * mem_kb / 1024 / rec) * rec)   # MiB, whole file
+    size = max(rec, math.ceil(2 * mem_kb * nodes / 1024 / rec) * rec)   # MiB, whole file
     caveat = ""
     cap_kb, _shared = _free_cap_kb(nv, target)
     if cap_kb is not None and size * 1024 > cap_kb:
         capped = max(rec, (cap_kb // 1024) // rec * rec)
-        caveat = (f"gpfsperf file capped to {capped} MiB (2x RAM needs {size} MiB) to fit target "
-                  f"'{target}' free space; results may be cache-influenced")
+        what = "2x RAM" if nodes == 1 else f"2x RAM of {nodes} nodes"
+        caveat = (f"{benchmark} file capped to {capped} MiB ({what} needs {size} MiB) to fit "
+                  f"target '{target}' free space; results may be cache-influenced")
         size = capped
     tokens = {
         "GPFSPERF_IOPS_RECORD": fioprofile.IOPS_BS,
         # random ops move a bounded amount at random offsets across the full
         # 2x-RAM file: at 4k, transferring the whole file would take hours
-        "GPFSPERF_IOPS_BYTES": f"{min(size, n * fioprofile.IOPS_BYTES_PER_THREAD_MIB)}m",
-        "GPFSPERF_THREADS": str(n),
+        "GPFSPERF_IOPS_BYTES": f"{min(size, workers * fioprofile.IOPS_BYTES_PER_THREAD_MIB)}m",
         "GPFSPERF_SIZE": f"{size}m",
         "GPFSPERF_RECORD": bs,
         "GPFSPERF_PROFILE": profile,
         "IO_REQUIRED_KB": str(size * 1024),
         "IO_CAVEAT": _shell_safe(caveat),
     }
+    return tokens, target
+
+
+def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
+                    target: str | None = None) -> dict:
+    """gpfsperf on one node: -th = IO threads; see _gpfsperf_sizing."""
+    n = io_threads(nv, cfg)
+    tokens, target = _gpfsperf_sizing(nv, cfg, testset=testset, benchmark=benchmark,
+                                      target=target, nodes=1, workers=n)
+    return {**tokens, "GPFSPERF_THREADS": str(n), **target_tokens(nv, benchmark, target)}
+
+
+def gpfsperfmpi_tokens(nv: NodeValues, cfg, *, numnodes: int, numprocs: int, testset: str,
+                       benchmark: str, target: str | None = None) -> dict:
+    """gpfsperf-mpi across ``numnodes`` nodes, one rank per IO thread (-th 1):
+    the shared file is 2x the RAM of all its nodes, and the random ops move
+    ranks x 256 MiB; see _gpfsperf_sizing."""
+    tokens, target = _gpfsperf_sizing(nv, cfg, testset=testset, benchmark=benchmark,
+                                      target=target, nodes=numnodes, workers=numprocs)
     return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
