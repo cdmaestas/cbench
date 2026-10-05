@@ -240,6 +240,74 @@ cbench gen-jobs  --testset bandwidth --ident run1   # writes .sh scripts
 cbench start-jobs --testset bandwidth --ident run1 --batch  # runs each with bash
 ```
 
+#### Multi-node MPI without a scheduler
+
+Without a scheduler, `mpirun` doesn't know which nodes to use, so pass a hostfile and the
+Open MPI settings in `joblaunch_extraargs`. This setup ran gpfsperf-mpi on two RHEL 9
+nodes with Open MPI 4.1.1 from the distro (`/usr/lib64/openmpi`) over plain TCP:
+
+```yaml
+# cluster.yaml
+max_nodes: 2
+procs_per_node: 8
+joblaunch_method: openmpi
+joblaunch_extraargs: >-
+  --hostfile /shared/cbtest/hosts
+  --prefix /usr/lib64/openmpi -x LD_LIBRARY_PATH
+  --mca oob_tcp_if_include 172.16.0.0/16
+  --mca pml ob1 --mca btl self,vader,tcp --mca btl_tcp_if_include 172.16.0.0/16
+```
+
+```text
+# /shared/cbtest/hosts
+node1 slots=8
+node2 slots=8
+```
+
+```bash
+export PATH=/usr/lib64/openmpi/bin:$PATH LD_LIBRARY_PATH=/usr/lib64/openmpi/lib
+cbench gen-jobs   --profile io-default --group gpfs-mpi --ident mpi1 --run-type interactive --nodefacts compute
+cbench start-jobs --testset io-default --ident mpi1 --interactive
+```
+
+What each setting does, and the failure it avoids:
+
+- **Hostfile:** under a scheduler, the job's allocation tells `mpirun` which nodes to use;
+  without one, the hostfile does. Open MPI starts a daemon on every host in it, even for a
+  1-node job, so every listed node must be reachable.
+- **`--prefix` and `-x LD_LIBRARY_PATH`:** the remote node finds `orted` and the MPI
+  libraries without changes to its login PATH.
+- **`oob_tcp_if_include`:** keeps Open MPI's daemons on the network the nodes share. Without
+  it, a node with several interfaces can advertise one the other node can't reach, and the
+  job fails with `ORTE was unable to reliably start one or more daemons`. `cbench parse
+  --customparse openmpi` reports that line.
+- **`pml ob1`, `btl self,vader,tcp`, `btl_tcp_if_include`:** use Open MPI's own TCP transport
+  on that network. The default UCX transport picks its own interfaces and can fail across
+  nodes with `ucp_ep_create ... Destination is unreachable`. Leave these out on InfiniBand or
+  RoCE, where UCX is the transport you want.
+- `mpirun` starts the remote ranks over ssh, so the first node needs key-based ssh to the
+  others, and the job's files (binaries, data dir) must be on a filesystem every node mounts.
+
+#### Stopping a running job
+
+Job scripts clean up after themselves when they stop:
+
+- **Data removed:** IO scratch data (e.g. `/tmp/job<ID>`, or a gpfsperf file on GPFS) is
+  removed on a normal exit, on `exit`, and on SIGINT, SIGTERM or SIGHUP.
+- **Exit recorded:** `<jobdir>/<job>.heartbeat` records `exited rc=N`, 130 for Ctrl-C and
+  143 for SIGTERM.
+- **How jobs get stopped:** Ctrl-C on `start-jobs --interactive` sends SIGINT; a scheduler's
+  `scancel` or time limit sends SIGTERM.
+
+Two limits:
+
+- **SIGKILL can't be caught.** A job killed outright leaves its data, and its `.heartbeat`
+  still says `still running`.
+- **A job started with SIGINT ignored never sees Ctrl-C.** `nohup`, or `&` from a
+  non-interactive shell script, start it that way, and a shell can't catch a signal that was
+  ignored when it started. Stop such a job with SIGTERM (`kill <pid>`), which still runs the
+  cleanup.
+
 ### Parse results
 
 ```bash
