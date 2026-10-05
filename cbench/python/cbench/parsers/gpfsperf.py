@@ -164,12 +164,12 @@ class GpfsperfParser(BenchmarkParser):
             detail = f"operation={op} pattern={pat}" if op else ""
             return ParseResult(status="PASSED", metrics=metrics, status_detail=detail)
 
-        metrics: dict[str, float] = {}
-        for op, pat, m in parsed:
-            for k, v in m.items():
-                metrics[f"{op}_{pat}_{k}" if k in _PER_OP else k] = v
+        combined: dict[str, float] = {}
+        for op, pat, op_metrics in parsed:
+            for k, v in op_metrics.items():
+                combined[f"{op}_{pat}_{k}" if k in _PER_OP else k] = v
         detail = "operations=" + ",".join(f"{op}_{pat}" for op, pat, _ in parsed)
-        return ParseResult(status="PASSED", metrics=metrics, status_detail=detail)
+        return ParseResult(status="PASSED", metrics=combined, status_detail=detail)
 
     def metric_units(self) -> dict[str, str]:
         base = {

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Generator, Optional
+from collections.abc import Generator
 
 
 @dataclass
@@ -25,7 +25,7 @@ class ParseResult:
     status_detail: str = ""
     metrics: dict[str, float] = field(default_factory=dict)
     metric_units: dict[str, str] = field(default_factory=dict)
-    parsed_at: Optional[datetime] = None
+    parsed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.parsed_at is None:
@@ -140,13 +140,13 @@ class ResultsDB:
     def query(
         self,
         *,
-        benchmark: Optional[str] = None,
-        cluster: Optional[str] = None,
-        testset: Optional[str] = None,
-        ident: Optional[str] = None,
-        status: Optional[str] = None,
-        since: Optional[str] = None,
-        until: Optional[str] = None,
+        benchmark: str | None = None,
+        cluster: str | None = None,
+        testset: str | None = None,
+        ident: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
         limit: int = 1000,
     ) -> list[dict]:
         """Return runs matching the given filters, with their metrics attached."""
@@ -216,10 +216,10 @@ class ResultsDB:
         *,
         benchmark: str,
         metric: str,
-        cluster: Optional[str] = None,
-        testset: Optional[str] = None,
-        since: Optional[str] = None,
-        until: Optional[str] = None,
+        cluster: str | None = None,
+        testset: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
         limit: int = 200,
     ) -> list[dict]:
         """Return per-ident average values for one metric, ordered chronologically.

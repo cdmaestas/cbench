@@ -17,7 +17,6 @@ import os
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -34,7 +33,7 @@ _OMPI_SRC_DEST_RE = re.compile(
 )
 
 
-def _classify(message: str) -> tuple[str, Optional[str], Optional[str]]:
+def _classify(message: str) -> tuple[str, str | None, str | None]:
     """Return (error_type, src_node, dst_node) from a filter match string."""
     m = _OMPI_SRC_DEST_RE.search(message)
     if m:
@@ -46,7 +45,7 @@ def _classify(message: str) -> tuple[str, Optional[str], Optional[str]]:
 def _scan_file(
     path: Path,
     filters: dict[str, str],
-) -> list[tuple[str, str, Optional[str], Optional[str]]]:
+) -> list[tuple[str, str, str | None, str | None]]:
     """Return list of (filename, error_type, src, dst) tuples for a single file."""
     try:
         text = path.read_text(errors="replace")
@@ -84,17 +83,17 @@ def _scan_file(
 @click.option("--config", default=None)
 def diag_cmd(
     files: tuple[str, ...],
-    testset: Optional[str],
-    ident: Optional[str],
-    cbenchtest: Optional[str],
-    filter_names: Optional[str],
+    testset: str | None,
+    ident: str | None,
+    cbenchtest: str | None,
+    filter_names: str | None,
     threshold: int,
     source_only: bool,
     dest_only: bool,
     source_dest_only: bool,
     all_matches: bool,
     output: str,
-    config: Optional[str],
+    config: str | None,
 ) -> None:
     """Apply parse filters to output files and report aggregated errors."""
     from cbench.config import load_config

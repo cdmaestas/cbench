@@ -4,7 +4,6 @@ import os
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -159,7 +158,7 @@ class ClusterConfig:
     io500_stonewall_s: int = 300
     io_profile: str = "auto"
     io_seq_bs: str = ""
-    io_threads_max: Optional[int] = None
+    io_threads_max: int | None = None
     io_threads_basis: str = "logical"
     parse_filter_include: list[str] = field(
         default_factory=lambda: ["openmpi", "slurm", "mpiexec", "torque", "mvapich", "misc"]
@@ -192,7 +191,7 @@ class ClusterConfig:
 # Loader
 # ---------------------------------------------------------------------------
 
-def load_config(path: Optional[str | Path] = None) -> ClusterConfig:
+def load_config(path: str | Path | None = None) -> ClusterConfig:
     """Load cluster configuration from a YAML file.
 
     Search order:

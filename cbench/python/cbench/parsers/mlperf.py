@@ -92,25 +92,24 @@ def _parse_training(stdout: str) -> ParseResult | None:
 
     if run_status == "success":
         return ParseResult(status="PASSED", metrics=metrics)
-    elif run_status in ("aborted", "abort"):
+    if run_status in ("aborted", "abort"):
         return ParseResult(
             status="ERROR(ABORTED)",
             metrics=metrics,
             status_detail=f"MLPerf training run_stop status={run_status}",
         )
-    elif run_stop_ms is not None:
+    if run_stop_ms is not None:
         return ParseResult(
             status="ERROR(UNKNOWN_STATUS)",
             metrics=metrics,
             status_detail=f"run_stop status={run_status}",
         )
-    else:
-        # run_start seen but no run_stop
-        return ParseResult(
-            status="ERROR(INCOMPLETE)",
-            metrics=metrics,
-            status_detail="run_start seen but no run_stop",
-        )
+    # run_start seen but no run_stop
+    return ParseResult(
+        status="ERROR(INCOMPLETE)",
+        metrics=metrics,
+        status_detail="run_start seen but no run_stop",
+    )
 
 
 def _parse_inference(stdout: str) -> ParseResult | None:
@@ -150,10 +149,9 @@ def _parse_inference(stdout: str) -> ParseResult | None:
     if valid:
         return ParseResult(status="PASSED", metrics=metrics,
                            status_detail=f"scenario={scenario}")
-    else:
-        return ParseResult(status="ERROR(INVALID)",
-                           metrics=metrics,
-                           status_detail=f"scenario={scenario} result=INVALID")
+    return ParseResult(status="ERROR(INVALID)",
+                       metrics=metrics,
+                       status_detail=f"scenario={scenario} result=INVALID")
 
 
 class MlperfParser(BenchmarkParser):

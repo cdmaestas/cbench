@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import click
 
@@ -38,16 +37,16 @@ def utils_group() -> None:
 @click.option("--try-all", is_flag=True, help="Consider every integer 1…maxprocs")
 @click.option("--newline", is_flag=True, help="Print one value per line instead of CSV")
 def run_sizes_cmd(
-    maxprocs: Optional[int],
+    maxprocs: int | None,
     minprocs: int,
     pof2: bool,
     square: bool,
     cube: bool,
-    mult: Optional[int],
+    mult: int | None,
     mult256: bool,
     mult100: bool,
     mult3: bool,
-    addr: Optional[int],
+    addr: int | None,
     try_all: bool,
     newline: bool,
 ) -> None:
@@ -116,11 +115,11 @@ def find_pq_cmd(nprocs: int, delta: int, decent_only: bool) -> None:
 def find_n_cmd(
     nprocs: int,
     ppn: int,
-    memory: Optional[int],
-    util: Optional[str],
-    nodefacts: Optional[str],
-    cbenchtest: Optional[str],
-    config: Optional[str],
+    memory: int | None,
+    util: str | None,
+    nodefacts: str | None,
+    cbenchtest: str | None,
+    config: str | None,
 ) -> None:
     """Compute HPL problem size N for each memory utilization factor."""
     from cbench.config import load_config

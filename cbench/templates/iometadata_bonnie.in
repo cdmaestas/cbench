@@ -42,7 +42,7 @@ cbench_run_cmd $CMD
 sync
 
 CMD="$bonnie $opts -y s"
-for i in $(seq 1 $instances); do
+for _ in $(seq 1 "$instances"); do
 	cbench_run_cmd $CMD &
 done
 

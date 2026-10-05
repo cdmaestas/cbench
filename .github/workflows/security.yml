@@ -4,11 +4,20 @@ on:
   push:
     paths:
       - "cbench/python/**"
+      # job templates are rendered and checked by the test suite
+      - "cbench/templates/**"
       - ".github/workflows/security.yml"
   pull_request:
     paths:
       - "cbench/python/**"
+      # job templates are rendered and checked by the test suite
+      - "cbench/templates/**"
       - ".github/workflows/security.yml"
+
+# Least privilege for GITHUB_TOKEN; a job that needs more asks for it
+# (attach-to-release: contents: write).
+permissions:
+  contents: read
 
 jobs:
   security:

@@ -188,16 +188,17 @@ def test_parse_cli_io_jobs_pass_and_keep_caveat(tmp_path):
         ])
         assert res.exit_code == 0, res.output
 
-    con = sqlite3.connect(tmp_path / "cbench_results.db")
-    rows = dict(con.execute("SELECT jobname, status FROM runs").fetchall())
+    from contextlib import closing
+    with closing(sqlite3.connect(tmp_path / "cbench_results.db")) as con:
+        rows = dict(con.execute("SELECT jobname, status FROM runs").fetchall())
+        (detail,) = con.execute(
+            "SELECT status_detail FROM runs WHERE jobname = 'bonnie-1ppn-1'"
+        ).fetchone()
+        (ior_detail,) = con.execute(
+            "SELECT status_detail FROM runs WHERE jobname = 'ior1mNtoN-4ppn-4'"
+        ).fetchone()
     assert rows == dict.fromkeys(
         ["ior1mNtoN-4ppn-4", "ior1mNto1-4ppn-4", "mdtest-4ppn-4", "bonnie-1ppn-1"], "PASSED"
     )
-    (detail,) = con.execute(
-        "SELECT status_detail FROM runs WHERE jobname = 'bonnie-1ppn-1'"
-    ).fetchone()
     assert re.search(r"too fast to measure.*; CBENCH CAVEAT: bonnie\+\+ size capped", detail)
-    (ior_detail,) = con.execute(
-        "SELECT status_detail FROM runs WHERE jobname = 'ior1mNtoN-4ppn-4'"
-    ).fetchone()
     assert "CAVEAT" not in (ior_detail or "")

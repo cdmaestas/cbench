@@ -86,13 +86,7 @@ def filter_run_sizes(
     for n in base:
         if n < lower:
             continue
-        if pof2 and is_power_of_two(n):
-            result.append(n)
-        elif square and is_perfect_square(n):
-            result.append(n)
-        elif cube and is_perfect_cube(n):
-            result.append(n)
-        elif mult is not None and is_multiple_of(n, mult):
+        if pof2 and is_power_of_two(n) or square and is_perfect_square(n) or cube and is_perfect_cube(n) or mult is not None and is_multiple_of(n, mult):
             result.append(n)
     return result
 

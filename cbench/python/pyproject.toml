@@ -33,7 +33,10 @@ line-length = 120
 # Correctness-focused rule set: pyflakes, pycodestyle errors, bugbear,
 # and the bandit-derived security rules. Style-only rules are intentionally
 # not enabled for this pre-existing codebase.
-select = ["F", "E", "B", "S"]
+# F/E/B/S: correctness, style, bugbear, security (bandit rules).
+# UP/C4 + the RET/SIM picks: keep code on current idioms (py39 target with
+# `from __future__ import annotations`, so PEP 604 `X | None` is safe).
+select = ["F", "E", "B", "S", "UP", "C4", "RET505", "RET506", "SIM114", "SIM300"]
 ignore = [
     "E501",   # long lines — legacy-parity code keeps some
     "S603",   # subprocess without shell=True is our standard pattern

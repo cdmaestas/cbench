@@ -43,9 +43,9 @@ cbench utils run-sizes --maxprocs 512 --pof2
 cbench nodehwtest gen-jobs --nodelist n[1-10] --ident run1
 ```
 
-Ruff is the linter (`[tool.ruff]` in `cbench/python/pyproject.toml`; rules F/E/B/S, py39 target — run `ruff check .` from `cbench/python/`). Pre-commit hooks are configured in `.pre-commit-config.yaml` at the repo root (ruff + hygiene checks on commit, full pytest on push); install with `pre-commit install --install-hooks -t pre-commit -t pre-push`. Keep `ruff check` clean — vetted false positives are annotated in-line with `noqa`/`nosec` plus a justification comment rather than disabling rules globally.
+Ruff is the linter (`[tool.ruff]` in `cbench/python/pyproject.toml`; rules F/E/B/S plus UP/C4 and a few RET/SIM checks, py39 target — PEP 604 `X | None` is fine because every module has `from __future__ import annotations` (the suite also passes on Python 3.9.6) — run `ruff check .` from `cbench/python/`). Pre-commit hooks are configured in `.pre-commit-config.yaml` at the repo root (ruff `ruff-check` hook, pinned to match CI's ruff, + hygiene checks on commit; full pytest on push); install with `pre-commit install --install-hooks -t pre-commit -t pre-push`. Keep `ruff check` clean — vetted false positives are annotated in-line with `noqa`/`nosec` plus a justification comment rather than disabling rules globally.
 
-CI: `.github/workflows/test.yml` runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 on pushes to `cbench/python/**` (coverage artifact uploaded on the 3.12 run). `.github/workflows/security.yml` runs ruff + bandit + pip-audit on the same paths. Keep coverage above 80% — the CI gate enforces it.
+CI: `.github/workflows/test.yml` runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 on pushes/PRs touching `cbench/python/**` or `cbench/templates/**` (templates are rendered and checked by the suite, including `shellcheck -S error` on rendered profile scripts; coverage artifact uploaded on the 3.12 run). `.github/workflows/security.yml` runs ruff + bandit + pip-audit on the same paths. All workflows default `GITHUB_TOKEN` to `contents: read`; a job that needs more declares it. Validate workflow edits with `actionlint`. Keep coverage above 80% — the CI gate enforces it.
 
 ## Python package architecture (`cbench/python/cbench/`)
 
@@ -198,6 +198,7 @@ These decisions are intentional — do not re-flag as vulnerabilities:
 - `cluster_name` in `cluster.yaml` is restricted to `[A-Za-z0-9_-]+` by JSON Schema validation.
 - `--node`/`--remote` hostname arguments reject `/`, `\\`, `..`, and spaces.
 - `snb.py:_runcmd()` accepts str (shell=True) only for hardcoded commands; user-derived args must be lists. Annotated `noqa: S602` / `nosec B602`.
+- GitHub Actions: workflows run with a read-only `GITHUB_TOKEN` (`permissions: contents: read`; only `attach-to-release` gets `contents: write`). Event data such as the release tag reaches `run:` scripts through `env:`, never spliced in as `${{ }}`.
 - Vetted scanner false positives (parameterized SQL in `db.py`, the validated `extractall`, the https-only `urlopen`) carry inline `noqa`+`nosec` markers with justifications — keep `ruff check` and `bandit` at zero findings rather than suppressing rules globally.
 
 ## Error-handling policy

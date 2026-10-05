@@ -283,3 +283,20 @@ def test_single_node_jobs_request_their_thread_count(genv):
     s = genv.script("fio-local-4ppn-4")
     assert "--ntasks-per-node=4" in s or "--ntasks-per-node 4" in s
     assert "-N 1" in s or "--nodes=1" in s or "-N1" in s
+
+
+def test_rendered_profile_scripts_pass_shellcheck(genv):
+    """Job scripts the Python toolchain renders must have no shellcheck errors
+    (warnings from the shared legacy headers are tolerated)."""
+    import shutil
+    import subprocess
+    if shutil.which("shellcheck") is None:
+        pytest.skip("shellcheck not installed")
+    res = genv.run("--profile", "io-default", "--group", "all", "--run-type", "both")
+    assert res.exit_code == 0, res.output
+    scripts = sorted((genv.tmp / "io-default" / "p1").glob("*/*.s*"))
+    assert scripts
+    for script in scripts:
+        r = subprocess.run(["shellcheck", "-S", "error", "-s", "bash", str(script)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, f"{script.name}:\n{r.stdout}"
