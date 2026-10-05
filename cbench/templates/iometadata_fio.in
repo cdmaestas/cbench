@@ -63,16 +63,18 @@ rm -f ./rand_rw.*
 
 # metadata engines need fio >= 3.23
 if $FIO --enghelp 2>&1 | grep -qw filedelete; then
-	md="--filesize=4k --nrfiles=FIO_MD_NRFILES_HERE --openfiles=1 --numjobs=$numjobs --directory=. --runtime=$runtime --group_reporting --output-format=normal"
-	CMD="$FIO --name=md_create --ioengine=filecreate --rw=write --create_on_open=1 --fallocate=none $md"
+	# the three jobs share one file set (--filename_format, kept literal for
+	# fio): md_stat and md_delete act on md_create's files, and create_on_open
+	# stops fio laying out files of its own before the timed phase
+	md="--filesize=4k --nrfiles=FIO_MD_NRFILES_HERE --openfiles=1 --numjobs=$numjobs --directory=. --filename_format=md.\$jobnum.\$filenum --create_on_open=1 --runtime=$runtime --group_reporting --output-format=normal"
+	CMD="$FIO --name=md_create --ioengine=filecreate --rw=write --fallocate=none $md"
 	cbench_run_cmd $CMD
-	rm -f ./md_create.*
 	CMD="$FIO --name=md_stat --ioengine=filestat $md"
 	cbench_run_cmd $CMD
-	rm -f ./md_stat.*
 	CMD="$FIO --name=md_delete --ioengine=filedelete $md"
 	cbench_run_cmd $CMD
-	rm -f ./md_delete.*
+	# md_delete removed them; this catches leftovers from a failed phase
+	rm -f ./md.*
 else
 	cbench_echo "CBENCH CAVEAT: $FIO lacks the filecreate/filestat/filedelete engines (needs fio >= 3.23); metadata ops not measured"
 fi

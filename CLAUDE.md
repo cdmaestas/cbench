@@ -114,6 +114,7 @@ fio is the default node-local IOPS + metadata test, in both `snb` and gen-jobs (
 Timing and job counts:
 - Data jobs are `--time_based --runtime=fio_runtime_s` (default 300 s).
 - Metadata jobs are bounded by `nrfiles`, because a time-based delete would run out of files.
+- The metadata jobs share one file set (`--filename_format=md.$jobnum.$filenum`, `--create_on_open=1`): md_stat and md_delete act on md_create's empty files without laying out their own, so the target is **not** emptied between them (`fioprofile.MD_KEEP_FILES`). Missing files make stat/delete fail (`err=2`), and `FioParser` reports any `fio: pid=.., err=..` line as `ERROR(FIO)` (errno text from `os.strerror`; fio truncates the line).
 - numjobs = `min(cpus, 16)`.
 - The target is emptied between jobs, so the peak is numjobs × the per-job file: 256 MiB with O_DIRECT. That is small because `--runtime` does not cover fio's up-front file layout, which took ~2.5 min for 4 × 1 GiB on zima xfs. Buffered runs use larger files (snb: 2× MemTotal; the job script: 1 GiB).
 - The job script probes O_DIRECT before its preflight, so it checks the size it will actually use.
