@@ -404,6 +404,8 @@ def gen_jobs(
         console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "
                       f"{len(skipped_no_grid)} job(s), not generated: "
                       f"{', '.join(skipped_no_grid)}[/yellow]")
+    for note in sorted(nv.notes):
+        console.print(f"NOTE: io_profile {note}")
     for w in sorted(gen_warnings):
         console.print(f"[yellow]WARNING: {w}[/yellow]")
     for c in sorted(caveats):

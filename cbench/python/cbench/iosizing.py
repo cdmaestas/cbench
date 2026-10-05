@@ -62,6 +62,9 @@ class NodeValues:
     #: "interconnect=ib gpfs_transport=rdma" from facts v3 (nodecheck); jobs print
     #: it as a CBENCH LABEL line and `cbench parse` keeps it in status_detail
     labels: str = ""
+    #: gen-time notes (e.g. io_profile auto moved up to fit a block size),
+    #: collected while sizing jobs and printed once by gen-jobs
+    notes: set = field(default_factory=set)
 
 
 def _resolve_targets(cfg, facts_targets: dict, warnings: list) -> dict:
@@ -198,15 +201,29 @@ def _free_cap_kb(nv: NodeValues, target: str | None) -> tuple[int | None, bool |
     return int(free * CAPACITY_FRACTION), t.get("shared")
 
 
+def seq_profile(nv: NodeValues, cfg, target: str | None,
+                fstype: str | None = None) -> tuple[str, str]:
+    """(profile, sequential block size) for a target: cfg.io_profile, with
+    ``auto`` moved up to a whole multiple of the block / stripe size the node
+    facts recorded for it (cbench.fioprofile.auto_profile)."""
+    from cbench import fioprofile
+
+    t = nv.targets.get(target or "", {})
+    fstype = fstype or t.get("fstype")
+    align = fioprofile.align_kb(t)
+    if cfg.io_profile == "auto" and not cfg.io_seq_bs:
+        _, note = fioprofile.auto_profile(fstype, align)
+        if note:
+            nv.notes.add(f"target '{target}' ({t.get('path', '?')}): {note}")
+    return fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs, align)
+
+
 def ior_tokens(nv: NodeValues, cfg, *, ppn: int, numprocs: int, testset: str,
                benchmark: str) -> dict:
     """IOR -t from the IO profile (auto on a parallel filesystem -> hpc, 8m) and
     -b so each node writes >= 2x RAM, rounded up to a multiple of -t."""
-    from cbench import fioprofile
-
     mem_kb = _require_mem(nv, testset, benchmark)
-    target_fs = nv.targets.get(target_name_for(benchmark) or "", {}).get("fstype")
-    profile, transfer = fioprofile.seq_block_size(cfg.io_profile, target_fs, cfg.io_seq_bs)
+    profile, transfer = seq_profile(nv, cfg, target_name_for(benchmark))
     t = _block_mib(transfer)
     want_mib = 2 * mem_kb / 1024 / ppn
     b_mib = max(t, math.ceil(want_mib / t) * t)
@@ -282,8 +299,7 @@ def fio_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> tuple[di
         )
     njobs = fioprofile.numjobs(io_threads(nv, cfg))
     target = target_name_for(benchmark)
-    fstype = nv.targets.get(target or "", {}).get("fstype")
-    profile, seq_bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
+    profile, seq_bs = seq_profile(nv, cfg, target)
     need_kb = fioprofile.peak_bytes(njobs) // 1024
     warning = ""
     cap_kb, _shared = _free_cap_kb(nv, target)
@@ -320,8 +336,7 @@ def iozone_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dict:
     mem_kb = _require_mem(nv, testset, benchmark)
     n = io_threads(nv, cfg)
     target = target_name_for(benchmark)
-    fstype = nv.targets.get(target or "", {}).get("fstype")
-    profile, bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
+    profile, bs = seq_profile(nv, cfg, target)
     rec = _block_mib(bs)
     size = max(rec, math.ceil(2 * mem_kb / 1024 / n / rec) * rec)   # MiB per thread
     caveat = ""
@@ -354,7 +369,7 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str) -> dic
     n = io_threads(nv, cfg)
     target = target_name_for(benchmark)
     fstype = nv.targets.get(target or "", {}).get("fstype") or "gpfs"
-    profile, bs = fioprofile.seq_block_size(cfg.io_profile, fstype, cfg.io_seq_bs)
+    profile, bs = seq_profile(nv, cfg, target, fstype)
     rec = _block_mib(bs)
     size = max(rec, math.ceil(2 * mem_kb / 1024 / rec) * rec)   # MiB, whole file
     caveat = ""

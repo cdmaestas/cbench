@@ -124,6 +124,14 @@ def nodecheck_cmd(
                         r["interconnect"], r["gpfs_transport"])
         console.print(tbl)
 
+    profile_lines = nc.profile_report(result["aggregate"].get("targets", {}), cfg)
+    if profile_lines:
+        console.print("IO profile per target (what io_profile: auto picks):")
+        for line in profile_lines:
+            style = "yellow" if "WARNING" in line else ""
+            console.print(f"  [{style}]{line}[/{style}]" if style else f"  {line}")
+        console.print("  cluster.yaml: [bold]io_profile: auto[/bold] uses these per target")
+
     for w in result["verdict"]["warnings"]:
         console.print(f"[yellow]WARNING: {w}[/yellow]")
     for err in result["verdict"]["errors"]:

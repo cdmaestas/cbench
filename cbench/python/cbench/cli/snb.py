@@ -160,6 +160,16 @@ def _fio_direct_space_shortfall(numjobs: int, free_bytes: int) -> tuple[int, int
     return (needed, usable) if needed > usable else None
 
 
+def _local_block_kb(path: str | Path) -> int | None:
+    """The filesystem's preferred IO size at *path* in KiB (statvfs f_bsize;
+    the block size on GPFS), or None if it can't be read or is under 1 KiB."""
+    try:
+        bsize = os.statvfs(path).f_bsize
+    except OSError:
+        return None
+    return bsize // 1024 if bsize >= 1024 else None
+
+
 def _clean_fio_dir(fio_dir: Path, log_fh) -> None:
     """Remove fio's data files so the next run starts from an empty target."""
     for tmp in fio_dir.glob("*"):
@@ -1098,7 +1108,15 @@ def run_cmd(
                                 msg += " (capped by free space — result may be cache-influenced)"
                             _logmsg(log, "WARNING: " + msg)
 
-                    profile, seq_bs = fioprofile.seq_block_size(io_profile, fstype, cfg.io_seq_bs)
+                    # auto is block-size aware, as in gen-jobs (statvfs f_bsize
+                    # here; nodecheck also reads Lustre stripe sizes)
+                    align = _local_block_kb(tgt)
+                    if io_profile == "auto" and not cfg.io_seq_bs:
+                        _, note = fioprofile.auto_profile(fstype, align)
+                        if note:
+                            _logmsg(log, f"NOTE: io_profile on {tgt}: {note}")
+                    profile, seq_bs = fioprofile.seq_block_size(io_profile, fstype,
+                                                                cfg.io_seq_bs, align)
                     marker = (f"{_FIO_TARGET_MARKER} path={tgt} fstype={fstype} "
                               f"odirect={int(direct)} caveat={int(caveat)} profile={profile} "
                               f"seq_bs={seq_bs} runtime_s={fio_runtime} md={int(fio_md)}")

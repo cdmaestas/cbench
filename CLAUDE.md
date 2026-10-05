@@ -122,6 +122,7 @@ Timing and job counts:
 Sequential block size comes from `io_profile` (deprecated alias `fio_profile`; snb `--io-profile`, alias `--fio-profile`):
 - `ai` 1m, `general` 4m, `hpc` 8m, `streaming` 16m.
 - `auto` (default) picks `hpc` on gpfs/lustre/panfs/beegfs/ceph, else `general`.
+- `auto` is block-size aware (`fioprofile.auto_profile`): when a target's block size is known, it moves up to the smallest profile that is a whole multiple of it. The size is the larger of `block_kb` (statfs `f_bsize`, which on GPFS is the file system block size) and `stripe_kb` (Lustre `lfs getstripe -d -S`). nodecheck facts v4 record both per target, plus `suggested_profile`/`profile_note`. gen-jobs uses them through `iosizing.seq_profile()` and prints a `NOTE` via `NodeValues.notes` when `auto` moved. snb uses a local `os.statvfs` (`_local_block_kb`). Explicit `io_profile`/`io_seq_bs` are never moved; nodecheck's `profile_report()` warns when they aren't a multiple.
 - `io_seq_bs` (deprecated alias `fio_seq_bs`) overrides it exactly.
 - The same size is iozone's and gpfsperf's record size and IOR's `io_ior*` transfer size `-t`, whose `-b` rounds up to a multiple of it. `iosanity`/`shakedown` keep fixed sizes.
 - `load_config` maps the deprecated aliases (`_KEY_ALIASES`) with a DeprecationWarning; setting both names is a ConfigError.
