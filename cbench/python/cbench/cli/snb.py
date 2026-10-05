@@ -18,7 +18,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -41,7 +40,7 @@ def _detect_cores() -> int:
     return os.cpu_count() or 1
 
 
-def _detect_physical_cores(cpuinfo_path: "str | Path" = Path("/proc/cpuinfo")) -> int:
+def _detect_physical_cores(cpuinfo_path: str | Path = Path("/proc/cpuinfo")) -> int:
     """Distinct (physical id, core id) pairs in /proc/cpuinfo; 0 if unknown
     (non-Linux, or cpuinfo without core ids). Mirrors the nodecheck probe."""
     try:
@@ -68,7 +67,7 @@ _FIO_DIRECT_SIZE_BYTES = fioprofile.DATA_SIZE_BYTES
 _FIO_CAPACITY_FRACTION = 0.9  # never plan to fill more than 90% of a target
 
 
-def _read_memtotal_bytes(meminfo_path: "str | Path" = Path("/proc/meminfo")) -> int:
+def _read_memtotal_bytes(meminfo_path: str | Path = Path("/proc/meminfo")) -> int:
     """Return MemTotal in bytes from /proc/meminfo, or 0 if unavailable."""
     try:
         for line in Path(meminfo_path).read_text().splitlines():
@@ -80,8 +79,8 @@ def _read_memtotal_bytes(meminfo_path: "str | Path" = Path("/proc/meminfo")) -> 
 
 
 def _detect_fstype(
-    path: "str | Path",
-    mountinfo_path: "str | Path" = Path("/proc/self/mountinfo"),
+    path: str | Path,
+    mountinfo_path: str | Path = Path("/proc/self/mountinfo"),
 ) -> str:
     """Return the filesystem type for *path* by longest-mountpoint-prefix match
     against mountinfo. Returns 'unknown' off-Linux or on any error."""
@@ -111,7 +110,7 @@ def _detect_fstype(
     return best_fs
 
 
-def _supports_odirect(directory: "str | Path") -> bool:
+def _supports_odirect(directory: str | Path) -> bool:
     """Probe whether O_DIRECT is usable for files in *directory*."""
     flag = getattr(os, "O_DIRECT", None)
     if flag is None:  # non-Linux (e.g. macOS dev)
@@ -149,7 +148,7 @@ def _fio_buffered_size_bytes(
     return per_job, caveat
 
 
-def _fio_direct_space_shortfall(numjobs: int, free_bytes: int) -> "tuple[int, int] | None":
+def _fio_direct_space_shortfall(numjobs: int, free_bytes: int) -> tuple[int, int] | None:
     """(needed, usable) bytes when the O_DIRECT runs won't fit, else None.
 
     Each fio job lays out its own --size file and the target is emptied between
@@ -170,7 +169,7 @@ def _clean_fio_dir(fio_dir: Path, log_fh) -> None:
             _logmsg(log_fh, f"WARNING: could not remove fio temp file {tmp}: {e}")
 
 
-def _fio_benchmark_name(fstype: str, path: "str | Path") -> str:
+def _fio_benchmark_name(fstype: str, path: str | Path) -> str:
     """Encode an fs target into a distinct benchmark name (node identity stays
     in jobname). ('gpfs', '/gpfs/scratch') -> 'snb_fio_gpfs_scratch'."""
     base = os.path.basename(str(path).rstrip("/")) or "root"
@@ -208,7 +207,7 @@ def _fmt_elapsed(seconds: float) -> str:
     return f"{m}m{s:02d}s" if m else f"{s}s"
 
 
-def _cmd_label(cmd: "str | list[str]") -> str:
+def _cmd_label(cmd: str | list[str]) -> str:
     """Short identifier for heartbeat lines (program name + fio --name if any)."""
     if isinstance(cmd, str):
         parts = cmd.split()
@@ -229,13 +228,13 @@ def _emit(log_fh, msg: str) -> None:
 
 
 def _runcmd(
-    cmd: "str | list[str]",
+    cmd: str | list[str],
     outfile: Path,
     *,
     overwrite: bool = False,
     dry_run: bool = False,
     log_fh=None,
-    cwd: "Optional[Path]" = None,
+    cwd: Path | None = None,
     heartbeat: float = _HEARTBEAT_SECS,
 ) -> None:
     """Run a command (string for trusted shell cmds, list for user-derived args).
@@ -430,7 +429,7 @@ def _parse_fio_out(outfile: Path) -> dict[str, float]:
     return result.metrics if result.status == "PASSED" else {}
 
 
-def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, str, dict[str, float]]]":
+def _parse_fio_targets(outfile: Path) -> list[tuple[str, str, str, dict[str, float]]]:
     """Split a per-target fio output file into (benchmark, status, status_detail, metrics).
 
     The run side writes a '### CBENCH FS-TARGET path=.. fstype=.. odirect=.. caveat=..'
@@ -449,7 +448,7 @@ def _parse_fio_targets(outfile: Path) -> "list[tuple[str, str, str, dict[str, fl
         return [("snb_fio", "PASSED", "", metrics)] if metrics else []
 
     results: list[tuple[str, str, str, dict[str, float]]] = []
-    header: "dict[str, str] | None" = None
+    header: dict[str, str] | None = None
     buf: list[str] = []
 
     def _flush() -> None:
@@ -529,7 +528,7 @@ def _collect_snb_metrics(
     cluster: str,
     ident: str,
     numcores: int,
-) -> "list":
+) -> list:
     """Parse all snb output files and return a list of db.ParseResult objects."""
     from cbench.db import ParseResult as DBResult
 
@@ -564,16 +563,16 @@ def _collect_snb_metrics(
 
     # streams
     streams = _parse_streams_out(outfile("streams"))
-    _make("snb_streams", streams, {k: "MB/s" for k in streams})
+    _make("snb_streams", streams, dict.fromkeys(streams, "MB/s"))
 
     # cachebench
     cb = _parse_cachebench_out(outfile("cachebench"))
-    _make("snb_cachebench", cb, {k: "MB/s" for k in cb})
+    _make("snb_cachebench", cb, dict.fromkeys(cb, "MB/s"))
 
     # dgemm — flatten {mem_mb: gflops} → {"gflops_<mem>mb": val}
     dgemm_raw = _parse_dgemm_out(outfile("nodeperf2"))
     dgemm = {f"gflops_{mem}mb": gf for mem, gf in dgemm_raw.items()}
-    _make("snb_dgemm", dgemm, {k: "GFlops" for k in dgemm})
+    _make("snb_dgemm", dgemm, dict.fromkeys(dgemm, "GFlops"))
 
     # mpistreams — flatten {nprocs: {op: val}} → {"<op>_<n>proc": val}
     ms_raw = _parse_mpistreams_out(outfile("mpistreams"))
@@ -616,7 +615,7 @@ def _collect_snb_metrics(
 
     # npb
     npb = _parse_npb_out(outfile("npb"))
-    _make("snb_npb", npb, {k: "Mop/s" for k in npb})
+    _make("snb_npb", npb, dict.fromkeys(npb, "Mop/s"))
 
     return results
 
@@ -668,16 +667,16 @@ def _build_remote_cmd(
     destdir: str,
     numcores: int,
     tests: str,
-    binpath: Optional[str],
+    binpath: str | None,
     mpi_cmd: str,
     dry_run: bool,
     store: bool,
-    config: Optional[str],
+    config: str | None,
     remote_cbench: str = "cbench",
-    fs_target: "tuple[str, ...]" = (),
+    fs_target: tuple[str, ...] = (),
     heartbeat: float = _HEARTBEAT_SECS,
-    io_profile: Optional[str] = None,
-    fio_runtime: Optional[int] = None,
+    io_profile: str | None = None,
+    fio_runtime: int | None = None,
 ) -> list[str]:
     """Return the argv list to dispatch `cbench snb run` to a remote node."""
     import shlex as _shlex
@@ -753,22 +752,22 @@ def _build_remote_cmd(
 @click.option("--store", is_flag=True, help="Store results in SQLite DB after running")
 @click.option("--config", default=None)
 def run_cmd(
-    ident: Optional[str],
+    ident: str | None,
     destdir: str,
-    node: Optional[str],
-    remote: Optional[str],
+    node: str | None,
+    remote: str | None,
     remote_cbench: str,
-    numcores: Optional[int],
+    numcores: int | None,
     fs_target: tuple[str, ...],
-    io_profile: Optional[str],
-    fio_runtime: Optional[int],
+    io_profile: str | None,
+    fio_runtime: int | None,
     tests: str,
-    binpath: Optional[str],
+    binpath: str | None,
     mpi_cmd: str,
     heartbeat: float,
     dry_run: bool,
     store: bool,
-    config: Optional[str],
+    config: str | None,
 ) -> None:
     """Run the single-node benchmark suite and save output files."""
     from functools import partial
@@ -1025,7 +1024,12 @@ def run_cmd(
                 # the count to use. The sequential job stays single-stream.
                 io_cpus = numcores
                 if cfg.io_threads_basis == "physical" and not explicit_numcores:
-                    io_cpus = _detect_physical_cores() or numcores
+                    io_cpus = _detect_physical_cores()
+                    if not io_cpus:
+                        _logmsg(log, "WARNING: io_threads_basis is physical but physical cores "
+                                     "are unknown (no core ids in /proc/cpuinfo); using "
+                                     f"{numcores} logical CPUs")
+                        io_cpus = numcores
                 fio_numjobs = fioprofile.numjobs(iosizing.cap_threads(io_cpus, cfg))
                 io_profile = io_profile or cfg.io_profile
                 fio_runtime = fio_runtime or cfg.fio_runtime_s
@@ -1185,12 +1189,12 @@ def run_cmd(
 @click.option("--store", is_flag=True, help="Store results in SQLite DB")
 @click.option("--config", default=None)
 def report_cmd(
-    ident: Optional[str],
+    ident: str | None,
     destdir: str,
-    node: Optional[str],
+    node: str | None,
     output_fmt: str,
     store: bool,
-    config: Optional[str],
+    config: str | None,
 ) -> None:
     """Parse snb output files and display a summary report."""
     from cbench.config import load_config
@@ -1384,11 +1388,11 @@ def report_cmd(
 @click.option("--numcores", default=None, type=int, help="CPU core count (default: auto-detected)")
 @click.option("--config", default=None)
 def store_cmd(
-    ident: Optional[str],
+    ident: str | None,
     destdir: str,
-    node: Optional[str],
-    numcores: Optional[int],
-    config: Optional[str],
+    node: str | None,
+    numcores: int | None,
+    config: str | None,
 ) -> None:
     """Parse saved snb output files and store all metrics to the SQLite DB."""
     from cbench.config import load_config
@@ -1423,9 +1427,9 @@ def store_cmd(
 def compare_cmd(
     ident: str,
     baseline: str,
-    node: Optional[str],
+    node: str | None,
     threshold: float,
-    config: Optional[str],
+    config: str | None,
 ) -> None:
     """Compare SNB results for two idents from the SQLite DB and flag regressions."""
     import os
@@ -1517,5 +1521,4 @@ def compare_cmd(
     if regressions:
         console.print(f"\n[red bold]{regressions} regression(s) detected (threshold: {threshold}%)[/red bold]")
         raise SystemExit(1)
-    else:
-        console.print(f"\n[green bold]No regressions detected (threshold: {threshold}%)[/green bold]")
+    console.print(f"\n[green bold]No regressions detected (threshold: {threshold}%)[/green bold]")

@@ -44,4 +44,4 @@ class TrilinosParser(BenchmarkParser):
         return ParseResult(status=f"ERROR({status})")
 
     def metric_units(self) -> dict[str, str]:
-        return {k: "MFlops" for k in _METRICS}
+        return dict.fromkeys(_METRICS, "MFlops")

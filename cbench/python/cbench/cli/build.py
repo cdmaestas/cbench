@@ -17,7 +17,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -130,7 +129,7 @@ def build_group() -> None:
 
 @build_group.command("list")
 @click.option("--prefix", default=None, help="Install prefix to check for cached builds")
-def build_list(prefix: Optional[str]) -> None:
+def build_list(prefix: str | None) -> None:
     """List available benchmark builders and their cache status."""
     from cbench.builders import REGISTRY
 
@@ -216,7 +215,7 @@ def _make_cfg(kwargs: dict):
     )
 
 
-def _resolve_dirs(prefix_opt: Optional[str], srcdir_opt: Optional[str]):
+def _resolve_dirs(prefix_opt: str | None, srcdir_opt: str | None):
     prefix = Path(prefix_opt or _default_prefix())
     srcdir = Path(srcdir_opt or _default_srcdir(str(prefix)))
     return prefix, srcdir
@@ -230,7 +229,7 @@ def _run_one(
     *,
     force: bool,
     dry_run: bool,
-    lock: "BuildLock | None" = None,
+    lock: BuildLock | None = None,
 ) -> bool:
     """Fetch + build one benchmark.  Returns True on success."""
     from cbench.builders import get_builder
@@ -298,7 +297,7 @@ def _run_one(
 @click.option("--prefix", default=None, help="Install prefix to search for binaries")
 @click.option("--timeout", default=10, show_default=True, type=int,
               help="Seconds to wait per binary invocation")
-def build_check(benchmark: Optional[str], prefix: Optional[str], timeout: int) -> None:
+def build_check(benchmark: str | None, prefix: str | None, timeout: int) -> None:
     """Verify installed benchmark binaries are present and runnable."""
     from cbench.builders import REGISTRY
 
@@ -445,7 +444,7 @@ def _run_update(
     cfg,
     *,
     dry_run: bool,
-    lock: "BuildLock | None" = None,
+    lock: BuildLock | None = None,
 ) -> bool:
     """Pull upstream changes for one benchmark and rebuild if the source changed.
 
@@ -500,7 +499,7 @@ def _run_update(
 @build_group.command("update")
 @click.argument("benchmark", required=False, default=None)
 @_build_options
-def build_update(benchmark: Optional[str], prefix, srcdir, dry_run: bool, **kwargs) -> None:
+def build_update(benchmark: str | None, prefix, srcdir, dry_run: bool, **kwargs) -> None:
     """Pull upstream changes for git-cloned benchmarks and rebuild if updated.
 
     Without an argument, updates all known benchmarks.

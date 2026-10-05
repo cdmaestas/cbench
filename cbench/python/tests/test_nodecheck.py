@@ -86,7 +86,7 @@ def test_exec_suffix_survives_argv_and_whitespace_resplitting():
 def test_build_pdsh_argv_ssh():
     argv = nc.build_pdsh_argv("zima[1-4]", "echo x\n", rcmd="ssh", exec_cmd="", extraargs="-f 700")
     assert argv[:3] == ["pdsh", "-R", "ssh"]
-    assert ["-f", "700"] == argv[argv.index("-f"):argv.index("-f") + 2]
+    assert argv[argv.index("-f"):argv.index("-f") + 2] == ["-f", "700"]
     assert argv[argv.index("-w") + 1] == "zima[1-4]"
     assert argv[-1].startswith("sh -c ")
 
@@ -316,7 +316,7 @@ def cli_env(tmp_path, monkeypatch):
     def use_output(spec):
         def fake_run_pdsh(argv):
             calls["argv"] = argv
-            return _output({h: v for h, v in spec.items()}), ""
+            return _output(dict(spec.items())), ""
         monkeypatch.setattr(nc, "run_pdsh", fake_run_pdsh)
 
     return SimpleNamespace(tmp=tmp_path, cfg=str(cfg), use_output=use_output, calls=calls)

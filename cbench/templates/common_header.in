@@ -14,8 +14,12 @@ cbench_echo "Cbench jobid: $JOBID"
 
 # We don't want to assume that the batch system or whatever will
 # put us in the directory we want to be in for the job. So, we
-# make sure we are where we expect to be.
-cd "TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE"
+# make sure we are where we expect to be. If that fails, stop: carrying on
+# would run the benchmark (and write its output) wherever we happen to be.
+cd "TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE" || {
+	cbench_echo "CBENCH NOTICE: cannot cd to job directory TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE"
+	exit 1
+}
 
 # Fail fast if an IO test's target lacks the space it needs. Checked right
 # before the run: the free space nodecheck saw at generation time is only a

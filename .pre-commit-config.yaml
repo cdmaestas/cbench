@@ -18,9 +18,9 @@ repos:
         files: ^cbench/python/.*\.py$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6
+    rev: v0.16.10
     hooks:
-      - id: ruff
+      - id: ruff-check   # "ruff" is a deprecated alias
         files: ^cbench/python/
         args: ["--fix"]
 

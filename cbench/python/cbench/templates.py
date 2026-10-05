@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from jinja2.sandbox import SandboxedEnvironment
 from jinja2 import Undefined
@@ -81,7 +81,7 @@ def _format_walltime(minutes: int) -> str:
     return f"{h:02d}:{m:02d}:00"
 
 
-def compute_walltime(numprocs: int, run_sizes: list[int], cfg: "ClusterConfig") -> str:
+def compute_walltime(numprocs: int, run_sizes: list[int], cfg: ClusterConfig) -> str:
     if cfg.walltime_method == 0:
         return cfg.default_walltime
     base = _parse_walltime(cfg.default_walltime)
@@ -116,7 +116,7 @@ def build_job_template(
     testset: str,
     benchmark: str,
     run_type: str,
-    cfg: "ClusterConfig",
+    cfg: ClusterConfig,
 ) -> str:
     """Assemble and return the raw (un-substituted) template text.
 
@@ -164,10 +164,10 @@ def substitute(
     ident: str,
     run_type: str,
     launch_cmd: str,
-    cfg: "ClusterConfig",
+    cfg: ClusterConfig,
     cbenchtest: str = "",
     omp_threads: int = 1,
-    extra: Optional[dict] = None,
+    extra: dict | None = None,
 ) -> str:
     """Perform keyword substitution on assembled template text.
 

@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-REGISTRY: dict[str, type["BenchmarkParser"]] = {}
+REGISTRY: dict[str, type[BenchmarkParser]] = {}
 #: (compiled alias_spec, parser class) — consulted when no name matches exactly.
-ALIASES: list[tuple[re.Pattern[str], type["BenchmarkParser"]]] = []
+ALIASES: list[tuple[re.Pattern[str], type[BenchmarkParser]]] = []
 
 
 @dataclass

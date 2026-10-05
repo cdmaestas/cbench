@@ -10,7 +10,6 @@ import shlex
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -43,7 +42,7 @@ def _safe_path(base: str, *parts: str) -> Path:
     return resolved
 
 
-def _safe_regex(pattern: Optional[str], option: str) -> Optional[re.Pattern]:
+def _safe_regex(pattern: str | None, option: str) -> re.Pattern | None:
     """Compile a user-supplied regex, raising UsageError on invalid syntax."""
     if pattern is None:
         return None
@@ -67,7 +66,7 @@ _SINGLE_INSTANCE = {"fio", "bonnie", "iozone", "gpfsperf"}
 _NODE_SWEEP = {"io500"}
 
 
-def _cfg(config: Optional[str]) -> ClusterConfig:
+def _cfg(config: str | None) -> ClusterConfig:
     return load_config(config)
 
 
@@ -121,20 +120,20 @@ cli.add_command(serve_cmd)
               help="IO500 stonewall per write phase (default: cluster.yaml io500_stonewall_s, "
                    "else 300; below 300 IO500 marks the run [INVALID])")
 def gen_jobs(
-    testset: Optional[str],
-    profile: Optional[str],
+    testset: str | None,
+    profile: str | None,
     groups: tuple[str, ...],
     ident: str,
-    ppn: Optional[str],
-    maxprocs: Optional[int],
+    ppn: str | None,
+    maxprocs: int | None,
     run_type: str,
     dry_run: bool,
-    config: Optional[str],
-    cbenchtest: Optional[str],
-    match: Optional[str],
-    nodefacts: Optional[str],
-    fio_runtime: Optional[int],
-    io500_stonewall: Optional[int],
+    config: str | None,
+    cbenchtest: str | None,
+    match: str | None,
+    nodefacts: str | None,
+    fio_runtime: int | None,
+    io500_stonewall: int | None,
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset or IO profile."""
     from cbench import hplsizing, iosizing, profiles
@@ -434,16 +433,16 @@ def start_jobs(
     ident: str,
     mode: str,
     echo_output: bool,
-    throttle: Optional[int],
-    match: Optional[str],
-    exclude: Optional[str],
-    minprocs: Optional[int],
-    maxprocs: Optional[int],
+    throttle: int | None,
+    match: str | None,
+    exclude: str | None,
+    minprocs: int | None,
+    maxprocs: int | None,
     delay: float,
     poll_interval: int,
     dry_run: bool,
-    config: Optional[str],
-    cbenchtest: Optional[str],
+    config: str | None,
+    cbenchtest: str | None,
 ) -> None:
     """Submit jobs from a generated testset/ident directory."""
     if echo_output and mode != "interactive":
@@ -504,13 +503,14 @@ def start_jobs(
                 if dry_run:
                     console.print(f"[dim]Would submit:[/dim] {cmd}")
                 else:
-                    subprocess.run(shlex.split(cmd), shell=False, check=False)
+                    _submit_batch(cmd, script)
                 submitted += 1
                 if delay:
                     time.sleep(delay)
             if remaining:
                 time.sleep(poll_interval)
     else:
+        failed: list[str] = []
         for script in scripts:
             if mode == "interactive":
                 if dry_run:
@@ -518,16 +518,26 @@ def start_jobs(
                 else:
                     env = {**os.environ, "CBENCH_ECHO_OUTPUT": "YES"} if echo_output else None
                     console.print(f"[bold]Running {script.parent.name}[/bold]")
-                    subprocess.run(["bash", str(script)], shell=False, check=False, env=env)
+                    rc = subprocess.run(["bash", str(script)], shell=False, check=False,
+                                        env=env).returncode
+                    # one failing job must not stop the rest of the run, but it
+                    # must not pass unnoticed either
+                    if rc != 0:
+                        failed.append(f"{script.parent.name} (exit {rc})")
+                        console.print(f"[red]{script.parent.name} exited {rc}[/red]")
             else:
                 cmd = schedulers.submit_cmd(str(script), cfg)
                 if dry_run:
                     console.print(f"[dim]Would submit:[/dim] {cmd}")
                 else:
-                    subprocess.run(shlex.split(cmd), shell=False, check=False)
+                    _submit_batch(cmd, script)
             submitted += 1
             if delay:
                 time.sleep(delay)
+        if failed:
+            console.print(f"[red]{len(failed)} of {submitted} interactive job(s) exited nonzero: "
+                          f"{', '.join(failed)}[/red]")
+            raise SystemExit(1)
 
     action = "Would submit" if dry_run else "Submitted"
     console.print(f"[green]{action} {submitted} job(s)[/green]")
@@ -553,10 +563,10 @@ def parse_cmd(
     testset: str,
     ident: str,
     output: str,
-    config: Optional[str],
-    cbenchtest: Optional[str],
+    config: str | None,
+    cbenchtest: str | None,
     no_db: bool,
-    customparse: Optional[str],
+    customparse: str | None,
 ) -> None:
     """Parse benchmark output files and store results."""
     cfg = _cfg(config)
@@ -578,7 +588,7 @@ def parse_cmd(
         console.print(f"[red]Directory not found: {ident_dir}[/red]")
         raise SystemExit(1)
 
-    db: Optional[ResultsDB] = None
+    db: ResultsDB | None = None
     if not no_db:
         db = ResultsDB(_db_path(cbenchtest))
 
@@ -620,7 +630,9 @@ def parse_cmd(
 
         parser = get_parser(benchmark)
         if parser is None:
-            status_detail = "; ".join(filter_errors) if filter_errors else None
+            # "" (not None): every other row stores "", and NULL would slip past
+            # `status_detail = ''` queries
+            status_detail = "; ".join(filter_errors)
             result = ParseResult(
                 cluster=cfg.cluster_name, testset=testset, ident=ident,
                 jobname=jobname, benchmark=benchmark,
@@ -681,7 +693,19 @@ def parse_cmd(
     )
 
 
-def _job_output_files(job_dir: Path) -> tuple[Optional[Path], Optional[Path]]:
+def _submit_batch(cmd: str, script: Path) -> None:
+    """Run a scheduler submit command; a failed submission must not be counted."""
+    try:
+        result = subprocess.run(shlex.split(cmd), shell=False, check=False)
+    except OSError as e:
+        raise AssertionError(f"Failed to run batch submit command {cmd!r} "
+                             f"for {script.parent.name}: {e}") from e
+    if result.returncode != 0:
+        raise AssertionError(f"Batch submit for {script.parent.name} exited "
+                             f"{result.returncode}: {cmd}")
+
+
+def _job_output_files(job_dir: Path) -> tuple[Path | None, Path | None]:
     """(stdout, stderr) of a job's most recent run.
 
     A job dir collects one ``<job>.o<id>`` (or ``slurm-<id>.out``) per run and
@@ -764,11 +788,11 @@ def make_skel(
     skelname: str,
     ppn: int,
     numprocs: int,
-    ident: Optional[str],
+    ident: str | None,
     outdir: str,
     dry_run: bool,
-    config: Optional[str],
-    cbenchtest: Optional[str],
+    config: str | None,
+    cbenchtest: str | None,
 ) -> None:
     """Generate skeleton batch and interactive job scripts from a template.
 
@@ -847,10 +871,10 @@ def rm_failed(
     testset: str,
     ident: str,
     force: bool,
-    match: Optional[str],
+    match: str | None,
     target_status: str,
-    config: Optional[str],
-    cbenchtest: Optional[str],
+    config: str | None,
+    cbenchtest: str | None,
 ) -> None:
     """Remove job directories whose parse status matches --status (default: ERROR).
 
@@ -937,19 +961,19 @@ def rm_failed(
 @click.option("--metric", default=None, help="Metric name for --trend")
 @click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
 def query_cmd(
-    benchmark: Optional[str],
-    cluster: Optional[str],
-    testset: Optional[str],
-    ident: Optional[str],
-    status: Optional[str],
-    since: Optional[str],
-    until: Optional[str],
+    benchmark: str | None,
+    cluster: str | None,
+    testset: str | None,
+    ident: str | None,
+    status: str | None,
+    since: str | None,
+    until: str | None,
     limit: int,
     output: str,
     aggregate: bool,
     trend: bool,
-    metric: Optional[str],
-    cbenchtest: Optional[str],
+    metric: str | None,
+    cbenchtest: str | None,
 ) -> None:
     """Query stored benchmark results from the SQLite database."""
     import csv as csv_mod

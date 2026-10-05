@@ -151,6 +151,22 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **Failures that used to pass silently now stop with an error:**
+  - `start-jobs`: a failed batch submission (submit command exits nonzero, or can't
+    be run) raises an error instead of counting as submitted.
+  - `start-jobs --interactive`: jobs that exit nonzero are listed at the end and the
+    command exits 1. The remaining jobs still run.
+  - Throttled mode (`--throttledbatch`):
+    - Slurm/Torque: a failed queue query (`squeue`/`qstat`) is an error. It used to
+      report 0 jobs, which made throttling submit everything at once.
+    - LSF: refuses with an error, since its queue query isn't implemented and
+      used to report 0.
+  - `nodehwtest parse`: a crashing hw_test parser is an error instead of a warning
+    that silently dropped that module's results.
+  - `nodehwtest start-jobs --remote`: a nonzero pdsh exit makes the command fail.
+  - Every generated job script stops with a `CBENCH NOTICE` if it can't `cd` into its
+    job directory, instead of running there.
+  - `snb` warns when `io_threads_basis: physical` falls back to logical CPUs.
 - **Random (IOPS) tests use 4k transfers everywhere.** fio's random job already did;
   now iozone's random read/write and gpfsperf's `read rand`/`write rand` do too.
   - Before, both used the profile's sequential size (4m–16m), which measured

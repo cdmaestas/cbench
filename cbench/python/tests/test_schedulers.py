@@ -7,10 +7,10 @@ from cbench import schedulers
 
 
 def _cfg(**kwargs) -> ClusterConfig:
-    defaults = dict(
-        cluster_name="test", max_nodes=4, procs_per_node=8,
-        batch_method="slurm", joblaunch_method="openmpi",
-    )
+    defaults = {
+        "cluster_name": "test", "max_nodes": 4, "procs_per_node": 8,
+        "batch_method": "slurm", "joblaunch_method": "openmpi",
+    }
     defaults.update(kwargs)
     return ClusterConfig(**defaults)
 

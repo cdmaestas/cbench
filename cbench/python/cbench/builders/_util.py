@@ -156,7 +156,7 @@ def wget_tarball(url: str, dest_dir: Path, *, force: bool, dry_run: bool) -> Pat
                     )
         top_dir = dest_dir / top
         top_resolved = top_dir.resolve()
-        if top in (Path(""), Path("."), Path("..")) or top_resolved == dest_resolved \
+        if top in (Path(), Path(), Path("..")) or top_resolved == dest_resolved \
                 or not top_resolved.is_relative_to(dest_resolved):
             raise RuntimeError(f"Refusing to extract tarball: top-level entry {str(top)!r} "
                                "is not a directory inside the destination")

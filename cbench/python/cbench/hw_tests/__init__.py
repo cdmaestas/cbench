@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-REGISTRY: dict[str, type["HwTest"]] = {}
+REGISTRY: dict[str, type[HwTest]] = {}
 
 
 class HwTest:
@@ -59,6 +59,6 @@ from cbench.hw_tests import (  # noqa: E402, F401
 )
 
 
-def get_hw_test(name: str) -> "HwTest | None":
+def get_hw_test(name: str) -> HwTest | None:
     cls = REGISTRY.get(name)
     return cls() if cls else None

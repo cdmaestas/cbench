@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REGISTRY: dict[str, type["BenchmarkBuilder"]] = {}
+REGISTRY: dict[str, type[BenchmarkBuilder]] = {}
 
 
 @dataclass
@@ -90,7 +90,7 @@ class BenchmarkBuilder:
         return False
 
 
-def get_builder(name: str) -> "BenchmarkBuilder | None":
+def get_builder(name: str) -> BenchmarkBuilder | None:
     cls = REGISTRY.get(name)
     return cls() if cls else None
 

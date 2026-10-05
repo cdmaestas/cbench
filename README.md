@@ -118,19 +118,65 @@ cbench build update imb   # update a single benchmark
 > "source unchanged". Use `cbench build run <name> --force` to unconditionally
 > re-download and rebuild a tarball source.
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`.
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, only needed for variants such as RDMA; `build all` skips it on hosts without GPFS).
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
+
+### Probe the compute nodes (node facts)
+
+`gen-jobs` runs on the submit host, so it learns the compute nodes' CPU count,
+memory and IO-target filesystems from a facts file written by `nodecheck`:
+
+```bash
+# probe every node (pdsh -R ssh|exec, or ssh), check the pool is homogeneous,
+# write $CBENCHTEST/nodefacts/<name>.json
+cbench nodecheck --nodelist 'n[1-64]' --name compute
+cbench nodecheck --partition batch --allow-heterogeneous
+```
+
+IO tests write to named targets set in `cluster.yaml`:
+
+```yaml
+io_targets:
+  parallel: /gpfs/scratch     # IOR, mdtest, io500 (and gpfsperf if it is GPFS)
+  node-local: /tmp            # fio, bonnie, iozone
+  # gpfs: /gpfs/other         # optional explicit gpfsperf target
+```
 
 ### Generate job scripts
 
 ```bash
 cbench gen-jobs --testset bandwidth --ident run1
-cbench gen-jobs --testset linpack   --ident run1 --ppn 4,8 --maxprocs 256
+cbench gen-jobs --testset linpack   --ident run1 --ppn 4,8 --maxprocs 256 --nodefacts compute
 cbench gen-jobs --testset bandwidth --ident run1 --dry-run   # preview without writing
+cbench gen-jobs --testset iometadata --ident run1 --match '^fio-'   # only matching job names
 ```
 
-Job scripts are written to `$CBENCHTEST/<testset>/<ident>/<jobname>/`.
+Job scripts are written to `$CBENCHTEST/<testset>/<ident>/<jobname>/`. IO and
+HPL testsets size themselves from `--nodefacts` (or from values set explicitly in
+`cluster.yaml`). Without either, they stop before writing anything.
+
+### IO profiles
+
+A profile bundles IO benchmarks into one testset directory
+(`$CBENCHTEST/<profile>/<ident>/`), so `start-jobs` and `parse` take
+`--testset <profile>`:
+
+```bash
+cbench gen-jobs --profile io-default --ident io1 --nodefacts compute            # node-local: fio, bonnie, iozone
+cbench gen-jobs --profile io-default --ident io1 --group parallel --group gpfs  # ior + mdtest; gpfsperf
+cbench gen-jobs --profile io-default --ident io1 --group all
+cbench gen-jobs --profile io500      --ident io1 --io500-stonewall 300          # one job per node count
+cbench gen-jobs --profile io-default --ident quick --fio-runtime 30             # short fio runs
+```
+
+Sizing rules:
+- **Data size:** buffered tests write 2× RAM so the page cache can't hold the data, capped to 90% of the target's free space with a `CBENCH CAVEAT`.
+- **Concurrency:** every IO benchmark uses all CPUs. Set `io_threads_max` to cap it, or `io_threads_basis: physical` to count cores instead of logical CPUs.
+- **Sequential sizes:** fio's sequential block size, iozone and gpfsperf record sizes, and IOR `-t` follow `io_profile`: `ai` 1m, `general` 4m, `hpc` 8m, `streaming` 16m. The default `auto` picks `hpc` on parallel filesystems and `general` elsewhere.
+- **IOPS:** random/IOPS tests always use 4k transfers.
+
+Single-node jobs are named for their real concurrency (e.g. `fio-local-16ppn-16`).
 
 ### Submit jobs
 
@@ -138,7 +184,12 @@ Job scripts are written to `$CBENCHTEST/<testset>/<ident>/<jobname>/`.
 cbench start-jobs --testset bandwidth --ident run1 --batch
 cbench start-jobs --testset bandwidth --ident run1 --throttledbatch 20  # keep 20 jobs active
 cbench start-jobs --testset bandwidth --ident run1 --interactive
+cbench start-jobs --testset bandwidth --ident run1 --interactive --echo-output  # stream job output live
 ```
+
+`start-jobs` fails if a batch submission fails, or if the scheduler queue query
+fails in throttled mode. With `--interactive`, jobs that exit nonzero are listed
+at the end and the command exits 1; the remaining jobs still run.
 
 To run without a batch scheduler (e.g. on a single workstation), set `batch_method: local`
 in `cluster.yaml`. Generated scripts will be plain `.sh` files and `start-jobs` runs them
@@ -282,8 +333,13 @@ Available filter modules: `openmpi`, `slurm`, `torque`, `mvapich`, `mpiexec`, `c
 ### Single-node benchmarking
 
 ```bash
-# Run the full single-node benchmark suite (stream, cachebench, dgemm, mpistreams, linpack, npb, fio, hpcc)
+# Run the default single-node suite (stream, cachebench, dgemm, mpistreams, linpack, npb, hpcc)
 cbench snb run --ident run1 --destdir /scratch/snb
+
+# fio is opt-in and needs explicit targets (O_DIRECT probed per target; IO profile
+# sets the sequential block size; data jobs time-capped)
+cbench snb run --ident run1 --tests fio --fs-target /tmp --fs-target /gpfs/scratch
+cbench snb run --ident run1 --tests fio --fs-target /tmp --io-profile streaming --fio-runtime 60
 
 # Run and store results directly to the SQLite DB
 cbench snb run --ident run1 --destdir /scratch/snb --store

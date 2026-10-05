@@ -106,7 +106,7 @@ class BonnieParser(BenchmarkParser):
 
     def metric_units(self) -> dict[str, str]:
         return (
-            {k: "K/s" for k in _THROUGHPUT}
-            | {k: "/s" for k in _RATES}
+            dict.fromkeys(_THROUGHPUT, "K/s")
+            | dict.fromkeys(_RATES, "/s")
             | {"instances": "count"}
         )

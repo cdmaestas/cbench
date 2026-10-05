@@ -19,7 +19,13 @@ cbench/
 ├── templates.py        # Template assembly + TOKEN_HERE → Jinja2 substitution; RUN_SIZES list
 ├── db.py               # SQLite results store (ResultsDB, ParseResult)
 ├── utils.py            # Pure-math sizing helpers (filter_run_sizes, find_pq, compute_n, ...)
-├── parsers/            # 32 MPI benchmark output parsers
+├── hostlist.py         # pdsh/Slurm hostlist expand/compress (n[1-3],m[01-02])
+├── nodecheck.py        # node probe, homogeneity analysis, nodefacts JSON (schema v2)
+├── iosizing.py         # node-aware IO sizing tokens + io_threads (the IO concurrency rule)
+├── hplsizing.py        # HPL.dat / hpccinf.txt generation for gen-jobs
+├── fioprofile.py       # fio job set, IO profiles (sequential sizes), 4k IOPS size
+├── profiles.py         # IO profile bundles for gen-jobs --profile (io-default, io500)
+├── parsers/            # benchmark output parsers (incl. iozone, gpfsperf, io500)
 │   ├── base.py         # BenchmarkParser ABC + REGISTRY (auto-registered via __init_subclass__)
 │   └── *.py            # xhpl, hpcc, imb, npb, ior, osu, amg, beff, bonnie, com, fileop,
 │                       # graph500, hpccg, irs, lammps, laten, mdtest, miranda, mpibench,
@@ -37,10 +43,11 @@ cbench/
 ├── builders/           # Benchmark build framework
 │   ├── __init__.py     # BenchmarkBuilder ABC + REGISTRY + BuildConfig
 │   ├── _util.py        # Shared helpers: git_clone, wget_tarball, run, install_bins
-│   └── *.py            # stream, imb, osu, ior, hpl, npb,
-│                       # hpcc, amg, hpccg, mpibench, mpigraph, graph500, bonnie, iozone, fio
+│   └── *.py            # stream, imb, osu, ior, hpl, npb, hpcc, amg, hpccg, mpibench,
+│                       # mpigraph, graph500, bonnie, iozone, fio, io500, gpfsperf (optional)
 └── cli/
     ├── main.py         # Top-level click group; gen-jobs | start-jobs | parse | query | make-skel | rm-failed
+    ├── nodecheck.py    # cbench nodecheck: probe nodes, write nodefacts/<name>.json
     ├── nodehwtest.py   # cbench nodehwtest: gen-jobs | start-jobs | parse
     ├── utils_cmd.py    # cbench utils: run-sizes | find-pq | find-n | npb-procs
     ├── diag.py         # cbench diag: apply parse filters, aggregate error counts
@@ -110,15 +117,20 @@ pre-commit install --install-hooks -t pre-commit -t pre-push   # from the repo r
 
 - **pre-commit**: ruff (with autofix), YAML checks, private-key detection, whitespace fixers
 - **pre-push**: the full pytest suite
-- **CI**: `.github/workflows/security.yml` runs ruff + bandit + pip-audit on every push/PR touching `cbench/python/`
+- **CI**: `.github/workflows/test.yml` (pytest, Python 3.9–3.12) and `.github/workflows/security.yml` (ruff + bandit + pip-audit) run on every push/PR touching `cbench/python/` or `cbench/templates/`. Workflows run with a read-only `GITHUB_TOKEN` unless a job asks for more.
 
 ## Error behavior
 
 Failures are loud by design. Conditions that indicate corrupt state raise
 `AssertionError` instead of being silently skipped: corrupt `target_hw_values`
 files, malformed `parsed_at` timestamps in the results DB, failed batch
-submissions, and a missing `jsonschema` install (which would otherwise skip
-`cluster.yaml` validation entirely). Benchmark *output* parsing remains
+submissions (`start-jobs` and `nodehwtest`), a failed scheduler queue query in
+throttled mode (it used to report "0 jobs" and submit everything), a crashing
+hw_test parser, and a missing `jsonschema` install (which would otherwise skip
+`cluster.yaml` validation entirely). Commands also exit nonzero when an
+interactive job fails, or when a remote pdsh run fails. Generated job scripts stop with a
+`CBENCH NOTICE` if they cannot `cd` into their job directory or the IO target
+lacks space. Benchmark *output* parsing remains
 tolerant — unparseable lines in third-party benchmark output are skipped, as
 that output is inherently messy.
 
