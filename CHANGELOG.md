@@ -118,6 +118,15 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   Ctrl-C), first stopping background instances such as bonnie++. SIGKILL can't be
   trapped. Covers fio, iozone, bonnie++, mdtest, gpfsperf, io500, the IOR jobs,
   miranda and fileop.
+- **Open MPI 5 jobs failed to launch:** gen-jobs' `openmpi` launcher called `orterun`,
+  which Open MPI 5 removed. The job script now picks the launcher on the compute node:
+  `orterun` when present (Open MPI 4.x and earlier), else `mpirun`, with a
+  `CBENCH CAVEAT` if that `mpirun` isn't Open MPI's. `CBENCH_OMPI_RUN` in the
+  environment, or `joblaunch_cmd` in cluster.yaml, overrides it. Processes per node
+  are now set with `--map-by ppr:N:node` instead of `-npernode` (deprecated in 5).
+  The Open MPI parse filters also match `mpirun`/`prterun` "noticed that … rank" and
+  "killing job" messages. The `skeleton_*` templates quote the launch command, which
+  was assigned unquoted.
 - **Parsers claimed testset names, and some clashed.** `imb`, `mpibench`, `osu` and
   `routecheck` also registered `bandwidth`, `latency`, `collective`, `shakedown`,
   `mpisanity` or `mpioverhead`; `collective`, `mpisanity` and `mpioverhead` were each
