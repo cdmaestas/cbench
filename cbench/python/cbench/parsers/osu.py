@@ -14,7 +14,7 @@ class OsuParser(BenchmarkParser):
     Mirrors perllib/output_parse/osu.pm.
     """
 
-    names = ["osu", "mpioverhead"]
+    names = ["osu"]
     alias_spec = r"osubw|osubibw|osumsgrate"
 
     _TEST_RE = re.compile(r"OSU MPI\s+(.*?)\s+Test", re.IGNORECASE)

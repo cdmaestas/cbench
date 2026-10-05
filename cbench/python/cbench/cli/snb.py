@@ -1116,11 +1116,12 @@ def run_cmd(
                         jobs += fioprofile.metadata_jobs(
                             str(fio_bin), str(fio_dir), njobs=fio_numjobs, runtime_s=fio_runtime,
                         )
-                    for _name, argv in jobs:
+                    for name, argv in jobs:
                         runcmd(argv, out("fio"), overwrite=False, dry_run=dry_run, log_fh=log)
                         # Empty the target between jobs: the space check and the
                         # buffered sizing budget one job's files, not several.
-                        if not dry_run:
+                        # md_stat/md_delete use md_create's files, so keep those.
+                        if not dry_run and name not in fioprofile.MD_KEEP_FILES:
                             _clean_fio_dir(fio_dir, log)
 
                     if not dry_run:

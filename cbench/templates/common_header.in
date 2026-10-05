@@ -127,9 +127,14 @@ cbench_heartbeat_start()
 		while :; do
 			# detached: a sleep orphaned by a TERM landing before sp is set
 			# must not hold the terminal (or a pipe) open after the job ends
-			sleep "$secs" </dev/null >/dev/null 2>&1 & sp=$!
+			sleep "$secs" >/dev/null 2>&1 & sp=$!
 			wait $sp
-			kill -0 "$parent" 2>/dev/null || exit 0
+			# gone, or a zombie its parent hasn't reaped yet (kill -0 still
+			# succeeds on a zombie, and the reaper may be waiting for the pipes
+			# this loop holds open)
+			case "$(ps -o stat= -p "$parent" 2>/dev/null)" in
+				""|Z*) exit 0 ;;
+			esac
 			line=$(cbench_heartbeat_line "still running")
 			echo "$line" > "$CBENCH_HEARTBEAT_FILE" 2>/dev/null
 			if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" ]; then
@@ -141,10 +146,17 @@ cbench_heartbeat_start()
 	disown "$CBENCH_HEARTBEAT_PID" 2>/dev/null || disown 2>/dev/null
 }
 # usage: cbench_heartbeat_stop RC
+# Signal the loop until it is gone (~2 s cap): a TERM landing while the
+# subshell is still setting up its trap can be lost, and a loop caught mid-write
+# would overwrite the final line. Only then record the exit status.
 cbench_heartbeat_stop()
 {
+	local n=0
 	if [ -n "$CBENCH_HEARTBEAT_PID" ]; then
-		kill "$CBENCH_HEARTBEAT_PID" 2>/dev/null
+		while kill "$CBENCH_HEARTBEAT_PID" 2>/dev/null && [ $n -lt 20 ]; do
+			n=$((n + 1))
+			sleep 0.1 2>/dev/null || sleep 1
+		done
 		CBENCH_HEARTBEAT_PID=""
 		cbench_heartbeat_line "exited rc=$1" > "$CBENCH_HEARTBEAT_FILE" 2>/dev/null
 	fi
