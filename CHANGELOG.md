@@ -230,6 +230,10 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **iozone builder updated to 3.511** (`iozone3_511.tgz`, iozone.org's current
+  "Latest"/"Stable" tarball) from 3.506. Same `src/current` layout. On a host without
+  internet, put the tarball in `<srcdir>/iozone/` and the builder uses it instead of
+  downloading.
 - **fio metadata jobs share one file set.** md_stat and md_delete now act on the files
   md_create made (`--filename_format=md.$jobnum.$filenum` plus `--create_on_open=1`),
   in both `snb` and gen-jobs. Before, each wrote out its own files before its timed

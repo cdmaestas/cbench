@@ -679,3 +679,32 @@ def test_wget_tarball_rejects_dot_top_entry(tmp_path):
         with _pytest.raises(RuntimeError, match="top-level entry"):
             wget_tarball("https://example.com/flat.tar.gz", dest, force=True, dry_run=False)
     assert dest.is_dir()
+
+
+def test_iozone_uses_a_pre_placed_tgz_without_downloading(tmp_path, monkeypatch):
+    """Offline hosts (zimabg1 has no internet): drop the tarball into
+    <srcdir>/iozone/ and the builder extracts it instead of downloading."""
+    import io
+    import tarfile as _tarfile
+
+    import cbench.builders._util as util
+    import cbench.builders.iozone as mod
+
+    name = mod._TARBALL_URL.rsplit("/", 1)[1]
+    assert name == "iozone3_511.tgz"
+    dest = tmp_path / "src" / "iozone"
+    dest.mkdir(parents=True)
+    with _tarfile.open(dest / name, "w:gz") as tf:
+        for member in ("iozone3_511/src/current/makefile", "iozone3_511/src/current/iozone.c"):
+            data = b"x\n"
+            info = _tarfile.TarInfo(member)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+
+    def no_download(*a, **kw):
+        raise AssertionError("must not download when the tarball is already there")
+
+    monkeypatch.setattr(util, "download", no_download)
+    src = get_builder("iozone").fetch(tmp_path / "src")
+    assert src == dest / "iozone3_511" / "src" / "current"
+    assert (src / "makefile").is_file() and (src / "iozone.c").is_file()
