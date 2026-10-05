@@ -130,6 +130,42 @@ def test_heartbeat_exits_when_job_shell_is_killed_outright(tmp_path):
     assert "exited" not in _hb(tmp_path)     # a killed job's file never says it exited
 
 
+def test_heartbeat_exits_when_job_shell_is_an_unreaped_zombie(tmp_path):
+    # The job shell dies without its traps while its parent still holds the
+    # output pipes and hasn't reaped it (subprocess.run with capture_output
+    # reads to EOF first). kill -0 succeeds on a zombie, so a loop that only
+    # checked that would keep the pipes open forever.
+    p = subprocess.Popen(["bash", "-c", _script(tmp_path, "echo HB=$CBENCH_HEARTBEAT_PID\nsleep 30\n")],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         start_new_session=True)
+    try:
+        assert "HB=" in p.stdout.readline()
+        sleeper = subprocess.run(["pgrep", "-P", str(p.pid), "sleep"], capture_output=True,
+                                 text=True).stdout.split()
+        os.kill(p.pid, signal.SIGKILL)          # no reaping: p stays a zombie
+        for pid in sleeper:                     # the job's own `sleep 30`
+            os.kill(int(pid), signal.SIGKILL)
+        p.communicate(timeout=10)               # EOF only once the heartbeat exits
+    finally:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        p.wait()
+
+
+def test_stop_returns_only_once_the_loop_is_gone(tmp_path):
+    # the exit line is written after the loop has stopped, so a loop caught
+    # mid-write can't overwrite it
+    body = ('hb=$CBENCH_HEARTBEAT_PID\n'
+            'kill -0 "$hb" && echo LOOP-UP\n'
+            'cbench_heartbeat_stop 7\n'
+            'case "$(ps -o stat= -p "$hb" 2>/dev/null)" in ""|Z*) echo GONE;; *) echo RUNNING;; esac\n')
+    r = _run(tmp_path, body)
+    assert "LOOP-UP" in r.stdout and "GONE" in r.stdout, r.stdout
+    assert "exited rc=7" in _hb(tmp_path)
+
+
 def test_zero_interval_disables(tmp_path):
     r = _run(tmp_path, "sleep 1.2\n", interval="0")
     assert "heartbeat" not in r.stderr
