@@ -34,3 +34,13 @@ nodehwtest_xhpl_ppn: 1
 nodehwtest_npb_longjobs: false
 nodehwtest_stress_minutes: 120
 nodehwtest_local_filesystems: []
+# Custom IO profiles for `cbench gen-jobs --profile NAME` (see README). In a
+# custom group, the group's target (an io_targets key) is where every member
+# writes. Uncomment to use:
+#io_profiles:
+#  fast-local:
+#    default_groups: [nvme]
+#    groups:
+#      nvme:
+#        target: nvme
+#        members: [iometadata_fio, io_ior1mNtoN]

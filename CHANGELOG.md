@@ -8,6 +8,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Custom IO profiles in cluster.yaml** (`io_profiles`): named bundles for
+  `gen-jobs --profile`, with groups of `<testset>_<benchmark>` members, an optional
+  `suffix` for job names and optional `default_groups`. In a custom group, the group's
+  `target` decides where every member writes (e.g. fio on GPFS, or IOR on an extra
+  `io_targets.nvme`), with sizing, free-space caps and the block-aware `auto` profile
+  taken from that target. Built-in profiles are unchanged. A custom profile can't reuse
+  a built-in name; a missing template, unknown default group or clashing job names are
+  reported before anything is generated.
 - **IO profile discovery:** `cbench nodecheck` records each IO target's block size
   (statfs; the file system block size on GPFS) and, on Lustre, its stripe size (facts
   schema v4). It prints which IO profile `io_profile: auto` will use for each target,

@@ -77,6 +77,42 @@ _SCHEMA: dict = {
         "fio_runtime_s": {"type": "integer", "minimum": 1},
         # IO500 stonewall (seconds per write phase); < 300 marks the run [INVALID]
         "io500_stonewall_s": {"type": "integer", "minimum": 1},
+        # custom IO profile bundles for `gen-jobs --profile` (cbench.profiles):
+        # name -> {description?, default_groups?, groups: {name -> {target,
+        # suffix?, members: ["<testset>_<benchmark>", ...]}}}
+        "io_profiles": {
+            "type": "object",
+            "propertyNames": {"pattern": r"^[A-Za-z0-9][A-Za-z0-9_\-]*$"},
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["groups"],
+                "properties": {
+                    "description": {"type": "string"},
+                    "default_groups": {"type": "array", "items": {"type": "string"},
+                                       "minItems": 1},
+                    "groups": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "propertyNames": {"pattern": r"^[A-Za-z0-9][A-Za-z0-9_\-]*$"},
+                        "additionalProperties": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["target", "members"],
+                            "properties": {
+                                "target": {"type": "string", "pattern": r"^[A-Za-z0-9_\-]+$"},
+                                "suffix": {"type": "string", "pattern": r"^[A-Za-z0-9]+$"},
+                                "members": {
+                                    "type": "array", "minItems": 1,
+                                    "items": {"type": "string",
+                                              "pattern": r"^[A-Za-z0-9]+_[A-Za-z0-9._\-]+$"},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         # seconds between "still running" lines a gen-jobs job writes to stderr; 0 = off
         "job_heartbeat_s": {"type": "integer", "minimum": 0},
         # IO thread/job count for every IO benchmark (iosizing.io_threads):
@@ -156,6 +192,7 @@ class ClusterConfig:
     remotecmd_rcmd: str = "ssh"
     remotecmd_exec_cmd: str = ""
     io_targets: dict[str, str] = field(default_factory=dict)
+    io_profiles: dict = field(default_factory=dict)  # custom gen-jobs --profile bundles
     fio_runtime_s: int = 300
     io500_stonewall_s: int = 300
     job_heartbeat_s: int = 60

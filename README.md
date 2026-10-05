@@ -179,6 +179,31 @@ cbench gen-jobs --profile io500      --ident io1 --io500-stonewall 300          
 cbench gen-jobs --profile io-default --ident quick --fio-runtime 30             # short fio runs
 ```
 
+You can define your own profiles in `cluster.yaml`. In a custom group, the group's `target`
+decides where every member writes. Sizing and free-space caps follow that target. So you can
+run fio against GPFS, or point benchmarks at an extra target such as a local NVMe:
+
+```yaml
+io_targets:
+  parallel: /gpfs/scratch
+  nvme: /local/nvme
+io_profiles:
+  fast-local:
+    description: fio and IOR on the NVMe scratch; fio on GPFS on request
+    default_groups: [nvme]                        # default: every group
+    groups:
+      nvme:
+        target: nvme                              # an io_targets key
+        members: [iometadata_fio, io_ior1mNtoN]   # <testset>_<benchmark> templates
+      gpfs-small:
+        target: parallel
+        suffix: gsmall                            # job names fio-gsmall-...; default: group name
+        members: [iometadata_fio]
+```
+
+`cbench gen-jobs --profile fast-local --group all` generates both groups. A custom profile can't
+reuse a built-in name (`io-default`, `io500`).
+
 Sizing rules:
 - **Data size:** buffered tests write 2× RAM so the page cache can't hold the data, capped to 90% of the target's free space with a `CBENCH CAVEAT`.
 - **Concurrency:** every IO benchmark uses all CPUs. Set `io_threads_max` to cap it, or `io_threads_basis: physical` to count cores instead of logical CPUs.
