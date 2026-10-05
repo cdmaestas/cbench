@@ -215,6 +215,8 @@ def substitute(
         "TORQUE_NODESPEC": f"{numnodes}:ppn={ppn}",
         # Run type
         "RUN_TYPE": run_type.upper(),
+        # seconds between job heartbeat lines (common_header.in); 0 = off
+        "JOB_HEARTBEAT_S": str(cfg.job_heartbeat_s),
         # transport labels from nodecheck facts (gen-jobs --nodefacts); "" = none
         "CBENCH_LABELS": "",
         # Misc

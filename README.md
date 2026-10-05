@@ -504,6 +504,7 @@ CI runs automatically on Python 3.9–3.12 for every push touching `cbench/pytho
 | `batch_method` | `slurm` | Scheduler: `slurm`, `torque`, `pbspro`, `lsf`, `moab`, `local` |
 | `memory_util_factors` | `[0.25, 0.80, 0.85]` | Memory utilization fractions (Linpack) |
 | `parse_filter_include` | see yaml | Error-detection filter modules to load |
+| `job_heartbeat_s` | `60` | Seconds between a job's "still running" updates in `<jobdir>/<job>.heartbeat` (and on the terminal for interactive runs); `0` = off. `gen-jobs --heartbeat` / env `CBENCH_HEARTBEAT` override |
 
 ---
 

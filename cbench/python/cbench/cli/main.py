@@ -119,6 +119,9 @@ cli.add_command(serve_cmd)
 @click.option("--io500-stonewall", type=click.IntRange(min=1), default=None, metavar="SECONDS",
               help="IO500 stonewall per write phase (default: cluster.yaml io500_stonewall_s, "
                    "else 300; below 300 IO500 marks the run [INVALID])")
+@click.option("--heartbeat", type=click.IntRange(min=0), default=None, metavar="SECONDS",
+              help="Seconds between the 'still running' lines each job writes to stderr "
+                   "(default: cluster.yaml job_heartbeat_s, else 60; 0 disables)")
 def gen_jobs(
     testset: str | None,
     profile: str | None,
@@ -134,6 +137,7 @@ def gen_jobs(
     nodefacts: str | None,
     fio_runtime: int | None,
     io500_stonewall: int | None,
+    heartbeat: int | None,
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset or IO profile."""
     from cbench import hplsizing, iosizing, profiles
@@ -149,6 +153,8 @@ def gen_jobs(
         cfg.fio_runtime_s = fio_runtime
     if io500_stonewall:
         cfg.io500_stonewall_s = io500_stonewall
+    if heartbeat is not None:
+        cfg.job_heartbeat_s = heartbeat
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
     match_re = _safe_regex(match, "--match")
