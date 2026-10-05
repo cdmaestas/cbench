@@ -119,6 +119,9 @@ cli.add_command(serve_cmd)
 @click.option("--io500-stonewall", type=click.IntRange(min=1), default=None, metavar="SECONDS",
               help="IO500 stonewall per write phase (default: cluster.yaml io500_stonewall_s, "
                    "else 300; below 300 IO500 marks the run [INVALID])")
+@click.option("--heartbeat", type=click.IntRange(min=0), default=None, metavar="SECONDS",
+              help="Seconds between the 'still running' lines each job writes to stderr "
+                   "(default: cluster.yaml job_heartbeat_s, else 60; 0 disables)")
 def gen_jobs(
     testset: str | None,
     profile: str | None,
@@ -134,6 +137,7 @@ def gen_jobs(
     nodefacts: str | None,
     fio_runtime: int | None,
     io500_stonewall: int | None,
+    heartbeat: int | None,
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset or IO profile."""
     from cbench import hplsizing, iosizing, profiles
@@ -149,6 +153,8 @@ def gen_jobs(
         cfg.fio_runtime_s = fio_runtime
     if io500_stonewall:
         cfg.io500_stonewall_s = io500_stonewall
+    if heartbeat is not None:
+        cfg.job_heartbeat_s = heartbeat
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     templates_dir = templates._templates_dir()
     match_re = _safe_regex(match, "--match")
@@ -290,6 +296,8 @@ def gen_jobs(
             raise click.ClickException(str(exc)) from exc
         if io_extra.get("IO_CAVEAT"):
             caveats.add(f"{jobname}: {io_extra['IO_CAVEAT']}")
+        if nv.labels:
+            io_extra = {**io_extra, "CBENCH_LABELS": nv.labels}
         hpl_spec = hplsizing.input_spec(bench)
         hpl_input = None
         if hpl_spec:
@@ -650,7 +658,8 @@ def parse_cmd(
                 status = parsed.status
                 status_detail = parsed.status_detail
             # gen-jobs writes a CBENCH CAVEAT line when it had to shrink a run
-            # (e.g. IO capped to free space); keep it with the result.
+            # (e.g. IO capped to free space) and a CBENCH LABEL line with the
+            # interconnect / GPFS transport nodecheck saw; keep them with the result.
             caveats = _caveat_lines(stdout)
             if caveats:
                 status_detail = "; ".join(filter(None, [status_detail, *caveats]))
@@ -726,12 +735,14 @@ def _job_output_files(job_dir: Path) -> tuple[Path | None, Path | None]:
 
 
 def _caveat_lines(stdout: str) -> list[str]:
-    """Unique ``CBENCH CAVEAT:`` lines from job output, in order."""
+    """Unique ``CBENCH CAVEAT:`` and ``CBENCH LABEL:`` lines from job output, in order."""
     seen: dict[str, None] = {}
     for line in stdout.splitlines():
-        idx = line.find("CBENCH CAVEAT:")
-        if idx >= 0:
-            seen.setdefault(line[idx:].strip(), None)
+        for marker in ("CBENCH CAVEAT:", "CBENCH LABEL:"):
+            idx = line.find(marker)
+            if idx >= 0:
+                seen.setdefault(line[idx:].strip(), None)
+                break
     return list(seen)
 
 

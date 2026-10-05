@@ -8,6 +8,24 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Job heartbeat:** gen-jobs job scripts rewrite `<jobdir>/<jobname>.heartbeat`
+  every `job_heartbeat_s` seconds (default 60) with "still running, elapsed …", and
+  interactive runs also print it to the terminal, so a long silent benchmark is visibly
+  alive. On exit the file records `exited rc=N`. Batch output is untouched: the line
+  never goes to stdout or a batch job's stderr, which schedulers often merge into
+  the parsed output. `gen-jobs --heartbeat SECONDS` or `CBENCH_HEARTBEAT` in the job's
+  environment override it; `0` turns it off.
+- **Interconnect check in nodecheck** (facts schema v3), without needing root. Each node
+  records its interconnect and GPFS transport:
+  - **Interconnect:** `ib`, `roce` or `tcp`, from the active RDMA ports in
+    `/sys/class/infiniband`.
+  - **GPFS transport:** `rdma` or `tcp`, from `verbsRdma`/`verbsPorts` in
+    `/var/mmfs/gen/mmfs.cfg`. This is the configured setting, not a live check.
+
+  A node that differs from the rest, such as one fallen back to TCP, fails the check
+  unless `--allow-heterogeneous` is set. Jobs generated with `--nodefacts` print
+  `CBENCH LABEL: interconnect=… gpfs_transport=…`, and `cbench parse` keeps it in
+  `status_detail`. Facts files from v1/v2 still load (no label).
 - **io500 profile:** `cbench gen-jobs --profile io500` runs IO500 on the parallel target.
   - It generates one job per node count (1, 2, 4, … up to `max_nodes`) at ppn equal to
     the IO thread count.
@@ -104,6 +122,28 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **A killed IO job left its data on the target**, so later jobs' space preflights
+  found less free space. IO job scripts now create their data dirs with
+  `cbench_scratch_dir` (in `common_header.in`), and an `EXIT` trap removes them on a
+  normal end, `exit`, or SIGINT/SIGTERM/SIGHUP (scheduler time limit, `scancel`,
+  Ctrl-C), first stopping background instances such as bonnie++. SIGKILL can't be
+  trapped. Covers fio, iozone, bonnie++, mdtest, gpfsperf, io500, the IOR jobs,
+  miranda and fileop.
+- **Open MPI 5 jobs failed to launch:** gen-jobs' `openmpi` launcher called `orterun`,
+  which Open MPI 5 removed. The job script now picks the launcher on the compute node:
+  `orterun` when present (Open MPI 4.x and earlier), else `mpirun`, with a
+  `CBENCH CAVEAT` if that `mpirun` isn't Open MPI's. `CBENCH_OMPI_RUN` in the
+  environment, or `joblaunch_cmd` in cluster.yaml, overrides it. Processes per node
+  are now set with `--map-by ppr:N:node` instead of `-npernode` (deprecated in 5).
+  The Open MPI parse filters also match `mpirun`/`prterun` "noticed that … rank" and
+  "killing job" messages. The `skeleton_*` templates quote the launch command, which
+  was assigned unquoted.
+- **Parsers claimed testset names, and some clashed.** `imb`, `mpibench`, `osu` and
+  `routecheck` also registered `bandwidth`, `latency`, `collective`, `shakedown`,
+  `mpisanity` or `mpioverhead`; `collective`, `mpisanity` and `mpioverhead` were each
+  claimed twice, so the last import won. Lookups use the benchmark part of the job
+  name, never the testset, so those entries are removed (`mpioverhead` stays with the
+  mpioverhead parser), and a second claim on a parser name now fails at import.
 - **Rebuilding a tarball-based benchmark failed with `Permission denied`** (seen with
   iozone, whose tarball has read-only files): the source was re-extracted over the
   previous tree on every build.
@@ -151,6 +191,14 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **fio metadata jobs share one file set.** md_stat and md_delete now act on the files
+  md_create made (`--filename_format=md.$jobnum.$filenum` plus `--create_on_open=1`),
+  in both `snb` and gen-jobs. Before, each wrote out its own files before its timed
+  phase, which doubled the setup and meant stat and delete never touched the created
+  files. The target is no longer emptied between the three.
+- `FioParser` reports a failed fio job (`fio: pid=.., err=..`, e.g. md_stat with no
+  files to stat) as `ERROR(FIO)`, with the error in `status_detail` and whatever did
+  parse kept. It used to be PASSED with that job's metrics missing.
 - **Failures that used to pass silently now stop with an error:**
   - `start-jobs`: a failed batch submission (submit command exits nonzero, or can't
     be run) raises an error instead of counting as submitted.

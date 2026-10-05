@@ -59,6 +59,9 @@ class NodeValues:
     source: str = "none"            # "nodefacts:<name>" | "cluster.yaml" | "none"
     warnings: list = field(default_factory=list)
     cores: int | None = None     # MIN physical cores per node (facts v2), if known
+    #: "interconnect=ib gpfs_transport=rdma" from facts v3 (nodecheck); jobs print
+    #: it as a CBENCH LABEL line and `cbench parse` keeps it in status_detail
+    labels: str = ""
 
 
 def _resolve_targets(cfg, facts_targets: dict, warnings: list) -> dict:
@@ -91,6 +94,14 @@ def _gpfs_alias(targets: dict) -> dict:
     return targets
 
 
+def transport_labels(aggregate: dict) -> str:
+    """CBENCH LABEL text for the interconnect and GPFS transport nodecheck saw
+    (facts v3); "" for older facts."""
+    labels = [f"{key}={aggregate[key]}" for key in ("interconnect", "gpfs_transport")
+              if aggregate.get(key)]
+    return " ".join(labels)
+
+
 def resolve_node_values(cfg, facts: dict | None = None) -> NodeValues:
     """Pick node CPU/memory values from a facts file, else explicit config."""
     warnings: list[str] = []
@@ -109,6 +120,7 @@ def resolve_node_values(cfg, facts: dict | None = None) -> NodeValues:
             targets=_gpfs_alias(_resolve_targets(cfg, agg.get("targets", {}), warnings)),
             source=f"nodefacts:{facts.get('name', '?')}",
             warnings=warnings,
+            labels=transport_labels(agg),
         )
     explicit = getattr(cfg, "explicit_keys", frozenset())
     cpus = cfg.procs_per_node if "procs_per_node" in explicit else None

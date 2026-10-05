@@ -118,7 +118,7 @@ cbench build update imb   # update a single benchmark
 > "source unchanged". Use `cbench build run <name> --force` to unconditionally
 > re-download and rebuild a tarball source.
 
-Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, only needed for variants such as RDMA; `build all` skips it on hosts without GPFS).
+Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, only needed for a custom variant such as different compiler flags; GPFS RDMA needs no special build; `build all` skips it on hosts without GPFS).
 
 Sources are cloned/downloaded to `$CBENCHTEST/src/` and binaries are installed to `$CBENCHTEST/bin/`.
 
@@ -133,6 +133,15 @@ memory and IO-target filesystems from a facts file written by `nodecheck`:
 cbench nodecheck --nodelist 'n[1-64]' --name compute
 cbench nodecheck --partition batch --allow-heterogeneous
 ```
+
+nodecheck also records each node's interconnect and GPFS transport, without needing root:
+- **Interconnect:** the link layers of the active RDMA ports in `/sys/class/infiniband` (`ib`, `roce`), else `tcp`.
+- **GPFS transport:** `rdma` when `/var/mmfs/gen/mmfs.cfg` enables `verbsRdma` and one of its `verbsPorts` is active, else `tcp`. This is the configured setting, not a live check.
+
+A node that differs from the rest (e.g. one fell back to TCP) fails the check unless you pass
+`--allow-heterogeneous`. Jobs generated with `--nodefacts` print
+`CBENCH LABEL: interconnect=ib gpfs_transport=rdma`, and `cbench parse` keeps that in each
+result's `status_detail`.
 
 IO tests write to named targets set in `cluster.yaml`:
 
@@ -442,7 +451,7 @@ Endpoints: `/` HTML dashboard, `/api/results` `/api/summary` `/api/trend` JSON A
 
 **Batch schedulers:** SLURM, Torque/PBS, PBS Pro, LSF, Moab, Cray CLE Torque, local (no scheduler — runs scripts directly with `bash`)
 
-**MPI launchers:** OpenMPI (`orterun`), mpiexec, SLURM (`srun`), yod, ALPS (`aprun`)
+**MPI launchers:** Open MPI (`orterun` on 4.x and earlier, `mpirun` on 5.x; picked on the compute node at run time — set `CBENCH_OMPI_RUN` or `joblaunch_cmd` to force one), mpiexec, SLURM (`srun`), yod, ALPS (`aprun`)
 
 ---
 
@@ -495,6 +504,7 @@ CI runs automatically on Python 3.9–3.12 for every push touching `cbench/pytho
 | `batch_method` | `slurm` | Scheduler: `slurm`, `torque`, `pbspro`, `lsf`, `moab`, `local` |
 | `memory_util_factors` | `[0.25, 0.80, 0.85]` | Memory utilization fractions (Linpack) |
 | `parse_filter_include` | see yaml | Error-detection filter modules to load |
+| `job_heartbeat_s` | `60` | Seconds between a job's "still running" updates in `<jobdir>/<job>.heartbeat` (and on the terminal for interactive runs); `0` = off. `gen-jobs --heartbeat` / env `CBENCH_HEARTBEAT` override |
 
 ---
 

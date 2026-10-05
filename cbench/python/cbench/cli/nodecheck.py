@@ -116,9 +116,12 @@ def nodecheck_cmd(
             tbl.add_column(col)
         for tname in sorted(cfg.io_targets):
             tbl.add_column(f"{tname} fstype")
+        tbl.add_column("interconnect")
+        tbl.add_column("GPFS transport")
         for r in rows:
             tbl.add_row(r["hosts"], str(r["count"]), r["cpus"], r["cores"], r["mem_gib"], r["model"],
-                        *[r["targets"][t] for t in sorted(cfg.io_targets)])
+                        *[r["targets"][t] for t in sorted(cfg.io_targets)],
+                        r["interconnect"], r["gpfs_transport"])
         console.print(tbl)
 
     for w in result["verdict"]["warnings"]:

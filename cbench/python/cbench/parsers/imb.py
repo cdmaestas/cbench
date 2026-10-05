@@ -32,7 +32,7 @@ class ImbParser(BenchmarkParser):
     Mirrors perllib/output_parse/imb.pm state machine logic.
     """
 
-    names = ["imb", "bandwidth", "latency", "collective", "shakedown"]
+    names = ["imb"]
     alias_spec = r"imball|imbcust"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:

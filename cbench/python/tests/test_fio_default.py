@@ -452,3 +452,109 @@ def test_snb_io_profile_flag_and_fio_alias(tmp_path, monkeypatch):
     (tmp_path / "b").mkdir()
     out = _snb_dry(tmp_path / "b", monkeypatch, "--fio-profile", "hpc")   # deprecated alias
     assert re.search(r"--name=seq_rw\b.*--bs=8m\b", out)
+
+
+# ---------------------------------------------------------------------------
+# metadata jobs share one file set (md_stat/md_delete use md_create's files)
+# ---------------------------------------------------------------------------
+
+needs_fio = pytest.mark.skipif(shutil.which("fio") is None, reason="fio not installed")
+
+
+def test_metadata_jobs_share_files_and_skip_layout():
+    jobs = dict(fioprofile.metadata_jobs("fio", "/t", njobs=4, runtime_s=300))
+    for argv in jobs.values():
+        assert "--filename_format=md.$jobnum.$filenum" in argv
+        assert "--create_on_open=1" in argv
+        assert argv.count("--create_on_open=1") == 1
+    assert {"md_create", "md_stat"} == fioprofile.MD_KEEP_FILES
+
+
+def test_snb_keeps_md_files_between_metadata_jobs(tmp_path, monkeypatch):
+    # fake fio logs each job; the cleanup logs each emptying of the target
+    log = tmp_path / "events"
+    fio = tmp_path / "fio"
+    fio.write_text("#!/bin/sh\n"
+                   "case \"$*\" in *--enghelp*) printf 'filecreate\\nfilestat\\nfiledelete\\n'; exit 0;; esac\n"
+                   f"for a; do case \"$a\" in --name=*) echo \"${{a#--name=}}\" >> {log};; esac; done\n")
+    fio.chmod(0o755)
+    monkeypatch.setattr(shutil, "which", lambda n: str(fio) if n == "fio" else None)
+    monkeypatch.setattr(snb, "_supports_odirect", lambda d: True)
+    monkeypatch.setattr(snb, "_detect_fstype", lambda p, *a: "xfs")
+    monkeypatch.setattr(snb, "_fio_direct_space_shortfall", lambda *a, **k: None)
+    monkeypatch.setattr(snb, "_clean_fio_dir", lambda d, lg: log.open("a").write("clean\n"))
+    target = tmp_path / "target"
+    target.mkdir()
+    res = CliRunner().invoke(cli, ["snb", "run", "--tests", "fio", "--fs-target", str(target),
+                                   "--numcores", "2", "--fio-runtime", "1",
+                                   "--destdir", str(tmp_path / "out"), "--ident", "x"])
+    assert res.exit_code == 0, res.output
+    events = [e for e in log.read_text().split() if e != "odirect_probe"]
+    assert events == ["seq_rw", "clean", "rand_rw", "clean", "md_create", "md_stat",
+                      "md_delete", "clean"]
+
+
+_MD_FAIL = """\
+md_create: (groupid=0, jobs=2): err= 0: pid=1: Sun Oct  4 19:21:09 2026
+  write: IOPS=35.7k, BW=140MiB/s (146MB/s)(4000KiB/28msec)
+fio: pid=76415, err=2/file:engines/fileoperations.c:194, func=stat(./md.0.0) type=1, error=No such file or directory
+fio: pid=76416, err=2/file:engines/fileoperations.c:194, func=stat(./md.1.0) type=1, error=No such file or directory
+"""
+
+
+def test_parser_reports_failed_fio_job_with_partial_metrics():
+    r = FioParser().parse(_MD_FAIL)
+    assert r.status == "ERROR(FIO)"
+    assert r.status_detail == "fio stat: No such file or directory (err=2)"
+    assert r.metrics["create_ops"] == pytest.approx(35700)
+    assert "stat_ops" not in r.metrics
+
+
+def test_template_md_block_keeps_fio_keys_literal(genv):
+    if shutil.which("bash") is None:
+        pytest.skip("bash not installed")
+    genv.run("--nodefacts", "typeA")
+    s = genv.script("fio-4ppn-4")
+    md_line = next(ln.strip() for ln in s.splitlines() if ln.strip().startswith('md="'))
+    out = subprocess.run(["bash", "-c", f'numjobs=4; runtime=300\n{md_line}\nprintf "%s\\n" $md'],
+                         capture_output=True, text=True).stdout.split()
+    assert "--filename_format=md.$jobnum.$filenum" in out and "--create_on_open=1" in out
+    # md_stat/md_delete need md_create's files: nothing removes them in between
+    body = s[s.index("--name=md_create"):s.index("--name=md_delete")]
+    assert "rm -f" not in body
+
+
+@needs_fio
+def test_real_fio_md_jobs_reuse_create_files(tmp_path):
+    fio = shutil.which("fio")
+    eng = subprocess.run([fio, "--enghelp"], capture_output=True, text=True)
+    if not fioprofile.has_metadata_engines(eng.stdout + eng.stderr):
+        pytest.skip("fio lacks the metadata engines")
+    out = []
+    for name, argv in fioprofile.metadata_jobs(fio, str(tmp_path), njobs=2, runtime_s=60,
+                                               nrfiles=50):
+        r = subprocess.run(argv, capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout + r.stderr
+        out.append(r.stdout)
+        files = sorted(p.name for p in tmp_path.iterdir())
+        if name in ("md_create", "md_stat"):
+            # stat found create's files and did not lay out (write) its own
+            assert len(files) == 100 and all(f.startswith("md.") for f in files)
+            assert all((tmp_path / f).stat().st_size == 0 for f in files)
+            assert "Laying out" not in r.stdout + r.stderr
+        else:
+            assert files == []          # delete removed create's files
+    res = FioParser().parse("".join(out))
+    assert res.status == "PASSED", res.status_detail
+    assert {"create_ops", "stat_ops", "delete_ops"} <= set(res.metrics)
+
+
+@needs_fio
+def test_real_fio_stat_without_create_fails_loudly(tmp_path):
+    fio = shutil.which("fio")
+    argv = dict(fioprofile.metadata_jobs(fio, str(tmp_path), njobs=1, runtime_s=60,
+                                         nrfiles=5))["md_stat"]
+    r = subprocess.run(argv, capture_output=True, text=True)
+    assert r.returncode != 0
+    assert list(tmp_path.iterdir()) == []   # did not create files to stat
+    assert FioParser().parse(r.stdout + r.stderr).status == "ERROR(FIO)", r.stdout + r.stderr

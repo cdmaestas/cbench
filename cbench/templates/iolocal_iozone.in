@@ -26,7 +26,8 @@ if [ -n "$IO_TARGET_DIR" ]; then
 	mkdir -p "$IO_TARGET_DIR" && cd "$IO_TARGET_DIR" || {
 		cbench_echo "CBENCH NOTICE: cannot use IO target $IO_TARGET_DIR"; exit 1; }
 fi
-cbench_runin_tempdir
+# per-job scratch dir, removed when the job exits or is killed
+cbench_scratch_dir "$PWD/job$JOBID" cd
 
 cbench_io_preflight "$PWD" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 

@@ -2,8 +2,10 @@
 
 Usually not needed: GPFS ships a prebuilt ``gpfsperf`` in
 ``/usr/lpp/mmfs/samples/perf``, and the iogpfs_gpfsperf job uses it when no
-cbench build exists. Build your own only for a variant, e.g. one compiled for
-RDMA; a binary in ``<prefix>/bin`` takes precedence in the job.
+cbench build exists. Build your own only for a custom variant (e.g. other
+compiler flags); a binary in ``<prefix>/bin`` takes precedence in the job.
+GPFS RDMA (``verbsRdma``) is done by the GPFS daemon, so it needs no special
+gpfsperf build; ``cbench nodecheck`` records which transport GPFS is set to use.
 
 gpfsperf is not downloadable: it ships as source with GPFS (root-owned,
 read-only) and links against ``-lgpfs``, so it can only be built on a host
