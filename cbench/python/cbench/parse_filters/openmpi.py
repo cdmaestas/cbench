@@ -22,10 +22,10 @@ FILTERS: dict[str, str] = {
     r"Failed to find or execute the following executable":
         "OMPI says 'Failed to find or execute the executable",
 
-    r"orterun noticed that \S+ rank (\d+) with PID (\d+) on node (\S+) exited on\s+(.*)$":
+    r"(?:orterun|mpirun|mpiexec|prterun) noticed that \S+ rank (\d+) with PID (\d+) on node (\S+) exited on\s+(.*)$":
         "OMPI says orterun noticed rank $1 on node $3 exited with $4",
 
-    r"orterun: killing job":
+    r"(?:orterun|mpirun|mpiexec|prterun): killing job":
         "OMPI says orterun killing job",
 
     r"\[(\S+):\S+\] Error in ompi_mtl_mx_send,\s+(.*)$":
