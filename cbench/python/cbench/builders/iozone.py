@@ -14,7 +14,7 @@ from pathlib import Path
 from cbench.builders import BenchmarkBuilder, BuildConfig
 from cbench.builders._util import console, run, require, wget_tarball, install_bins
 
-_TARBALL_URL = "https://www.iozone.org/src/current/iozone3_506.tar"
+_TARBALL_URL = "https://www.iozone.org/src/current/iozone3_511.tgz"
 _DEFAULT_TARGET = "linux-AMD64"
 
 
@@ -25,7 +25,7 @@ class IozoneBuilder(BenchmarkBuilder):
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         top = wget_tarball(_TARBALL_URL, srcdir / "iozone", force=force, dry_run=dry_run)
-        # Source lives one level deeper: iozone3_506/src/current/
+        # Source lives one level deeper: iozone3_511/src/current/
         return top / "src" / "current"
 
     def build(self, src: Path, prefix: Path, cfg: BuildConfig, *, dry_run: bool = False) -> list[str]:
