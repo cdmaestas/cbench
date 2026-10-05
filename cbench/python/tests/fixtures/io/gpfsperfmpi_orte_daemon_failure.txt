@@ -1,0 +1,168 @@
+Cbench numprocs: 8
+Cbench numnodes: 1
+Cbench ppn: 8
+Cbench benchmark: gpfsperfmpi-gpfsmpi
+Cbench jobname: gpfsperfmpi-gpfsmpi-8ppn-8
+Cbench testset: io-default
+Cbench joblaunchmethod: openmpi
+
+Cbench start timestamp: 2026-10-05T12:26:36-06:00
+Cbench test identifier: mpi1
+Cbench CBENCHTEST: /gpfs/zimafs1/cdmaestas/cbtest-bg
+Cbench job path: /gpfs/zimafs1/cdmaestas/cbtest-bg/io-default/mpi1/gpfsperfmpi-gpfsmpi-8ppn-8
+Cbench job script: /gpfs/zimafs1/cdmaestas/cbtest-bg/io-default/mpi1/gpfsperfmpi-gpfsmpi-8ppn-8/gpfsperfmpi-gpfsmpi-8ppn-8.sh
+Cbench jobid: 278122636589069982
+Cbench Open MPI launcher: orterun
+CBENCH LABEL: interconnect=tcp gpfs_transport=tcp
+Cbench OMP_NUM_THREADS: 1
+
+======= Job Environment Info ========
+No modules loaded
+
+MODULEPATH=/etc/modulefiles:/usr/share/modulefiles:/usr/share/modulefiles/Linux:/usr/share/modulefiles/Core:/usr/share/lmod/lmod/modulefiles/Core
+MODULEPATH_ROOT=/usr/share/modulefiles
+MODULESHOME=/usr/share/lmod/lmod
+=====================================
+
+============ ldd of Cbench binary ============
+===============================================
+
+Cbench IO preflight: /gpfs/zimafs1/cdmaestas/cbtest-bg/scratch/gpfsperfmpi.278122636589069982 has 5851619328 kB free, job needs 30949376 kB
+Cbench gpfsperf: profile=hpc record=8m iops_record=4k ranks=8 nodes=1 size=30224m iops_bytes=2048m
+Cbench joblaunch cmd line: orterun --map-by ppr:8:node -np 8 --hostfile /gpfs/zimafs1/cdmaestas/cbtest-bg/hosts --prefix /usr/lib64/openmpi -x LD_LIBRARY_PATH /gpfs/zimafs1/cdmaestas/cbtest-bg/bin/gpfsperf-mpi create seq /gpfs/zimafs1/cdmaestas/cbtest-bg/scratch/gpfsperfmpi.278122636589069982/gpfsperf.dat -r 8m -n 30224m -th 1
+------------------------------------------------------------
+A process or daemon was unable to complete a TCP connection
+to another process:
+  Local host:    zimabg2
+  Remote host:   zimabg1
+This is usually caused by a firewall on the remote host. Please
+check that any firewall (e.g., iptables) has been disabled and
+try again.
+------------------------------------------------------------
+--------------------------------------------------------------------------
+ORTE was unable to reliably start one or more daemons.
+This usually is caused by:
+
+* not finding the required libraries and/or binaries on
+  one or more nodes. Please check your PATH and LD_LIBRARY_PATH
+  settings, or configure OMPI with --enable-orterun-prefix-by-default
+
+* lack of authority to execute on one or more specified nodes.
+  Please verify your allocation and authorities.
+
+* the inability to write startup files into /tmp (--tmpdir/orte_tmpdir_base).
+  Please check with your sys admin to determine the correct location to use.
+
+*  compilation of the orted with dynamic libraries when static are required
+  (e.g., on Cray). Please check your configure cmd line and consider using
+  one of the contrib/platform definitions for your system type.
+
+* an inability to create a connection back to mpirun due to a
+  lack of common network interfaces and/or no route found between
+  them. Please check network connectivity (including firewalls
+  and network routing requirements).
+--------------------------------------------------------------------------
+Cbench joblaunch cmd line: orterun --map-by ppr:8:node -np 8 --hostfile /gpfs/zimafs1/cdmaestas/cbtest-bg/hosts --prefix /usr/lib64/openmpi -x LD_LIBRARY_PATH /gpfs/zimafs1/cdmaestas/cbtest-bg/bin/gpfsperf-mpi read seq /gpfs/zimafs1/cdmaestas/cbtest-bg/scratch/gpfsperfmpi.278122636589069982/gpfsperf.dat -r 8m -n 30224m -th 1
+------------------------------------------------------------
+A process or daemon was unable to complete a TCP connection
+to another process:
+  Local host:    zimabg2
+  Remote host:   zimabg1
+This is usually caused by a firewall on the remote host. Please
+check that any firewall (e.g., iptables) has been disabled and
+try again.
+------------------------------------------------------------
+--------------------------------------------------------------------------
+ORTE was unable to reliably start one or more daemons.
+This usually is caused by:
+
+* not finding the required libraries and/or binaries on
+  one or more nodes. Please check your PATH and LD_LIBRARY_PATH
+  settings, or configure OMPI with --enable-orterun-prefix-by-default
+
+* lack of authority to execute on one or more specified nodes.
+  Please verify your allocation and authorities.
+
+* the inability to write startup files into /tmp (--tmpdir/orte_tmpdir_base).
+  Please check with your sys admin to determine the correct location to use.
+
+*  compilation of the orted with dynamic libraries when static are required
+  (e.g., on Cray). Please check your configure cmd line and consider using
+  one of the contrib/platform definitions for your system type.
+
+* an inability to create a connection back to mpirun due to a
+  lack of common network interfaces and/or no route found between
+  them. Please check network connectivity (including firewalls
+  and network routing requirements).
+--------------------------------------------------------------------------
+Cbench joblaunch cmd line: orterun --map-by ppr:8:node -np 8 --hostfile /gpfs/zimafs1/cdmaestas/cbtest-bg/hosts --prefix /usr/lib64/openmpi -x LD_LIBRARY_PATH /gpfs/zimafs1/cdmaestas/cbtest-bg/bin/gpfsperf-mpi read rand /gpfs/zimafs1/cdmaestas/cbtest-bg/scratch/gpfsperfmpi.278122636589069982/gpfsperf.dat -r 4k -n 2048m -th 1
+------------------------------------------------------------
+A process or daemon was unable to complete a TCP connection
+to another process:
+  Local host:    zimabg2
+  Remote host:   zimabg1
+This is usually caused by a firewall on the remote host. Please
+check that any firewall (e.g., iptables) has been disabled and
+try again.
+------------------------------------------------------------
+--------------------------------------------------------------------------
+ORTE was unable to reliably start one or more daemons.
+This usually is caused by:
+
+* not finding the required libraries and/or binaries on
+  one or more nodes. Please check your PATH and LD_LIBRARY_PATH
+  settings, or configure OMPI with --enable-orterun-prefix-by-default
+
+* lack of authority to execute on one or more specified nodes.
+  Please verify your allocation and authorities.
+
+* the inability to write startup files into /tmp (--tmpdir/orte_tmpdir_base).
+  Please check with your sys admin to determine the correct location to use.
+
+*  compilation of the orted with dynamic libraries when static are required
+  (e.g., on Cray). Please check your configure cmd line and consider using
+  one of the contrib/platform definitions for your system type.
+
+* an inability to create a connection back to mpirun due to a
+  lack of common network interfaces and/or no route found between
+  them. Please check network connectivity (including firewalls
+  and network routing requirements).
+--------------------------------------------------------------------------
+Cbench joblaunch cmd line: orterun --map-by ppr:8:node -np 8 --hostfile /gpfs/zimafs1/cdmaestas/cbtest-bg/hosts --prefix /usr/lib64/openmpi -x LD_LIBRARY_PATH /gpfs/zimafs1/cdmaestas/cbtest-bg/bin/gpfsperf-mpi write rand /gpfs/zimafs1/cdmaestas/cbtest-bg/scratch/gpfsperfmpi.278122636589069982/gpfsperf.dat -r 4k -n 2048m -th 1
+------------------------------------------------------------
+A process or daemon was unable to complete a TCP connection
+to another process:
+  Local host:    zimabg2
+  Remote host:   zimabg1
+This is usually caused by a firewall on the remote host. Please
+check that any firewall (e.g., iptables) has been disabled and
+try again.
+------------------------------------------------------------
+--------------------------------------------------------------------------
+ORTE was unable to reliably start one or more daemons.
+This usually is caused by:
+
+* not finding the required libraries and/or binaries on
+  one or more nodes. Please check your PATH and LD_LIBRARY_PATH
+  settings, or configure OMPI with --enable-orterun-prefix-by-default
+
+* lack of authority to execute on one or more specified nodes.
+  Please verify your allocation and authorities.
+
+* the inability to write startup files into /tmp (--tmpdir/orte_tmpdir_base).
+  Please check with your sys admin to determine the correct location to use.
+
+*  compilation of the orted with dynamic libraries when static are required
+  (e.g., on Cray). Please check your configure cmd line and consider using
+  one of the contrib/platform definitions for your system type.
+
+* an inability to create a connection back to mpirun due to a
+  lack of common network interfaces and/or no route found between
+  them. Please check network connectivity (including firewalls
+  and network routing requirements).
+--------------------------------------------------------------------------
+Cbench gpfsperf: finished
+
+Cbench end timestamp: 2026-10-05T12:26:43-06:00
+Cbench elapsed seconds: 7
+Cbench scratch cleanup: removed /gpfs/zimafs1/cdmaestas/cbtest-bg/scratch/gpfsperfmpi.278122636589069982

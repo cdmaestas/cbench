@@ -8,6 +8,17 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Multi-node gpfsperf-mpi** (`io-default` group `gpfs-mpi`, also in the `iogpfs`
+  testset). gen-jobs creates one job per node count (1, 2, 4 … `max_nodes`).
+  - Each job runs one MPI rank per IO thread on every node (`-th 1`), through the
+    same four operations as gpfsperf.
+  - The shared file is 2× the RAM of all the job's nodes, placed in a per-job scratch
+    dir on the GPFS target and capped to free space.
+  - `--group gpfs` stays single-node gpfsperf; `--group all` now includes the
+    multi-node sweep.
+  - GPFS doesn't ship `gpfsperf-mpi`, so `cbench build run gpfsperf` now also builds it
+    when `mpicc` is found. It passes `MPLIBS=` because the makefile's `-lmpich` is
+    MPICH-only. `--extra mpi=no|yes` and `--extra mplibs=...` control this.
 - **Custom IO profiles in cluster.yaml** (`io_profiles`): named bundles for
   `gen-jobs --profile`, with groups of `<testset>_<benchmark>` members, an optional
   `suffix` for job names and optional `default_groups`. In a custom group, the group's
@@ -141,6 +152,15 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **A job whose MPI launches all failed looked "not started".** Found on zimabg1/2,
+  where firewalld blocked Open MPI's remote daemons:
+  - A gpfsperf(-mpi) job that reaches its end line without any result is now
+    `ERROR(NO RESULTS)`.
+  - The Open MPI parse filter now matches "ORTE/PRTE was unable to reliably start one
+    or more daemons".
+  - Filter hits now turn a NOTSTARTED result into `FILTER_ERROR`, as they already did
+    for PASSED. A parser's own error keeps its status, with the filter hits appended to
+    `status_detail`.
 - **A killed IO job left its data on the target**, so later jobs' space preflights
   found less free space. IO job scripts now create their data dirs with
   `cbench_scratch_dir` (in `common_header.in`), and an `EXIT` trap removes them on a

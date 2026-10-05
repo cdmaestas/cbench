@@ -52,6 +52,11 @@ FILTERS: dict[str, str] = {
     r"There are not enough nodes in your allocation":
         "OMPI says not enough nodes to run as requested",
 
+    # mpirun/orterun could not start its daemon on a remote node: firewall,
+    # wrong node address, or orted/libraries not found there (Open MPI 5: PRTE)
+    r"(ORTE|PRTE) was unable to reliably start one or more daemons":
+        "OMPI says $1 could not start its daemons on all nodes (firewall, node address, or PATH/LD_LIBRARY_PATH on the remote node?)",
+
     r"A daemon \(.+\) died unexpectedly with status (\d+) while attempting":
         "OMPI says a daemon died (status $1)",
 

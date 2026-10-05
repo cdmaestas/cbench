@@ -63,7 +63,7 @@ _DEFAULT_SKIP: dict[str, set[str]] = {"iometadata": {"fileop"}}
 #: they size their own concurrency from the IO thread count
 _SINGLE_INSTANCE = {"fio", "bonnie", "iozone", "gpfsperf"}
 #: whole-node MPI suites generated at ppn = IO threads, one job per node count
-_NODE_SWEEP = {"io500"}
+_NODE_SWEEP = {"io500", "gpfsperfmpi"}
 
 
 def _cfg(config: str | None) -> ClusterConfig:
@@ -288,6 +288,9 @@ def gen_jobs(
                 io_extra = iosizing.gpfsperf_tokens(nv, cfg, **kw)
             elif bench == "io500":
                 io_extra = iosizing.io500_tokens(nv, cfg, **kw)
+            elif bench == "gpfsperfmpi":
+                io_extra = iosizing.gpfsperfmpi_tokens(nv, cfg, numnodes=numnodes,
+                                                       numprocs=numprocs, **kw)
             elif iosizing.needs_io_sizing(home, bench) and bench.startswith("ior"):
                 io_extra = iosizing.ior_tokens(nv, cfg, ppn=ppn_val, numprocs=numprocs, **kw)
             elif iosizing.needs_io_sizing(home, bench):
@@ -658,13 +661,15 @@ def parse_cmd(
             )
         else:
             parsed = parser.parse(stdout, stderr)
-            # Filter errors override a PASSED result
-            if filter_errors and parsed.status == "PASSED":
+            # Filter errors override a PASSED result, and a NOTSTARTED one: a job
+            # whose output shows launch errors did start, and failed
+            if filter_errors and parsed.status in ("PASSED", "NOTSTARTED"):
                 status = "FILTER_ERROR"
                 status_detail = "; ".join(filter_errors)
             else:
                 status = parsed.status
-                status_detail = parsed.status_detail
+                # a parser error keeps its status; filter hits say why it failed
+                status_detail = "; ".join(filter(None, [parsed.status_detail, *filter_errors]))
             # gen-jobs writes a CBENCH CAVEAT line when it had to shrink a run
             # (e.g. IO capped to free space) and a CBENCH LABEL line with the
             # interconnect / GPFS transport nodecheck saw; keep them with the result.

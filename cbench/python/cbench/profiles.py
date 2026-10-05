@@ -80,6 +80,10 @@ PROFILES: dict[str, Profile] = {
             "gpfs": Group("gpfs", "gpfs", (
                 Member("iogpfs", "gpfsperf"),
             )),
+            # multi-node gpfsperf-mpi, one job per node count; opt-in like gpfs
+            "gpfs-mpi": Group("gpfs", "gpfsmpi", (
+                Member("iogpfs", "gpfsperfmpi"),
+            )),
         },
         default_groups=("node-local",),
     ),

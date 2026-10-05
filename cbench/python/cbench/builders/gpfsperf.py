@@ -10,10 +10,17 @@ gpfsperf build; ``cbench nodecheck`` records which transport GPFS is set to use.
 gpfsperf is not downloadable: it ships as source with GPFS (root-owned,
 read-only) and links against ``-lgpfs``, so it can only be built on a host
 with GPFS installed. The builder copies that directory into the cbench source
-tree and runs the makefile's ``gpfsperf`` target (``gpfsperf-mpi`` is a
-separate target and is not built). It overrides CC; the makefile's CFLAGS
-(``-O -Wno-format-security -DGPFS_LINUX``) are kept unless
+tree and runs the makefile's ``gpfsperf`` target. It overrides CC; the
+makefile's CFLAGS (``-O -Wno-format-security -DGPFS_LINUX``) are kept unless
 ``--extra cflags="..."`` replaces them — include ``-DGPFS_LINUX`` when you do.
+
+gpfsperf-mpi (the multi-node iogpfs_gpfsperfmpi job) is NOT shipped prebuilt,
+so it is built too whenever the configured mpicc exists: the makefile's
+``gpfsperf-mpi`` target with ``MPCC=<mpicc>``. The makefile links
+``MPLIBS = -lmpich``, which only MPICH has; mpicc already links its own MPI,
+so the builder passes ``MPLIBS=`` (empty) unless ``--extra mplibs="..."`` sets
+it. ``--extra mpi=no`` skips it; ``--extra mpi=yes`` makes a missing mpicc an
+error instead of a skip.
 """
 
 from __future__ import annotations
@@ -50,11 +57,21 @@ class GpfsperfBuilder(BenchmarkBuilder):
         return dest
 
     def build(self, src: Path, prefix: Path, cfg: BuildConfig, *, dry_run: bool = False) -> list[str]:
-        cmd = ["make", "gpfsperf", f"CC={cfg.cc}"]
-        if cfg.extra.get("cflags"):
-            cmd.append(f"CFLAGS={cfg.extra['cflags']}")
-        run(cmd, cwd=src, dry_run=dry_run)
-        return install_bins(src, prefix / "bin", ["gpfsperf"], dry_run=dry_run)
+        cflags = [f"CFLAGS={cfg.extra['cflags']}"] if cfg.extra.get("cflags") else []
+        run(["make", "gpfsperf", f"CC={cfg.cc}", *cflags], cwd=src, dry_run=dry_run)
+        names = ["gpfsperf"]
+        mpi = str(cfg.extra.get("mpi", "auto")).lower()
+        if mpi not in ("no", "0", "false", "off"):
+            if shutil.which(cfg.mpicc):
+                run(["make", "gpfsperf-mpi", f"MPCC={cfg.mpicc}",
+                     f"MPLIBS={cfg.extra.get('mplibs', '')}", *cflags], cwd=src, dry_run=dry_run)
+                names.append("gpfsperf-mpi")
+            elif mpi in ("yes", "1", "true", "on"):
+                raise RuntimeError(f"gpfsperf-mpi needs an MPI compiler: {cfg.mpicc} not found")
+            else:
+                console.print(f"  [yellow]{cfg.mpicc} not found: building gpfsperf only "
+                              "(gpfsperf-mpi needs MPI; --extra mpi=no silences this)[/yellow]")
+        return install_bins(src, prefix / "bin", names, dry_run=dry_run)
 
     def check_requires(self) -> list[str]:
         missing = require("cc", "make")

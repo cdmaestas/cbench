@@ -60,7 +60,7 @@ Auto-registration via `__init_subclass__`: any subclass of `BenchmarkParser` tha
 To add a new parser: create `parsers/mybench.py`, subclass `BenchmarkParser`, set `names`, import it in `parsers/__init__.py`. Each name has one owner: claiming a name another parser already registered raises `AssertionError` at import (it used to replace it silently, so import order decided). `names` are benchmark names from job dirs, never testset names. Job directories are named `<benchmark>-<ppn>ppn-<np>`; `get_parser()` tries an exact `names` match, then each parser's `alias_spec` regex (full match, ported from Perl `alias_spec()`), e.g. IOR's `(ior|ios).*` catches `ior1mNtoN`. `cbench parse` appends any `CBENCH CAVEAT:` and `CBENCH LABEL:` lines from job output to `status_detail`, and reads each job's newest run (`_job_output_files()`: newest `*.o*`/`slurm-*.out` plus its matching `.e<id>`).
 
 ### 3. Parse filters (`parse_filters/`)
-Seven modules (openmpi, slurm, torque, mvapich, mpiexec, cray, misc) each expose a `FILTERS: dict[str, str]` mapping regex patterns to message templates (`$1`, `$2` for capture groups). `build_filter_set(names)` merges them; `apply_filters(filters, text)` scans line-by-line and returns matched error strings. Wired into `cbench parse` via `--customparse` or `parse_filter_include` in `cluster.yaml`.
+Seven modules (openmpi, slurm, torque, mvapich, mpiexec, cray, misc) each expose a `FILTERS: dict[str, str]` mapping regex patterns to message templates (`$1`, `$2` for capture groups). `build_filter_set(names)` merges them; `apply_filters(filters, text)` scans line-by-line and returns matched error strings. Wired into `cbench parse` via `--customparse` or `parse_filter_include` in `cluster.yaml`. Filter hits turn a PASSED or NOTSTARTED parse into `FILTER_ERROR`. A parser's own `ERROR(...)` keeps its status, and the filter hits are appended to its `status_detail`, since they say why the job failed.
 
 ### 4. hw_test parsers (`hw_tests/`)
 Used exclusively by `cbench nodehwtest parse`. Same auto-registration pattern as benchmark parsers but via `HwTest` base class with `name` and `test_class` class variables. Each `parse(lines: list[str])` returns `dict[str, float | str]`. The output file format uses `CBENCH MARK: MODULE <name>` delimiters — `cli/nodehwtest.py:_parse_run_file()` segments the file and dispatches to the right `HwTest`.
@@ -147,7 +147,8 @@ gen-jobs specifics:
 Groups in `io-default`:
 - `node-local`: fio, bonnie, iozone. This is the default group.
 - `parallel`: ior1mNtoN, mdtest.
-- `gpfs`: gpfsperf.
+- `gpfs`: gpfsperf (single node).
+- `gpfs-mpi`: gpfsperf-mpi across nodes (opt-in; `--group all` includes it).
 
 `--group all` selects every group. Custom profiles come from cluster.yaml `io_profiles`. The config schema checks the structure, and `profiles.custom_profiles()` refuses a built-in name, a member with no `<testset>_<benchmark>.in` template, an unknown default group, or two members that would get the same job name. Their groups have `route_members=True`: gen-jobs passes `group.target` as `target=` to every `iosizing.*_tokens()`/`target_tokens()`, so that target sets `IO_TARGET_DIR`/`TESTDIR`, the free-space cap and the block-aware profile. Built-in groups pass `None`, which keeps `target_name_for(benchmark)`. A group whose target isn't available is skipped with a warning. The `gpfs` target is `io_targets.gpfs`, else `io_targets.parallel` when the node facts say it's GPFS (`iosizing._gpfs_alias`), so gen-jobs resolves node values before choosing groups. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
 
@@ -170,6 +171,12 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 - The job uses `$CBENCHTEST/bin/gpfsperf` if you built one, else the binary GPFS ships in `/usr/lpp/mmfs/samples/perf`.
 - The `gpfsperf` builder copies those samples and runs `make gpfsperf`. You only need it for a custom variant (`--extra cflags=...` replaces the makefile CFLAGS). GPFS RDMA (`verbsRdma`) is done by the GPFS daemon and needs no special gpfsperf build; nodecheck records the transport instead (§11).
 - Builders with `optional = True` (gpfsperf) are SKIPPED by `build all` when their prerequisites are missing.
+
+**gpfsperf-mpi** (`templates/iogpfs_gpfsperfmpi.in`, io-default group `gpfs-mpi`, also in the `iogpfs` testset):
+- `_NODE_SWEEP` like io500: one job per node count at ppn = `io_threads`, one MPI rank per IO thread with `-th 1`, so job names are `gpfsperfmpi-<T>ppn-<T*nodes>`.
+- Same four ops as gpfsperf on one shared file in a `cbench_scratch_dir` on the GPFS target. `iosizing._gpfsperf_sizing()` (shared with single-node gpfsperf) sizes it to 2× the RAM of all the job's nodes, with random ops bounded to ranks × 256 MiB. `-n` is the job's total; the samples README says all processes work on the same file at different offsets, with `-n` defaulting to the file size.
+- Binary: `$CBENCHTEST/bin/gpfsperf-mpi`, else `/usr/lpp/mmfs/samples/perf/gpfsperf-mpi`. GPFS does NOT ship it prebuilt (checked on zimabg1, GPFS 5.x samples), so build it: the `gpfsperf` builder also runs `make gpfsperf-mpi MPCC=<mpicc> MPLIBS=` when mpicc exists. The makefile's `MPLIBS = -lmpich` is MPICH-only, and mpicc links its own MPI. `--extra mpi=no` skips it, `mpi=yes` requires it, and `mplibs=` overrides.
+- `GpfsperfParser` takes it via `alias_spec = gpfsperfmpi` and uses the same `Cbench gpfsperf:` start/end lines; `nprocesses` is job-level. A job with the end line but no result is `ERROR(NO RESULTS)`, e.g. when every `orterun` failed (seen on zimabg1/2 with firewalld blocking ORTE's daemons; fixture `tests/fixtures/io/gpfsperfmpi_orte_daemon_failure.txt`).
 
 **io500 profile** (`--profile io500`, group `parallel`, `templates/io500_io500.in`):
 - Writes an `io500.ini` with the datadir on the parallel target and `stonewall-time` = `io500_stonewall_s` (default 300; `gen-jobs --io500-stonewall`), then runs `io500` through the MPI launcher and removes the datadir.
