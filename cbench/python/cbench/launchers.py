@@ -15,10 +15,17 @@ def _cmd(cfg: ClusterConfig) -> str:
     return cfg.joblaunch_cmd or cfg.joblaunch_method
 
 
+#: Open MPI launcher when joblaunch_cmd is unset: common_header.in sets
+#: CBENCH_OMPI_RUN on the job's node (orterun on Open MPI <= 4, else mpirun;
+#: Open MPI 5 has no orterun); orterun if the header didn't run.
+OMPI_DEFAULT_CMD = "${CBENCH_OMPI_RUN:-orterun}"
+
+
 def openmpi_build(numprocs: int, ppn: int, numnodes: int, cfg: ClusterConfig) -> str:
-    cmd = _cmd(cfg) if cfg.joblaunch_cmd else "orterun"
+    cmd = _cmd(cfg) if cfg.joblaunch_cmd else OMPI_DEFAULT_CMD
     extra = cfg.joblaunch_extraargs
-    return f"{cmd} -npernode {ppn} -np {numprocs} {extra}".strip()
+    # --map-by ppr:N:node works on Open MPI 1.8+; -npernode is deprecated in 5
+    return f"{cmd} --map-by ppr:{ppn}:node -np {numprocs} {extra}".strip()
 
 
 def mpiexec_build(numprocs: int, ppn: int, numnodes: int, cfg: ClusterConfig) -> str:
