@@ -184,3 +184,66 @@ def test_parse_multi_op_mpi_job():
 def test_unfinished_mpi_job_is_started_not_passed():
     r = GpfsperfParser().parse(_MPI_JOB.replace("Cbench gpfsperf: finished\n", ""))
     assert r.status == "ERROR(STARTED)"
+
+
+# ---------------------------------------------------------------------------
+# a job whose MPI launches all failed (real output from zimabg1/2: firewalld
+# blocked orterun's remote daemon) must not look like "not started"
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+from cbench.parse_filters import apply_filters, build_filter_set  # noqa: E402
+
+_ORTE_FAIL = (Path(__file__).parent / "fixtures" / "io"
+              / "gpfsperfmpi_orte_daemon_failure.txt").read_text()
+
+
+def test_finished_job_without_results_is_an_error():
+    r = GpfsperfParser().parse(_ORTE_FAIL)
+    assert r.status == "ERROR(NO RESULTS)" and "every run failed" in r.status_detail
+
+
+def test_job_without_end_line_or_results_is_still_not_started():
+    assert GpfsperfParser().parse("some unrelated output\n").status == "NOTSTARTED"
+
+
+@pytest.mark.parametrize("rte", ["ORTE", "PRTE"])
+def test_openmpi_filter_catches_daemon_start_failure(rte):
+    errs = apply_filters(build_filter_set(["openmpi"]),
+                         f"{rte} was unable to reliably start one or more daemons.\n")
+    assert errs and errs[0].startswith(f"OMPI says {rte} could not start its daemons")
+
+
+def _parse_job(tmp_path, stdout, *filters):
+    d = tmp_path / "io-default" / "r1" / "gpfsperfmpi-gpfsmpi-8ppn-8"
+    d.mkdir(parents=True)
+    (d / "gpfsperfmpi-gpfsmpi-8ppn-8.o1").write_text(stdout)
+    args = ["parse", "--testset", "io-default", "--ident", "r1", "--cbenchtest", str(tmp_path)]
+    for f in filters:
+        args += ["--customparse", f]
+    res = CliRunner().invoke(cli, args)
+    assert res.exit_code == 0, res.output
+    import sqlite3
+    from contextlib import closing
+    with closing(sqlite3.connect(tmp_path / "cbench_results.db")) as con:
+        return con.execute("SELECT status, status_detail FROM runs").fetchone()
+
+
+def test_parse_reports_the_launch_failure(tmp_path):
+    status, detail = _parse_job(tmp_path, _ORTE_FAIL, "openmpi")
+    assert status == "ERROR(NO RESULTS)"                 # the parser's error stands
+    assert "OMPI says ORTE could not start its daemons" in detail   # and says why
+
+
+def test_parse_without_filters_still_flags_no_results(tmp_path):
+    status, detail = _parse_job(tmp_path, _ORTE_FAIL)
+    assert status == "ERROR(NO RESULTS)"
+    assert "CBENCH LABEL: interconnect=tcp gpfs_transport=tcp" in detail
+
+
+def test_filter_errors_override_not_started(tmp_path):
+    # no gpfsperf start/end lines, so the parser alone says NOTSTARTED
+    status, detail = _parse_job(tmp_path, "ORTE was unable to reliably start one or more daemons.\n",
+                                "openmpi")
+    assert status == "FILTER_ERROR" and "could not start its daemons" in detail

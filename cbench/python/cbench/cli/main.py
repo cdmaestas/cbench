@@ -661,13 +661,15 @@ def parse_cmd(
             )
         else:
             parsed = parser.parse(stdout, stderr)
-            # Filter errors override a PASSED result
-            if filter_errors and parsed.status == "PASSED":
+            # Filter errors override a PASSED result, and a NOTSTARTED one: a job
+            # whose output shows launch errors did start, and failed
+            if filter_errors and parsed.status in ("PASSED", "NOTSTARTED"):
                 status = "FILTER_ERROR"
                 status_detail = "; ".join(filter_errors)
             else:
                 status = parsed.status
-                status_detail = parsed.status_detail
+                # a parser error keeps its status; filter hits say why it failed
+                status_detail = "; ".join(filter(None, [parsed.status_detail, *filter_errors]))
             # gen-jobs writes a CBENCH CAVEAT line when it had to shrink a run
             # (e.g. IO capped to free space) and a CBENCH LABEL line with the
             # interconnect / GPFS transport nodecheck saw; keep them with the result.
