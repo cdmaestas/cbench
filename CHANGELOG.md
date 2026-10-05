@@ -104,6 +104,12 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **Parsers claimed testset names, and some clashed.** `imb`, `mpibench`, `osu` and
+  `routecheck` also registered `bandwidth`, `latency`, `collective`, `shakedown`,
+  `mpisanity` or `mpioverhead`; `collective`, `mpisanity` and `mpioverhead` were each
+  claimed twice, so the last import won. Lookups use the benchmark part of the job
+  name, never the testset, so those entries are removed (`mpioverhead` stays with the
+  mpioverhead parser), and a second claim on a parser name now fails at import.
 - **Rebuilding a tarball-based benchmark failed with `Permission denied`** (seen with
   iozone, whose tarball has read-only files): the source was re-extracted over the
   previous tree on every build.

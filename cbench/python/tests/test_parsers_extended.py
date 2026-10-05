@@ -475,3 +475,35 @@ def test_trilinos_not_started():
     p = get_parser("trilinos")
     r = p.parse("nothing here")
     assert r.status.startswith("ERROR")
+
+
+# ---------------------------------------------------------------------------
+# Registry: one owner per name
+# ---------------------------------------------------------------------------
+
+def test_duplicate_parser_name_fails_at_definition():
+    from cbench.parsers.base import BenchmarkParser
+    with pytest.raises(AssertionError, match="'imb' claimed by both"):
+        class _Clash(BenchmarkParser):
+            names = ["imb"]
+    assert get_parser("imb").__class__.__name__ == "ImbParser"
+
+
+@pytest.mark.parametrize(("jobname", "parser"), [
+    # benchmarks of the collective / mpisanity / mpioverhead testsets, whose
+    # parsers used to also claim those testset names
+    ("imb-2ppn-8", "ImbParser"),
+    ("imball-2ppn-8", "ImbParser"),
+    ("mpibenchallreduce-2ppn-8", "MpibenchParser"),
+    ("routecheck-2ppn-8", "RoutecheckParser"),
+    ("ohead-2ppn-8", "MpioverheadParser"),
+    ("osubw-2ppn-8", "OsuParser"),
+])
+def test_testset_benchmarks_resolve_to_their_parser(jobname, parser):
+    assert get_parser(jobname.rsplit("-", 2)[0]).__class__.__name__ == parser
+
+
+@pytest.mark.parametrize("testset", ["bandwidth", "latency", "collective", "shakedown",
+                                     "mpisanity"])
+def test_testset_names_are_not_parser_names(testset):
+    assert testset not in REGISTRY
