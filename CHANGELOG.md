@@ -8,6 +8,13 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Job heartbeat:** gen-jobs job scripts rewrite `<jobdir>/<jobname>.heartbeat`
+  every `job_heartbeat_s` seconds (default 60) with "still running, elapsed …", and
+  interactive runs also print it to the terminal, so a long silent benchmark is visibly
+  alive. On exit the file records `exited rc=N`. Batch output is untouched: the line
+  never goes to stdout or a batch job's stderr, which schedulers often merge into
+  the parsed output. `gen-jobs --heartbeat SECONDS` or `CBENCH_HEARTBEAT` in the job's
+  environment override it; `0` turns it off.
 - **io500 profile:** `cbench gen-jobs --profile io500` runs IO500 on the parallel target.
   - It generates one job per node count (1, 2, 4, … up to `max_nodes`) at ppn equal to
     the IO thread count.
@@ -104,6 +111,13 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **A killed IO job left its data on the target**, so later jobs' space preflights
+  found less free space. IO job scripts now create their data dirs with
+  `cbench_scratch_dir` (in `common_header.in`), and an `EXIT` trap removes them on a
+  normal end, `exit`, or SIGINT/SIGTERM/SIGHUP (scheduler time limit, `scancel`,
+  Ctrl-C), first stopping background instances such as bonnie++. SIGKILL can't be
+  trapped. Covers fio, iozone, bonnie++, mdtest, gpfsperf, io500, the IOR jobs,
+  miranda and fileop.
 - **Rebuilding a tarball-based benchmark failed with `Permission denied`** (seen with
   iozone, whose tarball has read-only files): the source was re-extracted over the
   previous tree on every build.

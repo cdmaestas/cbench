@@ -17,7 +17,7 @@ cbench_check_for_bin $IOR_BIN
 # target's free space. See cbench/python/cbench/iosizing.py.
 ALLARGS="-b IOR_BLOCKSIZE_HERE -C -i 4 -t IOR_TRANSFER_HERE -v -v -r -R -w -W -e -d 30 -g "
 TESTDIR="TESTDIR_HERE/$JOBID"
-mkdir -p $TESTDIR
+cbench_scratch_dir "$TESTDIR"   # removed when the job exits or is killed
 cbench_io_preflight "TESTDIR_HERE" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
 PSFILE=`/bin/mktemp $TESTDIR/posix.nto1.XXXXXX`
 PPFILE=`/bin/mktemp $TESTDIR/posix.nton.XXXXXX`
