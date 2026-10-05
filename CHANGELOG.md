@@ -8,6 +8,13 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Job heartbeat:** gen-jobs job scripts rewrite `<jobdir>/<jobname>.heartbeat`
+  every `job_heartbeat_s` seconds (default 60) with "still running, elapsed …", and
+  interactive runs also print it to the terminal, so a long silent benchmark is visibly
+  alive. On exit the file records `exited rc=N`. Batch output is untouched: the line
+  never goes to stdout or a batch job's stderr, which schedulers often merge into
+  the parsed output. `gen-jobs --heartbeat SECONDS` or `CBENCH_HEARTBEAT` in the job's
+  environment override it; `0` turns it off.
 - **io500 profile:** `cbench gen-jobs --profile io500` runs IO500 on the parallel target.
   - It generates one job per node count (1, 2, 4, … up to `max_nodes`) at ppn equal to
     the IO thread count.

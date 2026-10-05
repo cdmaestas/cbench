@@ -73,6 +73,7 @@ Six subgroups wired into `cli/main.py`:
 - `gen-jobs` / `start-jobs` / `parse` / `query` — MPI benchmark workflow
 - `gen-jobs --profile` — IO profile bundles (§15); `gen-jobs --fio-runtime` overrides `fio_runtime_s`
 - `start-jobs --interactive` runs the `.sh` scripts gen-jobs writes; `--echo-output` sets `CBENCH_ECHO_OUTPUT=YES` so `cbench_functions` tees job output to the terminal
+- Job heartbeat (`common_header.in`): every `job_heartbeat_s` (default 60; `gen-jobs --heartbeat`, env `CBENCH_HEARTBEAT`; 0 = off) a disowned loop rewrites `<jobdir>/<jobname>.heartbeat` and, for interactive runs only, prints to stderr. Never stdout or a batch job's stderr (Slurm without `--error`, Torque `-j oe` merge it into the parsed output). The EXIT trap stops it and writes `exited rc=N`; a file stuck on `still running` after the job is gone means SIGKILL.
 - `nodehwtest gen-jobs` / `start-jobs` / `parse` — single-node hw test workflow
 - `snb run` / `report` / `store` / `compare` — single-node benchmark suite
 - `build run` / `build all` / `build list` / `build check` / `build update` — benchmark builder framework
