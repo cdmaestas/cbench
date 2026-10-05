@@ -48,6 +48,113 @@ cbench_io_preflight()
 	cbench_echo "Cbench IO preflight: $dir has ${have_kb} kB free, job needs ${need_kb} kB"
 }
 
+# Scratch data cleanup. IO jobs write their data into per-job scratch dirs; a
+# job killed by the scheduler (time limit, scancel) or by Ctrl-C would leave
+# that data behind, and later jobs' preflights would find the space gone. Dirs
+# registered with cbench_scratch_dir are removed when the script exits for any
+# reason it can catch (normal end, exit, INT, TERM, HUP); SIGKILL can't be
+# trapped, so a job killed outright still leaves its data. Defined here (not in
+# cbench_functions) for the same reason as cbench_io_preflight.
+#   usage: cbench_scratch_dir DIR [cd]   (create DIR, remove it on exit; cd into it)
+CBENCH_SCRATCH_DIRS=()
+cbench_scratch_dir()
+{
+	local dir="$1"
+	case "$dir" in
+		""|/|.|..)
+			cbench_echo "CBENCH NOTICE: refusing to use '$dir' as a scratch dir"
+			exit 1 ;;
+	esac
+	mkdir -p "$dir" || {
+		cbench_echo "CBENCH NOTICE: cannot create scratch dir $dir"; exit 1; }
+	# absolute, so cleanup works from any cwd
+	dir=$(cd "$dir" && pwd -P)
+	CBENCH_SCRATCH_DIRS+=("$dir")
+	if [ "$2" == "cd" ]; then
+		cd "$dir" || exit 1
+	fi
+}
+cbench_scratch_cleanup()
+{
+	local rc=$? dir pids
+	trap - EXIT INT TERM HUP
+	cbench_heartbeat_stop "$rc"
+	# stop background benchmark instances (bonnie++) still writing into the dirs
+	pids=$(jobs -p)
+	if [ -n "$pids" ]; then
+		kill $pids 2>/dev/null
+		wait 2>/dev/null
+	fi
+	# leave the dirs before removing them
+	cd / || true
+	for dir in "${CBENCH_SCRATCH_DIRS[@]}"; do
+		[ -d "$dir" ] || continue
+		rm -rf -- "$dir" && cbench_echo "Cbench scratch cleanup: removed $dir"
+	done
+	return $rc
+}
+# Progress heartbeat. Long benchmarks can print nothing for many minutes, so
+# every JOB_HEARTBEAT_S_HERE s (cluster.yaml job_heartbeat_s, gen-jobs --heartbeat;
+# CBENCH_HEARTBEAT in the environment overrides it, 0 = off) the job rewrites
+# <jobdir>/<jobname>.heartbeat with a "still running" line, and interactive runs
+# also print it to the terminal (stderr). Never to the job's stdout or a batch
+# job's stderr, which schedulers often merge into the output parsers read. On
+# exit the EXIT trap records the exit status there; a file still saying
+# "running" after the job is gone means it was killed outright (SIGKILL). The
+# loop is disowned, so a template's bare `wait` doesn't wait for it, and exits
+# on its own within one interval if the job shell disappears.
+CBENCH_HEARTBEAT_PID=""
+CBENCH_HEARTBEAT_FILE="TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE/JOBNAME_HERE.heartbeat"
+cbench_heartbeat_line()
+{
+	local el=$(( $(date +%s) - begin_epoch ))
+	printf 'Cbench heartbeat: JOBNAME_HERE (jobid %s) %s, elapsed %dh%02dm%02ds at %s\n' \
+		"$JOBID" "$1" $((el / 3600)) $((el % 3600 / 60)) $((el % 60)) "$(date '+%F %T')"
+}
+cbench_heartbeat_start()
+{
+	local secs="${CBENCH_HEARTBEAT:-JOB_HEARTBEAT_S_HERE}" parent=$$
+	case "$secs" in
+		''|*[!0-9]*)
+			cbench_echo "CBENCH NOTICE: heartbeat interval '$secs' is not a number of seconds; heartbeat off"
+			return 0 ;;
+	esac
+	[ "$secs" -gt 0 ] || return 0
+	cbench_heartbeat_line "started" > "$CBENCH_HEARTBEAT_FILE" 2>/dev/null
+	(
+		trap - EXIT INT HUP
+		trap 'kill $sp 2>/dev/null; exit 0' TERM
+		while :; do
+			# detached: a sleep orphaned by a TERM landing before sp is set
+			# must not hold the terminal (or a pipe) open after the job ends
+			sleep "$secs" </dev/null >/dev/null 2>&1 & sp=$!
+			wait $sp
+			kill -0 "$parent" 2>/dev/null || exit 0
+			line=$(cbench_heartbeat_line "still running")
+			echo "$line" > "$CBENCH_HEARTBEAT_FILE" 2>/dev/null
+			if [ "$CBENCH_RUN_TYPE" == "INTERACTIVE" ]; then
+				echo "$line" >&2
+			fi
+		done
+	) &
+	CBENCH_HEARTBEAT_PID=$!
+	disown "$CBENCH_HEARTBEAT_PID" 2>/dev/null || disown 2>/dev/null
+}
+# usage: cbench_heartbeat_stop RC
+cbench_heartbeat_stop()
+{
+	if [ -n "$CBENCH_HEARTBEAT_PID" ]; then
+		kill "$CBENCH_HEARTBEAT_PID" 2>/dev/null
+		CBENCH_HEARTBEAT_PID=""
+		cbench_heartbeat_line "exited rc=$1" > "$CBENCH_HEARTBEAT_FILE" 2>/dev/null
+	fi
+}
+trap cbench_scratch_cleanup EXIT
+# a caught signal exits (128+N) so the EXIT trap runs the cleanup
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # set OMP_NUM_THREADS appropriate to the job
 export OMP_NUM_THREADS=NUM_THREADS_PER_PROCESS_HERE
 cbench_echo "Cbench OMP_NUM_THREADS: $OMP_NUM_THREADS"
@@ -76,4 +183,5 @@ done
 cbench_echo "====================================="
 cbench_echo ""
 
-
+# start last, after the header output above
+cbench_heartbeat_start

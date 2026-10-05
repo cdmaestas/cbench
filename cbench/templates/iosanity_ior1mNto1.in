@@ -16,7 +16,7 @@ cbench_check_for_bin $IOR_BIN
 # etc. side of it, i.e. the sanity of the filesystem
 ALLARGS="-b 2m -C -i 4 -t 1m -v -v -r -R -w -W -e -d 30 -g "
 TESTDIR="TESTDIR_HERE/$JOBID"
-mkdir -p $TESTDIR
+cbench_scratch_dir "$TESTDIR"   # removed when the job exits or is killed
 PSFILE=`/bin/mktemp $TESTDIR/posix.nto1.XXXXXX`
 PPFILE=`/bin/mktemp $TESTDIR/posix.nton.XXXXXX`
 
