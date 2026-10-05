@@ -32,6 +32,13 @@ class BenchmarkParser:
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         for name in cls.names:
+            # a second claim would silently replace the first, so which parser
+            # handles the benchmark would depend on import order
+            owner = REGISTRY.get(name)
+            if owner is not None and owner is not cls:
+                raise AssertionError(
+                    f"parser name {name!r} claimed by both {owner.__module__}.{owner.__name__}"
+                    f" and {cls.__module__}.{cls.__name__}")
             REGISTRY[name] = cls
         if cls.alias_spec:
             ALIASES.append((re.compile(cls.alias_spec), cls))

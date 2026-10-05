@@ -6,7 +6,7 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 
 
 class RoutecheckParser(BenchmarkParser):
-    names = ["routecheck", "mpisanity"]
+    names = ["routecheck"]
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         status = "NOTSTARTED"
