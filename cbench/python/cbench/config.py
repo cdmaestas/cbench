@@ -77,6 +77,8 @@ _SCHEMA: dict = {
         "fio_runtime_s": {"type": "integer", "minimum": 1},
         # IO500 stonewall (seconds per write phase); < 300 marks the run [INVALID]
         "io500_stonewall_s": {"type": "integer", "minimum": 1},
+        # seconds between "still running" lines a gen-jobs job writes to stderr; 0 = off
+        "job_heartbeat_s": {"type": "integer", "minimum": 0},
         # IO thread/job count for every IO benchmark (iosizing.io_threads):
         # all CPUs of the chosen basis, optionally capped
         "io_threads_max": {"type": "integer", "minimum": 1},
@@ -156,6 +158,7 @@ class ClusterConfig:
     io_targets: dict[str, str] = field(default_factory=dict)
     fio_runtime_s: int = 300
     io500_stonewall_s: int = 300
+    job_heartbeat_s: int = 60
     io_profile: str = "auto"
     io_seq_bs: str = ""
     io_threads_max: int | None = None
