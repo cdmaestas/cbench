@@ -106,10 +106,20 @@ cli.add_command(serve_cmd)
 
 @cli.command("mcp")
 def mcp_cmd() -> None:
-    """Run the cbench MCP server on stdio, for MCP clients such as Claude
-    (needs the mcp extra: pip install 'cbench[mcp]', Python 3.10+).
+    """Run the cbench MCP server on stdio, for MCP clients such as Claude.
 
-    Register it with a client, e.g.:  claude mcp add cbench -e CBENCHTEST=/path -- cbench mcp
+    Needs the mcp extra: pip install 'cbench[mcp]' (Python 3.10+). Register it
+    with a client, for example Claude Code:
+
+    \b
+        claude mcp add cbench -e CBENCHTEST=/path -- cbench mcp
+
+    Read-only tools: status, get_config, list_testsets, node_facts, watch_jobs,
+    query_results, task_status, check_deps, check_updates. Tools that change
+    anything (set_config, run_nodecheck, gen_jobs, start_jobs, build_benchmark)
+    only return the command or cluster.yaml diff unless called with
+    confirm=true. parse_results needs no confirm (re-parsing overwrites).
+    System packages are never installed; check_deps only suggests them.
     """
     try:
         from cbench.mcp_server import main as serve_mcp
@@ -457,6 +467,11 @@ def gen_jobs(
     per_node = [m for m in members if m[1] in _PER_NODE]
     if per_node:
         nodes = hostlist.expand(nodelist) if nodelist else list(nv.hosts)
+        # each name is written into a job script (NODE="...") and a scheduler
+        # option (-w), so it must be a plain host name
+        bad = hostlist.invalid_hostnames(nodes)
+        if bad:
+            raise click.UsageError(f"not a valid host name: {', '.join(map(repr, bad))}")
         if not nodes:
             gen_warnings.add(
                 f"skipping {', '.join(m[1] for m in per_node)}: no node list (pass --nodelist, or "

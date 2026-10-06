@@ -189,15 +189,22 @@ def test_check_updates(ct, monkeypatch):
 def test_plans_change_nothing(ct):
     plan = t.gen_jobs("r1", testset="mpisanity", nodefacts="bg", groups=["a", "b"])
     assert plan["confirmed"] is False
-    assert plan["would_run"].startswith("cbench gen-jobs --ident r1 --testset mpisanity --group a --group b")
-    assert "--nodefacts bg" in plan["would_run"]
+    assert plan["would_run"].startswith("cbench gen-jobs --ident r1 --testset=mpisanity --group=a --group=b")
+    assert "--nodefacts=bg" in plan["would_run"]
     assert not (ct / "mpisanity").exists()
     nc = t.run_nodecheck(nodelist="zimabg[1-2]", allow_heterogeneous=True)
     assert "--allow-heterogeneous" in nc["would_run"] and not (ct / "nodefacts").exists()
     (ct / "t" / "r1").mkdir(parents=True)
     sj = t.start_jobs("t", "r1", mode="interactive", match="fio")
-    assert sj["would_run"].startswith("cbench start-jobs --testset t --ident r1 --interactive --match fio")
+    assert sj["would_run"].startswith("cbench start-jobs --testset t --ident r1 --interactive --match=fio")
     assert not (ct / ".cbench-mcp").exists()
+
+
+def test_option_values_cannot_become_options(ct):
+    (ct / "t" / "r1").mkdir(parents=True)
+    plan = t.start_jobs("t", "r1", match="--dry-run")
+    assert "--match=--dry-run" in plan["would_run"].split()
+    assert "--dry-run" not in plan["would_run"].split()
 
 
 def test_argument_checks(ct):
