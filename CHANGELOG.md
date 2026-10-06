@@ -195,6 +195,7 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- `cbench query --limit` (and the MCP `query_results` tool) limited metric rows, not runs: with 20 metrics per run, `--limit 20` returned one run. The limit now counts runs, each with all its metrics.
 - **`cbench snb`'s NPB test failed on SMT nodes and reported only one suite.**
   - It ran `mpirun -np <logical CPUs>`, which Open MPI 4 refuses when there are fewer
     cores than hardware threads.
