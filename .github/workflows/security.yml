@@ -43,5 +43,5 @@ jobs:
 
       - name: pip-audit (dependency vulnerabilities)
         run: |
-          pip install -e "cbench/python"
+          pip install -e "cbench/python[mcp]"
           pip-audit --skip-editable

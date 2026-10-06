@@ -104,6 +104,22 @@ cli.add_command(build_group)
 cli.add_command(serve_cmd)
 
 
+@cli.command("mcp")
+def mcp_cmd() -> None:
+    """Run the cbench MCP server on stdio, for MCP clients such as Claude
+    (needs the mcp extra: pip install 'cbench[mcp]', Python 3.10+).
+
+    Register it with a client, e.g.:  claude mcp add cbench -e CBENCHTEST=/path -- cbench mcp
+    """
+    try:
+        from cbench.mcp_server import main as serve_mcp
+    except ImportError as exc:
+        raise click.ClickException(
+            f"the MCP server needs the mcp package ({exc}); install it with "
+            "pip install 'cbench[mcp]' (Python 3.10+)") from exc
+    serve_mcp()
+
+
 # ---------------------------------------------------------------------------
 # gen-jobs
 # ---------------------------------------------------------------------------
