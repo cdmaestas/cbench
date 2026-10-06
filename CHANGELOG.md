@@ -8,6 +8,15 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **`cbench build check-updates [BENCH ...]`** reports newer upstream versions of
+  benchmark sources without downloading anything.
+  - Git sources: whether the default branch has moved past your local clone, and the
+    newest release tag.
+  - Pinned tarballs (bonnie++, hpl, iozone, npb, osu): whether the project's download
+    page lists a newer version.
+  - A lookup that fails shows as "couldn't check"; it never aborts the command.
+  - On its first run it found NPB 3.4.4 (pinned 3.4.2) and OSU micro-benchmarks 7.5.2
+    (pinned 7.3).
 - **Per-node gpfsperf** (`io-default` group `gpfs-node`, also in the `iogpfs` testset), to
   compare GPFS clients.
   - gen-jobs writes one single-node gpfsperf job per node, from the nodecheck facts' hosts

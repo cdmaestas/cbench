@@ -292,6 +292,44 @@ def _run_one(
 # build check
 # ---------------------------------------------------------------------------
 
+@build_group.command("check-updates")
+@click.argument("benchmarks", nargs=-1)
+@click.option("--prefix", default=None, help="Install prefix (default: $CBENCHTEST or .)")
+@click.option("--srcdir", default=None, help="Source directory (default: <prefix>/src)")
+def build_check_updates(benchmarks: tuple[str, ...], prefix: str | None,
+                        srcdir: str | None) -> None:
+    """Report newer upstream versions of benchmark sources (nothing is downloaded).
+
+    Git sources: whether the default branch has moved past your local clone,
+    and the newest release tag. Pinned tarballs: whether the project's download
+    page lists a newer version than the one cbench pins. Network lookups that
+    fail are reported, not fatal.
+    """
+    from cbench import upstream
+    from cbench.builders import REGISTRY
+
+    unknown = [b for b in benchmarks if b not in REGISTRY]
+    if unknown:
+        raise click.UsageError(f"unknown builder(s): {', '.join(unknown)}; "
+                               f"available: {', '.join(sorted(REGISTRY))}")
+    _prefix, src = _resolve_dirs(prefix, srcdir)
+    names = list(benchmarks) or sorted(REGISTRY)
+
+    tbl = Table(show_header=True, box=None, padding=(0, 2))
+    for col in ("Name", "Kind", "Current", "Latest", "Status", "Detail"):
+        tbl.add_column(col, style="bold cyan" if col == "Name" else ("dim" if col == "Detail" else None))
+    styles = {upstream.UP_TO_DATE: "green", upstream.UPDATE: "yellow", upstream.FAILED: "red"}
+    updates = 0
+    for name in names:
+        c = upstream.check_builder(REGISTRY[name](), src)
+        updates += c.status == upstream.UPDATE
+        style = styles.get(c.status)
+        status = f"[{style}]{c.status}[/{style}]" if style else c.status
+        tbl.add_row(c.name, c.kind, c.current, c.latest, status, c.detail)
+    console.print(tbl)
+    console.print(f"{updates} update(s) available" if updates else "No updates found")
+
+
 @build_group.command("check")
 @click.argument("benchmark", required=False, default=None)
 @click.option("--prefix", default=None, help="Install prefix to search for binaries")

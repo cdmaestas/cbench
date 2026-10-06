@@ -39,6 +39,7 @@ class GpfsperfBuilder(BenchmarkBuilder):
     description = "IBM Storage Scale (GPFS) gpfsperf, built from the GPFS samples"
     source_url = SAMPLES_DIR.as_uri()
     optional = True  # most hosts have no GPFS; `build all` skips it there
+    update_note = "source ships with GPFS; updated by GPFS upgrades"
 
     samples_dir: Path = SAMPLES_DIR
 

@@ -89,7 +89,13 @@ Six subgroups wired into `cli/main.py`:
 ### 8. Benchmark builders (`builders/`)
 Auto-registration via `__init_subclass__` (same pattern as parsers). `BenchmarkBuilder` base class provides `fetch()`, `build()`, `check_requires()`, and `update_source()`. `update_source()` calls `git_pull()` from `_util.py` for git-cloned sources; tarball sources always return False. `BuildLock` (in `cli/build.py`) caches successful builds in `<prefix>/build.lock` (JSON) keyed by source URL + SHA-256 config hash. Available builders: `stream`, `imb`, `osu`, `ior`, `hpl`, `hpcc`, `npb`, `amg`, `hpccg`, `mpibench`, `mpigraph`, `graph500`, `bonnie`, `iozone`, `fio`, `gpfsperf` (optional — needs GPFS; see §15), `io500`.
 
-To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`, set `name`, `description`, `source_url`, implement `fetch()` and `build()`, then import in `builders/__init__.py`.
+To add a new builder: create `builders/mybench.py`, subclass `BenchmarkBuilder`, set `name`, `description`, `source_url`, implement `fetch()` and `build()`, then import in `builders/__init__.py`. A pinned-tarball builder should also set `latest_page` and `latest_pattern`: the project's download page, and a regex whose `v` group is the version, which must also match its own `source_url` file name (a test checks this). A builder with nothing to compare sets `update_note` instead.
+
+`cbench build check-updates [BENCH...]` (`upstream.py`) only reports; it never downloads.
+- **Git sources:** `git ls-remote` HEAD is compared with the local clone under `<srcdir>`, found by its `origin` URL. It also shows the newest release tag: a dotted version at the end of the tag, with pre-releases skipped.
+- **Pinned tarballs:** the newest version on `latest_page` is compared with the pinned one.
+- **Failures:** a failed lookup shows as `couldn't check`.
+- **Changing a pin** stays a code change and a PR.
 
 ### 9. Single-node benchmarks (`cli/snb.py`)
 `cbench snb run` executes stream, cachebench, dgemm, mpistreams, linpack, npb, hpcc directly (no job scheduler). `_runcmd()` runs each test via `subprocess.Popen` with a poll loop that emits a "still running (elapsed)" heartbeat every `--heartbeat` seconds (default `_HEARTBEAT_SECS` = 30; `<=0` disables) so long tests are visibly alive, not mistakable for a hang. Linpack uses `_generate_hpl_dat()` to size HPL.dat to ~50% memory; output parsed by `XhplParser`. NPB runs `EP.B.x` and `CG.B.x`, appending to a single `.npb.out` file; output split by "NAS Parallel Benchmarks" sections and parsed by `NpbParser`. `--remote NODE` dispatches via ssh/pdsh using `remotecmd_method` from `cluster.yaml`; node name is validated (rejects `/`, `\\`, `..`, spaces). `--remote-cbench PATH` sets the cbench binary path on the remote.

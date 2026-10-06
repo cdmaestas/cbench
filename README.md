@@ -111,12 +111,18 @@ cbench build list --prefix $CBENCHTEST
 # Pull upstream changes for git-cloned sources and rebuild only if updated
 cbench build update
 cbench build update imb   # update a single benchmark
+
+# Report newer upstream versions without downloading anything: new commits on
+# git sources (plus the latest release tag) and newer pinned tarballs
+cbench build check-updates
+cbench build check-updates npb osu
 ```
 
-> **Note:** `cbench build update` only updates git-cloned sources (most builders).
-> Tarball-based builders (`stream`) have no upstream version-check and always report
-> "source unchanged". Use `cbench build run <name> --force` to unconditionally
-> re-download and rebuild a tarball source.
+> **Note:** `cbench build update` only updates git-cloned sources (most builders); a
+> tarball or single-file source (`stream`) always reports "source unchanged". Use
+> `cbench build run <name> --force` to re-download and rebuild one. Tarball versions are
+> pinned in the builders: `cbench build check-updates` shows when a newer one is out,
+> and moving to it is a code change.
 
 Available builders: `stream`, `imb` (Intel MPI Benchmarks), `osu` (OSU MPI Micro-Benchmarks), `ior` (IOR + mdtest), `hpl` (HPL Linpack — requires BLAS), `hpcc` (HPC Challenge — requires BLAS), `npb` (NAS Parallel Benchmarks), `amg` (LLNL AMG), `hpccg` (Mantevo HPCCG), `mpibench` (LLNL mpiBench), `mpigraph` (LLNL mpiGraph), `graph500`, `bonnie` (Bonnie++), `iozone`, `fio`, `io500` (IO500 — needs network, MPI and autotools), `gpfsperf` (optional — built from the GPFS samples, the single-node binary ships with GPFS, so the build is needed for `gpfsperf-mpi` (built when `mpicc` is found) or a custom variant; GPFS RDMA needs no special build; `build all` skips it on hosts without GPFS).
 
