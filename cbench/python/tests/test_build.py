@@ -708,3 +708,68 @@ def test_iozone_uses_a_pre_placed_tgz_without_downloading(tmp_path, monkeypatch)
     src = get_builder("iozone").fetch(tmp_path / "src")
     assert src == dest / "iozone3_511" / "src" / "current"
     assert (src / "makefile").is_file() and (src / "iozone.c").is_file()
+
+
+# ---------------------------------------------------------------------------
+# NPB: make.def comes from NPB's own template
+# ---------------------------------------------------------------------------
+
+# the variable lines of NPB3.4.4/NPB3.4-MPI/config/make.def.template
+_NPB_TEMPLATE = """\
+#  This is the NPB make.def template
+MPIFC = mpif90
+FLINK\t= $(MPIFC)
+FMPI_LIB =
+FMPI_INC =
+FFLAGS\t= -O3
+FLINKFLAGS = $(FFLAGS)
+MPICC = mpicc
+CLINK\t= $(MPICC)
+CFLAGS\t= -O3
+CLINKFLAGS = $(CFLAGS)
+CC\t= gcc -g
+BINDIR\t= ../bin
+RAND   = randi8
+"""
+
+
+def _npb_src(tmp_path, template=_NPB_TEMPLATE):
+    src = tmp_path / "NPB3.4-MPI"
+    (src / "config").mkdir(parents=True)
+    if template is not None:
+        (src / "config" / "make.def.template").write_text(template)
+    return src
+
+
+def test_npb_make_def_overrides_compilers_and_keeps_template_vars(tmp_path):
+    from cbench.builders.npb import _write_make_def
+    src = _npb_src(tmp_path)
+    _write_make_def(src, BuildConfig(mpicc="/opt/mpi/bin/mpicc", mpif90="/opt/mpi/bin/mpif90",
+                                     cflags="-O2", fflags="-O2 -march=native"))
+    md = (src / "config" / "make.def").read_text()
+    assert "MPIFC = /opt/mpi/bin/mpif90\n" in md and "MPICC = /opt/mpi/bin/mpicc\n" in md
+    assert "FFLAGS = -O2 -march=native\n" in md and "CFLAGS = -O2\n" in md
+    assert "FLINK\t= $(MPIFC)" in md and "BINDIR\t= ../bin" in md     # kept from the template
+    assert "MPIF77" not in md
+
+
+def test_npb_make_def_needs_the_template(tmp_path):
+    from cbench.builders.npb import _write_make_def
+    with pytest.raises(RuntimeError, match="not an NPB 3.4 MPI source tree"):
+        _write_make_def(_npb_src(tmp_path, template=None), BuildConfig())
+    src = _npb_src(tmp_path / "b", template=_NPB_TEMPLATE.replace("MPIFC = mpif90\n", ""))
+    with pytest.raises(RuntimeError, match="no MPIFC line"):
+        _write_make_def(src, BuildConfig())
+
+
+def test_npb_pins_3_4_4_and_builds_each_suite(tmp_path, monkeypatch):
+    import cbench.builders.npb as mod
+    assert mod._TARBALL_URL.endswith("/NPB3.4.4.tar.gz")
+    calls = []
+    monkeypatch.setattr(mod, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(mod, "install_bins", lambda src, dst, names, **kw: names)
+    src = _npb_src(tmp_path)
+    out = get_builder("npb").build(src, tmp_path / "pfx",
+                                   BuildConfig(jobs=2, extra={"suites": "ep is", "class": "a"}))
+    assert calls == [["make", "EP", "CLASS=A", "-j2"], ["make", "IS", "CLASS=A", "-j2"]]
+    assert out == ["ep.A.x", "is.A.x"]                 # NPB 3.4's own (lowercase) names
