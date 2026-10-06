@@ -45,6 +45,8 @@ class NpbBuilder(BenchmarkBuilder):
     name = "npb"
     description = "NAS Parallel Benchmarks MPI suite (BT, CG, EP, FT, IS, LU, MG, SP)"
     source_url = _TARBALL_URL
+    latest_page = "https://www.nas.nasa.gov/software/npb.html"
+    latest_pattern = r"(?<![A-Za-z])NPB(?P<v>\d+(?:\.\d+)+)\.tar\.gz"
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         top = wget_tarball(_TARBALL_URL, srcdir / "npb", force=force, dry_run=dry_run)

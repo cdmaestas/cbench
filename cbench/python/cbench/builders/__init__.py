@@ -42,6 +42,13 @@ class BenchmarkBuilder:
     #: site-specific builders (e.g. gpfsperf needs GPFS installed): `build all`
     #: skips them when check_requires() reports something missing
     optional: bool = False
+    #: pinned tarballs: the project's download page and a regex whose ``v``
+    #: group is a version, matched against the page and the source_url file
+    #: name (`cbench build check-updates`, cbench.upstream)
+    latest_page: str = ""
+    latest_pattern: str = ""
+    #: why check-updates can't compare this builder's source (shown instead)
+    update_note: str = ""
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
