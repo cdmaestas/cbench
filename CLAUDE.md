@@ -86,6 +86,10 @@ Six subgroups wired into `cli/main.py`:
 - `gen-jobs --profile` — IO profile bundles (§15); `gen-jobs --fio-runtime` overrides `fio_runtime_s`
 - `start-jobs --interactive` runs the `.sh` scripts gen-jobs writes; `--echo-output` sets `CBENCH_ECHO_OUTPUT=YES` so `cbench_functions` tees job output to the terminal
 - Job heartbeat (`common_header.in`): every `job_heartbeat_s` (default 60; `gen-jobs --heartbeat`, env `CBENCH_HEARTBEAT`; 0 = off) a disowned loop rewrites `<jobdir>/<jobname>.heartbeat` and, for interactive runs only, prints to stderr. Never stdout or a batch job's stderr (Slurm without `--error`, Torque `-j oe` merge it into the parsed output). The EXIT trap stops it and writes `exited rc=N`; a file stuck on `still running` after the job is gone means SIGKILL.
+- `watch` (`watch.py`) — job states from the `.heartbeat` files:
+  - **States:** running, stale, finished (rc 0), failed (rc), not started (no file), or `no heartbeat` (output but no file).
+  - **Stale:** still marked running with no update for 3 intervals. The line ends with `, every Ns`; older lines fall back to `job_heartbeat_s`, and `--stale-after` overrides.
+  - **`--follow [SECONDS]`:** redraws until nothing is running or not started, then exits 1 if any job failed or went stale.
 - `nodehwtest gen-jobs` / `start-jobs` / `parse` — single-node hw test workflow
 - `snb run` / `report` / `store` / `compare` — single-node benchmark suite
 - `build run` / `build all` / `build list` / `build check` / `build update` — benchmark builder framework

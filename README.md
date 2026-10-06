@@ -303,6 +303,24 @@ What each setting does, and the failure it avoids:
 - `mpirun` starts the remote ranks over ssh, so the first node needs key-based ssh to the
   others, and the job's files (binaries, data dir) must be on a filesystem every node mounts.
 
+#### Watching jobs
+
+`cbench watch` shows each job's state from its `.heartbeat` file:
+
+```bash
+cbench watch --testset io-default --ident run1            # one snapshot
+cbench watch --testset io-default --ident run1 --follow   # redraw every 10 s until done
+```
+
+- **running:** elapsed time and when the file was last updated.
+- **stale:** still marked running, but no update for 3 heartbeat intervals. It was probably
+  killed with SIGKILL, or its node died. `--stale-after SECONDS` changes the window.
+- **finished / failed:** the exit code the job recorded.
+- **not started:** no heartbeat file yet.
+
+`--follow` exits when nothing is running or waiting to start: 0 when no job failed or went
+stale, else 1, so scripts can wait on it.
+
 #### Stopping a running job
 
 Job scripts clean up after themselves when they stop:
@@ -317,7 +335,9 @@ Job scripts clean up after themselves when they stop:
 Two limits:
 
 - **SIGKILL can't be caught.** A job killed outright leaves its data, and its `.heartbeat`
-  still says `still running`.
+  still says `still running` (`cbench watch` shows it as `stale`). Some benchmarks' worker
+  processes outlive it: fio's workers run in their own process group and keep writing
+  until you stop them.
 - **A job started with SIGINT ignored never sees Ctrl-C.** `nohup`, or `&` from a
   non-interactive shell script, start it that way, and a shell can't catch a signal that was
   ignored when it started. Stop such a job with SIGTERM (`kill <pid>`), which still runs the
