@@ -16,7 +16,7 @@ Cbench is an HPC benchmarking framework. v2.0 adds a Python toolchain alongside 
 Read this first — it's the pointer to "where things are right now" so a new session doesn't re-derive it.
 
 - **Active branch:** `v2.0` (all Python work lands here). `main` tracks behind; sync `v2.0` → `main` at release milestones.
-- **Current focus:** _Backlog batch landed on `v2.0` and `main` (PRs #40–#47): IO scratch cleanup on exit/kill, job heartbeat, Open MPI 5 launcher, one owner per parser name, fio md jobs share files, nodecheck interconnect / GPFS transport (facts v3). No work in flight; zima validation of these and the remaining backlog are in session state._
+- **Current focus:** _No work in flight; `main` == `v2.0` (through #65). Since the last handoff: target block-size discovery + block-aware `io_profile: auto` (#49), custom `io_profiles` (#50), multi-node gpfsperf-mpi (#52) and per-node gpfsperf with outlier report (#57), `build check-updates` (#59), NPB 3.4.4 / OSU 7.5.2 with builder and parser fixes (#61, #62, #64). All validated on zimabg1/2 (see session state for access and results); remaining backlog is in session state._
 - **Open PRs / in flight:** _none._
 - **Detailed state:** richer per-session notes (in-flight work, next steps, gotchas, how to run things on this machine) live in Claude's **local memory dir** — not committed to the repo. At the start of a session, check that memory; a cold session can also be told "read session state."
 
