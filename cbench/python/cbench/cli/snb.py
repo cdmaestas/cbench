@@ -994,13 +994,17 @@ def run_cmd(
             for suite in npb_suites:
                 npb_bin = None
                 for cls in npb_classes:
-                    binary_name = f"{suite}.{cls}.x"
-                    candidates = [binpath_p / binary_name, binpath_p.parent / binary_name]
-                    npb_bin = next((p for p in candidates if p.exists()), None)
-                    if not npb_bin:
-                        import shutil as _shutil
-                        found = _shutil.which(binary_name)
-                        npb_bin = Path(found) if found else None
+                    # NPB 3.4 names binaries in lowercase (ep.B.x); older builds
+                    # and other installs may use EP.B.x
+                    for binary_name in (f"{suite.lower()}.{cls}.x", f"{suite}.{cls}.x"):
+                        candidates = [binpath_p / binary_name, binpath_p.parent / binary_name]
+                        npb_bin = next((p for p in candidates if p.exists()), None)
+                        if not npb_bin:
+                            import shutil as _shutil
+                            found = _shutil.which(binary_name)
+                            npb_bin = Path(found) if found else None
+                        if npb_bin:
+                            break
                     if npb_bin:
                         break
                 if npb_bin:
@@ -1011,7 +1015,7 @@ def run_cmd(
                     )
                     first_npb = False
             if not found_any_npb:
-                _logmsg(log, "WARNING: no NPB binaries found (EP.B.x etc.), skipping npb")
+                _logmsg(log, "WARNING: no NPB binaries found (ep.B.x etc.), skipping npb")
 
         # ------------------------------------------------------------------
         # fio — flexible I/O benchmark (sequential and random 4K)

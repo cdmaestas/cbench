@@ -173,6 +173,15 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **The NPB builder couldn't build the Fortran suites or install anything.**
+  - Its hand-written `config/make.def` set `MPIF77`, but NPB 3.4 uses `MPIFC` (so BT,
+    CG, EP, FT, LU, MG and SP had no compiler), and it had no `BINDIR`.
+  - It looked for `EP.B.x`, but NPB 3.4 builds `ep.B.x`.
+  - `make.def` is now generated from NPB's own `make.def.template`, with only the
+    compiler and flag lines overridden, and the lowercase binaries are installed.
+  - `cbench snb` finds NPB binaries in either case.
+  - Validated on zimabg1: all 8 suites built; EP and CG class B ran with verification
+    SUCCESSFUL.
 - **OSU latency was wrong with OSU 7.x.** The parser reported the 0-byte latency
   (like the Perl parser), but OSU 7.x starts its table at 1 byte, so it fell back to the
   largest message's latency (35,889 µs instead of 44.04 µs on zimabg). It now reports
@@ -255,6 +264,8 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **NPB builder updated to 3.4.4** from 3.4.2. 3.4.4 is NASA's bug-fix release (LU VEC
+  free_space, MPI-2 functions in BT-IO, DT uninitialized variables, CG optimization).
 - **OSU micro-benchmarks builder updated to 7.5.2** from 7.3. Same configure/make
   layout; all 63 MPI benchmarks build and install.
 - **iozone builder updated to 3.511** (`iozone3_511.tgz`, iozone.org's current

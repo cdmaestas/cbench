@@ -2,6 +2,8 @@
 
 import textwrap
 
+import pytest
+
 from click.testing import CliRunner
 
 from cbench.cli.main import cli
@@ -902,3 +904,22 @@ def test_prometheus_text_escapes_labels(tmp_path):
     # The double-quote in the metric name must be escaped
     assert '\\"' in text
     assert 'metric="gfl\\"ops"' in text
+
+
+@pytest.mark.parametrize("names", [("ep.B.x", "cg.B.x"), ("EP.B.x", "CG.B.x")])
+def test_snb_finds_npb_binaries_in_either_case(tmp_path, monkeypatch, names):
+    """NPB 3.4 (and the npb builder) name binaries ep.B.x; older installs EP.B.x."""
+    from cbench.cli import snb as snb_mod
+    monkeypatch.setattr(snb_mod.console, "width", 10000)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for n in names:
+        (bindir / n).write_text("#!/bin/sh\n")
+        (bindir / n).chmod(0o755)
+    res = CliRunner().invoke(cli, ["snb", "run", "--tests", "npb", "--binpath", str(bindir),
+                                   "--numcores", "2", "--destdir", str(tmp_path / "out"),
+                                   "--ident", "x", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    for n in names:   # case-insensitive: macOS filesystems find EP.B.x as ep.B.x
+        assert str(bindir / n).lower() in res.output.lower()
+    assert "no NPB binaries found" not in res.output
