@@ -173,6 +173,17 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **`cbench snb`'s NPB test failed on SMT nodes and reported only one suite.**
+  - It ran `mpirun -np <logical CPUs>`, which Open MPI 4 refuses when there are fewer
+    cores than hardware threads.
+  - Its output parser expected one dash in `NAS Parallel Benchmarks … - EP Benchmark`,
+    while NPB 3.4 prints `--`, so EP and CG were stored under one key and CG overwrote
+    EP.
+  - snb's MPI tests (npb, mpistreams) now default to the physical core count
+    (`--numcores` overrides), and NPB CG runs at the largest power of two that fits.
+  - The report and stored results now keep `ep_mops` and `cg_mops` separately.
+  - Validated on zimabg1 (4 cores / 8 threads): EP 363.6 and CG 3,265.4 Mop/s with no
+    `--numcores`.
 - **The NPB builder couldn't build the Fortran suites or install anything.**
   - Its hand-written `config/make.def` set `MPIF77`, but NPB 3.4 uses `MPIFC` (so BT,
     CG, EP, FT, LU, MG and SP had no compiler), and it had no `BINDIR`.
