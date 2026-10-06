@@ -104,12 +104,16 @@ cbench_scratch_cleanup()
 # loop is disowned, so a template's bare `wait` doesn't wait for it, and exits
 # on its own within one interval if the job shell disappears.
 CBENCH_HEARTBEAT_PID=""
+CBENCH_HEARTBEAT_SECS=""
 CBENCH_HEARTBEAT_FILE="TESTSET_PATH_HERE/IDENT_HERE/JOBNAME_HERE/JOBNAME_HERE.heartbeat"
 cbench_heartbeat_line()
 {
 	local el=$(( $(date +%s) - begin_epoch ))
-	printf 'Cbench heartbeat: JOBNAME_HERE (jobid %s) %s, elapsed %dh%02dm%02ds at %s\n' \
-		"$JOBID" "$1" $((el / 3600)) $((el % 3600 / 60)) $((el % 60)) "$(date '+%F %T')"
+	# "every Ns" lets `cbench watch` tell a stale job (no update for a few
+	# intervals) from a running one
+	printf 'Cbench heartbeat: JOBNAME_HERE (jobid %s) %s, elapsed %dh%02dm%02ds at %s, every %ss\n' \
+		"$JOBID" "$1" $((el / 3600)) $((el % 3600 / 60)) $((el % 60)) "$(date '+%F %T')" \
+		"$CBENCH_HEARTBEAT_SECS"
 }
 cbench_heartbeat_start()
 {
@@ -120,6 +124,7 @@ cbench_heartbeat_start()
 			return 0 ;;
 	esac
 	[ "$secs" -gt 0 ] || return 0
+	CBENCH_HEARTBEAT_SECS=$secs
 	cbench_heartbeat_line "started" > "$CBENCH_HEARTBEAT_FILE" 2>/dev/null
 	(
 		trap - EXIT INT HUP
