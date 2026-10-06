@@ -136,7 +136,8 @@ native-deb: | $(OUTDIR)
 	cd "$(SRCDIR)" && dpkg-buildpackage -us -uc -b
 	rm -rf "$(SRCDIR)/debian"
 	mv "$(SRCDIR)"/../$(PACKAGE)_*.deb "$(OUTDIR)/" 2>/dev/null || \
-	    mv "$(SRCDIR)"/../$(PACKAGE)-*.deb "$(OUTDIR)/" 2>/dev/null || true
+	    mv "$(SRCDIR)"/../$(PACKAGE)-*.deb "$(OUTDIR)/" 2>/dev/null || \
+	    { echo "error: dpkg-buildpackage produced no $(PACKAGE) .deb in $(SRCDIR)/.." >&2; exit 1; }
 	rm -f "$(SRCDIR)"/../$(PACKAGE)_*.changes "$(SRCDIR)"/../$(PACKAGE)_*.buildinfo
 	@echo "Built DEB in $(OUTDIR)/"
 

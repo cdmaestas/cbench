@@ -773,3 +773,40 @@ def test_npb_pins_3_4_4_and_builds_each_suite(tmp_path, monkeypatch):
                                    BuildConfig(jobs=2, extra={"suites": "ep is", "class": "a"}))
     assert calls == [["make", "EP", "CLASS=A", "-j2"], ["make", "IS", "CLASS=A", "-j2"]]
     assert out == ["ep.A.x", "is.A.x"]                 # NPB 3.4's own (lowercase) names
+
+
+# ---------------------------------------------------------------------------
+# git_pull (cbench build update)
+# ---------------------------------------------------------------------------
+
+def _git(*args, cwd=None):
+    import subprocess
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+@pytest.mark.skipif(__import__("shutil").which("git") is None, reason="git not installed")
+def test_git_pull_reports_change_and_no_change(tmp_path):
+    from cbench.builders._util import git_pull
+    work = tmp_path / "work"
+    _git("init", "-q", "-b", "main", str(work))
+    for cfg in (("user.email", "t@example.org"), ("user.name", "t")):
+        _git("config", *cfg, cwd=work)
+    (work / "f").write_text("1\n")
+    _git("add", "f", cwd=work)
+    _git("commit", "-q", "-m", "one", cwd=work)
+    clone = tmp_path / "clone"
+    _git("clone", "-q", str(work), str(clone))
+    assert git_pull(clone, dry_run=False) is False
+    (work / "f").write_text("2\n")
+    _git("commit", "-q", "-am", "two", cwd=work)
+    assert git_pull(clone, dry_run=False) is True
+
+
+@pytest.mark.skipif(__import__("shutil").which("git") is None, reason="git not installed")
+def test_git_pull_fails_when_head_is_unreadable(tmp_path):
+    """An unborn HEAD made both lookups "" and reported "up to date"."""
+    from cbench.builders._util import git_pull
+    repo = tmp_path / "empty"
+    _git("init", "-q", str(repo))
+    with pytest.raises(RuntimeError, match="git rev-parse HEAD failed"):
+        git_pull(repo, dry_run=False)

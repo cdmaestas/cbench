@@ -54,6 +54,17 @@ def git_clone(url: str, dest: Path, *, force: bool, dry_run: bool) -> None:
     run(["git", "clone", "--depth=1", url, str(dest)], cwd=dest.parent, dry_run=dry_run)
 
 
+def _git_head(repo: Path) -> str:
+    """HEAD's commit id. Raises RuntimeError when git can't say: two failed
+    lookups would compare equal ("" == "") and report "up to date"."""
+    res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True)
+    head = res.stdout.strip()
+    if res.returncode != 0 or not head:
+        raise RuntimeError(f"git rev-parse HEAD failed in {repo}: "
+                           f"{res.stderr.strip() or f'exit {res.returncode}'}")
+    return head
+
+
 def git_pull(dest: Path, *, dry_run: bool) -> bool:
     """Run `git pull` in *dest* and return True if HEAD changed.
 
@@ -65,16 +76,12 @@ def git_pull(dest: Path, *, dry_run: bool) -> bool:
     git_dir = dest / ".git"
     if not git_dir.exists():
         return False
-    before = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=dest, capture_output=True, text=True
-    ).stdout.strip()
+    before = _git_head(dest)
     console.print(f"  [cyan]git pull[/cyan] in {dest}")
     result = subprocess.run(["git", "pull", "--ff-only"], cwd=dest)
     if result.returncode != 0:
         raise RuntimeError(f"git pull --ff-only failed in {dest} (exit {result.returncode})")
-    after = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=dest, capture_output=True, text=True
-    ).stdout.strip()
+    after = _git_head(dest)
     changed = before != after
     if changed:
         console.print(f"  [green]Updated:[/green] {before[:8]} → {after[:8]}")
