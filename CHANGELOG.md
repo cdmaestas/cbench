@@ -182,6 +182,10 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   - `cbench snb` finds NPB binaries in either case.
   - Validated on zimabg1: all 8 suites built; EP and CG class B ran with verification
     SUCCESSFUL.
+- **OSU latency was wrong with OSU 7.x.** The parser reported the 0-byte latency
+  (like the Perl parser), but OSU 7.x starts its table at 1 byte, so it fell back to the
+  largest message's latency (35,889 µs instead of 44.04 µs on zimabg). It now reports
+  the smallest message size measured.
 - **A job whose MPI launches all failed looked "not started".** Found on zimabg1/2,
   where firewalld blocked Open MPI's remote daemons:
   - A gpfsperf(-mpi) job that reaches its end line without any result is now
@@ -262,6 +266,8 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ### Changed
 - **NPB builder updated to 3.4.4** from 3.4.2. 3.4.4 is NASA's bug-fix release (LU VEC
   free_space, MPI-2 functions in BT-IO, DT uninitialized variables, CG optimization).
+- **OSU micro-benchmarks builder updated to 7.5.2** from 7.3. Same configure/make
+  layout; all 63 MPI benchmarks build and install.
 - **iozone builder updated to 3.511** (`iozone3_511.tgz`, iozone.org's current
   "Latest"/"Stable" tarball) from 3.506. Same `src/current` layout. On a host without
   internet, put the tarball in `<srcdir>/iozone/` and the builder uses it instead of

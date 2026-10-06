@@ -10,8 +10,10 @@ from cbench.parsers.base import BenchmarkParser, ParseResult
 class OsuParser(BenchmarkParser):
     """Parses OSU MPI micro-benchmark output (bandwidth, latency, message rate).
 
-    Extracts peak bandwidth / minimum latency across all measured message sizes.
-    Mirrors perllib/output_parse/osu.pm.
+    Extracts peak bandwidth across all measured message sizes, and latency at
+    the smallest message size. Mirrors perllib/output_parse/osu.pm, which
+    reported the 0-byte latency; OSU 7.x starts its latency table at 1 byte,
+    so the smallest size measured is used (0 bytes on older OSU).
     """
 
     names = ["osu"]
@@ -25,7 +27,7 @@ class OsuParser(BenchmarkParser):
         status = "NOTSTARTED"
         metric = "unidir_bw"
         max_val = 0.0
-        zero_lat: float | None = None
+        small_lat: tuple[int, float] | None = None   # (smallest message size, latency)
 
         for line in stdout.splitlines():
             if "CBENCH NOTICE" in line:
@@ -49,8 +51,8 @@ class OsuParser(BenchmarkParser):
             if m:
                 msg_size = int(m.group(1))
                 val = float(m.group(2))
-                if metric == "latency" and msg_size == 0:
-                    zero_lat = val
+                if metric == "latency" and (small_lat is None or msg_size < small_lat[0]):
+                    small_lat = (msg_size, val)
                 max_val = max(max_val, val)
                 status = "COMPLETED"
                 continue
@@ -62,7 +64,7 @@ class OsuParser(BenchmarkParser):
                 status = "COMPLETED"
 
         if status == "COMPLETED":
-            reported = zero_lat if (metric == "latency" and zero_lat is not None) else max_val
+            reported = small_lat[1] if (metric == "latency" and small_lat) else max_val
             return ParseResult(status="PASSED", metrics={metric: reported})
 
         return ParseResult(status=f"ERROR({status})")

@@ -243,3 +243,23 @@ def test_imb_parsed():
     r = p.parse(_IMB_OUTPUT)
     assert r.status == "PASSED"
     assert "PingPong_lat_us" in r.metrics
+
+
+
+# OSU 7.x (real output, OSU 7.5.2 between zimabg1 and zimabg2 over 1 GbE): the
+# latency table starts at 1 byte, not 0, and has a "# Datatype" header line
+def _osu_fixture(name):
+    from pathlib import Path
+    return (Path(__file__).parent / "fixtures" / "io" / name).read_text()
+
+
+def test_osu_7x_latency_is_the_smallest_message():
+    r = OsuParser().parse(_osu_fixture("osu_latency_7.5.2.txt"))
+    assert r.status == "PASSED"
+    assert r.metrics["latency"] == pytest.approx(44.04)       # 1 byte, not the 4 MiB row
+
+
+def test_osu_7x_bandwidth_is_the_peak():
+    r = OsuParser().parse(_osu_fixture("osu_bw_7.5.2.txt"))
+    assert r.status == "PASSED"
+    assert r.metrics["unidir_bw"] == pytest.approx(117.66)

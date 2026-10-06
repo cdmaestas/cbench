@@ -7,7 +7,7 @@ from pathlib import Path
 from cbench.builders import BenchmarkBuilder, BuildConfig
 from cbench.builders._util import console, run, require, wget_tarball
 
-_TARBALL_URL = "https://mvapich.cse.ohio-state.edu/download/mvapich/osu-micro-benchmarks-7.3.tar.gz"
+_TARBALL_URL = "https://mvapich.cse.ohio-state.edu/download/mvapich/osu-micro-benchmarks-7.5.2.tar.gz"
 
 
 class OsuBuilder(BenchmarkBuilder):
