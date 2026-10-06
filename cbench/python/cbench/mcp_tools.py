@@ -116,15 +116,16 @@ def _run_cli(args: list[str], cbenchtest: str | None) -> dict:
 
 
 def _opt(args: list[str], flag: str, value) -> None:
+    """Append ``flag=value`` as one argv word: a value that looks like an
+    option ("--dry-run") then can't be parsed as one."""
     if value is None or value is False or value == "" or value == ():
         return
     if value is True:
         args.append(flag)
     elif isinstance(value, (list, tuple)):
-        for v in value:
-            args += [flag, str(v)]
+        args += [f"{flag}={v}" for v in value]
     else:
-        args += [flag, str(value)]
+        args.append(f"{flag}={value}")
 
 
 # ---------------------------------------------------------------------------
