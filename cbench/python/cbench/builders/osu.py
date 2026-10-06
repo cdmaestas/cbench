@@ -14,6 +14,8 @@ class OsuBuilder(BenchmarkBuilder):
     name = "osu"
     description = "OSU MPI Micro-Benchmarks — pt2pt, collective, one-sided"
     source_url = _TARBALL_URL
+    latest_page = "https://mvapich.cse.ohio-state.edu/benchmarks/"
+    latest_pattern = r"osu-micro-benchmarks-(?P<v>\d+(?:\.\d+)+)\.tar\.gz"
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         url = _TARBALL_URL

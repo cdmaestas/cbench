@@ -14,6 +14,9 @@ class BonnieBuilder(BenchmarkBuilder):
     name = "bonnie"
     description = "Bonnie++ sequential and random disk I/O benchmark"
     source_url = _TARBALL_URL
+    # 2.x releases are listed under experimental/; the main page stops at 1.03e
+    latest_page = "https://www.coker.com.au/bonnie++/experimental/"
+    latest_pattern = r"bonnie\+\+-(?P<v>\d+\.\d+[a-z]?)\.tgz"
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         return wget_tarball(_TARBALL_URL, srcdir / "bonnie", force=force, dry_run=dry_run)

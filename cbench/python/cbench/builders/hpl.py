@@ -68,6 +68,8 @@ class HplBuilder(BenchmarkBuilder):
     name = "hpl"
     description = "HPL High Performance Linpack benchmark (requires BLAS)"
     source_url = _TARBALL_URL
+    latest_page = "https://www.netlib.org/benchmark/hpl/"
+    latest_pattern = r"hpl-(?P<v>\d+(?:\.\d+)+)\.tar\.gz"
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         return wget_tarball(_TARBALL_URL, srcdir / "hpl", force=force, dry_run=dry_run)

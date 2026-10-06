@@ -21,6 +21,7 @@ class StreamBuilder(BenchmarkBuilder):
     name = "stream"
     description = "STREAM memory bandwidth benchmark (McCalpin)"
     source_url = _URL
+    update_note = "single source file, not versioned by release"
 
     def fetch(self, srcdir: Path, *, force: bool = False, dry_run: bool = False) -> Path:
         dest = srcdir / "stream"
