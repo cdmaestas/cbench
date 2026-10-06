@@ -1,0 +1,80 @@
+name: CI
+
+# The one check to require on main and v2.0 (branch protection): every pull
+# request gets a `CI / ci-ok` result. The workflows run only when the files
+# they cover changed; otherwise they are skipped and ci-ok still passes, so
+# docs-only PRs report a result too (path filters on the workflows themselves
+# left them with no checks at all, so a required check could never pass).
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      package: ${{ steps.diff.outputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          # via env, not spliced into the script
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          files=$(git diff --name-only "$BASE...$HEAD")
+          echo "$files"
+          code=false; package=false
+          # tests and security cover the package and the job templates; a
+          # workflow change runs everything so the change itself is exercised
+          if echo "$files" | grep -qE '^(cbench/python/|cbench/templates/|\.github/workflows/)'; then
+            code=true
+          fi
+          if echo "$files" | grep -qE '^(cbench/python/|\.github/workflows/)'; then
+            package=true
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
+  tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/test.yml
+
+  security:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/security.yml
+
+  packages:
+    needs: changes
+    if: needs.changes.outputs.package == 'true'
+    uses: ./.github/workflows/package-build.yml
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [changes, tests, security, packages]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required work passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          # changed paths must succeed; the rest may be skipped (nothing to check)
+          bad=$(echo "$NEEDS" | jq -r '[to_entries[]
+                | select((.key == "changes" and .value.result != "success")
+                         or (.value.result != "success" and .value.result != "skipped"))
+                | "\(.key)=\(.value.result)"] | join(" ")')
+          if [ -n "$bad" ]; then
+            echo "::error::not passed: $bad"
+            exit 1
+          fi

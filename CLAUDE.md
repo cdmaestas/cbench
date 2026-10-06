@@ -45,7 +45,19 @@ cbench nodehwtest gen-jobs --nodelist n[1-10] --ident run1
 
 Ruff is the linter (`[tool.ruff]` in `cbench/python/pyproject.toml`; rules F/E/B/S plus UP/C4 and a few RET/SIM checks, py39 target — PEP 604 `X | None` is fine because every module has `from __future__ import annotations` (the suite also passes on Python 3.9.6) — run `ruff check .` from `cbench/python/`). Pre-commit hooks are configured in `.pre-commit-config.yaml` at the repo root (ruff `ruff-check` hook, pinned to match CI's ruff, + hygiene checks on commit; full pytest on push); install with `pre-commit install --install-hooks -t pre-commit -t pre-push`. Keep `ruff check` clean — vetted false positives are annotated in-line with `noqa`/`nosec` plus a justification comment rather than disabling rules globally.
 
-CI: `.github/workflows/test.yml` runs `pytest` with `--cov=cbench --cov-report=term-missing --cov-fail-under=80` on Python 3.9–3.12 on pushes/PRs touching `cbench/python/**` or `cbench/templates/**` (templates are rendered and checked by the suite, including `shellcheck -S error` on rendered profile scripts; coverage artifact uploaded on the 3.12 run). `.github/workflows/security.yml` runs ruff + bandit + pip-audit on the same paths. All workflows default `GITHUB_TOKEN` to `contents: read`; a job that needs more declares it. Validate workflow edits with `actionlint`. Keep coverage above 80% — the CI gate enforces it.
+CI:
+- **Pull requests:** `.github/workflows/ci.yml` runs on every PR and is the one check to require (`CI / ci-ok`; branch protection on `main` and `v2.0`). A `changes` job diffs base...head with plain git. It then calls these through `workflow_call`, each only when its paths changed:
+  - `test.yml` (pytest `--cov=cbench --cov-fail-under=80` on Python 3.9–3.12) and `security.yml` (ruff + bandit + pip-audit), when `cbench/python/**`, `cbench/templates/**` or `.github/workflows/**` changed;
+  - `package-build.yml` (man pages, fpm rpm/deb, native RPM/DEB), when `cbench/python/**` or workflows changed.
+
+  `ci-ok` passes when everything it ran succeeded or was skipped, so docs-only PRs get a result too.
+- **Pushes:** to `v2.0`/`main` only, path-filtered, the same workflows run directly. Feature-branch pushes no longer double-run CI.
+- **Releases:** `package.yml` (push/release/dispatch) calls `package-build.yml`, then signs RPMs and attaches them to the release. Only `attach-to-release` gets `contents: write`, which is why the build jobs live in a separate callable workflow: a called workflow may not ask for more than its caller.
+- **Templates:** they're rendered and checked by the suite, including `shellcheck -S error` on rendered profile scripts; the coverage artifact is uploaded on the 3.12 run.
+- **Token:** all workflows default `GITHUB_TOKEN` to `contents: read`; a job that needs more declares it.
+- **Validation:** check workflow edits with `actionlint`.
+
+Keep coverage above 80% — the CI gate enforces it.
 
 ## Python package architecture (`cbench/python/cbench/`)
 
