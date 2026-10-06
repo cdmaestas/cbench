@@ -195,6 +195,25 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **Man pages:** every page's footer showed `None` for the version (`gen_manpages.py` never
+  passed one), and 28 of 33 NAME lines were cut at 45 characters with "...". Pages now carry
+  the package version and each command's full first sentence. Click's `\b` no-rewrap marker
+  is kept out of them.
+- **Package builds fail instead of shipping something broken:**
+  - The RPM spec and `debian/rules` stop with an error when the man pages haven't been
+    generated (`make man`). They used to warn and build a package without them.
+  - `make native-deb` fails when `dpkg-buildpackage` produced no `.deb`. It used to print
+    "Built DEB" anyway.
+  - `debian/rules` no longer runs `pytest ... 2>/dev/null || true`, which could never fail;
+    the suite runs in CI before packages are built.
+- `cbench build update` fails when `git rev-parse HEAD` does in a source checkout. Two
+  failed lookups compared equal and reported "Already up to date".
+- **gen-jobs refuses node names that aren't plain host names** for per-node jobs (from
+  `--nodelist`, the facts file, or the MCP `gen_jobs` tool). Each name is written into the
+  job script (`NODE="..."`) and Slurm's `-w`, so one with shell syntax would have run as
+  part of the job.
+- The MCP server passes option values to the CLI as `--flag=value`, so a value that looks
+  like an option (`--dry-run`) can't be taken for one.
 - `cbench query --limit` (and the MCP `query_results` tool) limited metric rows, not runs: with 20 metrics per run, `--limit 20` returned one run. The limit now counts runs, each with all its metrics.
 - **`cbench snb`'s NPB test failed on SMT nodes and reported only one suite.**
   - It ran `mpirun -np <logical CPUs>`, which Open MPI 4 refuses when there are fewer
@@ -298,6 +317,9 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **New pre-commit hooks:** bandit, shellcheck (the packaged wrapper) and actionlint, so
+  commits get the checks CI runs. CI's ruff and bandit are now pinned to the hook versions
+  (`ruff==0.16.10`, `bandit==1.9.4`); CI used to install whatever was newest.
 - **CI is now one required gate, `CI / ci-ok`.**
   - `ci.yml` runs on every pull request. It calls the test, security and
     package-build workflows only when the files they cover changed, and `ci-ok`
