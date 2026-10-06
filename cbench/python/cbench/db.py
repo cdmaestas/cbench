@@ -181,13 +181,19 @@ class ResultsDB:
             rows = con.execute(
                 # where_clause is assembled from hardcoded column snippets;
                 # all values are bound via ? placeholders.
+                # The limit counts runs, so it applies before the join: one
+                # row per metric would otherwise cut runs (and their metrics)
+                # off after `limit` metric rows.
                 f"""
                 SELECT r.*, m.metric, m.value, m.units
-                FROM runs r
+                FROM (
+                    SELECT * FROM runs r
+                    {where_clause}
+                    ORDER BY r.parsed_at DESC, r.id DESC
+                    LIMIT ?
+                ) r
                 LEFT JOIN metrics m ON m.run_id = r.id
-                {where_clause}
-                ORDER BY r.parsed_at DESC
-                LIMIT ?
+                ORDER BY r.parsed_at DESC, r.id DESC
                 """,  # noqa: S608 # nosec B608
                 params + [limit],
             ).fetchall()

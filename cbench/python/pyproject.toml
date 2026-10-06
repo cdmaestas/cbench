@@ -21,6 +21,8 @@ cbench = "cbench.cli.main:cli"
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov", "click-man>=0.4"]
 web = ["flask>=2.0"]
+# MCP server (`cbench mcp`); the SDK needs Python 3.10+
+mcp = ["mcp>=2.3; python_version >= '3.10'"]
 
 [tool.setuptools.packages.find]
 where = ["."]

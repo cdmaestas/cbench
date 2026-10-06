@@ -94,6 +94,7 @@ Six subgroups wired into `cli/main.py`:
 - `snb run` / `report` / `store` / `compare` — single-node benchmark suite
 - `build run` / `build all` / `build list` / `build check` / `build update` — benchmark builder framework
 - `serve` — Flask web dashboard (optional `cbench[web]` extra)
+- `mcp` — MCP server on stdio (optional `cbench[mcp]` extra, §16)
 - `utils run-sizes` / `find-pq` / `find-n` / `npb-procs` — sizing utilities
 
 ### 7a. MPI launch command (`launchers.py`)
@@ -219,6 +220,17 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 **IOPS tests always use 4k transfers** (`fioprofile.IOPS_BS`): fio `rand_rw`, iozone `-i 2` and gpfsperf read/write rand. The IO profile only sets *sequential* sizes.
 
 Token gotcha: `TOKEN_HERE` must end at a word boundary. A token glued to a unit (`SIZE_HEREm`) is not substituted, so size tokens carry their unit (`IOZONE_SIZE=1668m`).
+
+### 16. MCP server (`mcp_tools.py`, `mcp_server.py`, `cbench mcp`)
+`cbench mcp` serves the tools in `mcp_tools.py` over MCP stdio. It uses the `mcp` SDK 2.x (`MCPServer`), installed via the optional extra `cbench[mcp]` (Python ≥3.10; the extra has a version marker).
+
+- **Module split.** `mcp_tools.py` imports no MCP code, so it is tested on 3.9 too. `mcp_server.py` only registers the tools with `ToolAnnotations` (read-only vs not). Its `_tool()` wrapper re-raises expected errors (`ToolError`, `ConfigError`, `NodecheckError`, `ProfileError`, `OSError`) as the SDK's `ToolError`, because the SDK hides any other exception's text from the client.
+- **Consent rule.** A tool that changes anything (`set_config`, `run_nodecheck`, `gen_jobs`, `start_jobs`, `build_benchmark`) returns a plan unless `confirm=True`. `parse_results` is exempt: it is idempotent.
+- **CLI execution.** Side-effecting tools run the CLI as `python -m cbench` (`cbench/__main__.py`), never in-process.
+- **Tasks.** Long ones (interactive start-jobs, builds) are detached tasks under `$CBENCHTEST/.cbench-mcp/tasks/<id>.{json,log,rc}`. A `/bin/sh` wrapper writes the exit code; the rc file and the cbench argv go in as positional args, never into the script text. `task_status` reads them back.
+- **No system installs.** `check_deps` only suggests system packages (`_PACKAGES`); cbench never installs them.
+- **Config writes.** `set_config` validates with `config.check_config_data()` before writing and keeps `.bak`. Comments are lost (`yaml.safe_dump`), and the result says so.
+- **Names.** Testset, ident and benchmark names that become path parts must match `_NAME_RE`.
 
 ### 13. HPL input files in gen-jobs (`hplsizing.py`)
 Port of Perl `xhpl_gen_innerloop`/`hpcc_gen_innerloop`. For `xhpl`, `xhpl2`, `xhplintel` (→ `HPL.dat` from `templates/xhpl_dat.in`) and `hpcc` (→ `hpccinf.txt` from `hpccinf_txt.in`), gen-jobs writes the input file into each job dir (job scripts `cd` there). N: one per `memory_util_factors` entry via `compute_n()`, from the MIN MemTotal (`--nodefacts`) or explicit `memory_per_node_mb` — same no-silent-defaults rule and fail-before-render check as IO. `shakedown` uses a single 0.45 factor (and `MEM_UTIL_FACTORS` is overridden so the job echoes it). P×Q: `utils.compute_pq()` (Perl `compute_PQ`: square, else first Q in (√n, 3√n] dividing n); a proc count with no grid is skipped with a warning (none of `RUN_SIZES` hit this). `XHPL_BIN`/`XHPL2_BIN`/`XHPLINTEL_BIN`/`HPCC_BIN` are bare binary names — templates prefix `CBENCHTEST_BIN_HERE/`.

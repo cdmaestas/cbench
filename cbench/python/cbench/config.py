@@ -246,6 +246,24 @@ def load_config(path: str | Path | None = None) -> ClusterConfig:
 
     Raises ``ConfigError`` if the file exists but fails schema validation.
     """
+    candidate = config_path(path)
+    if candidate is None:
+        return ClusterConfig()
+    with candidate.open() as fh:
+        data = yaml.safe_load(fh) or {}
+    data = check_config_data(data, candidate)
+    for old, new in _KEY_ALIASES.items():
+        if old in data:
+            warnings.warn(f"{candidate}: {old} is deprecated, use {new}",
+                          DeprecationWarning, stacklevel=2)
+            data[new] = data.pop(old)
+    cfg = ClusterConfig(**{k: v for k, v in data.items() if k in ClusterConfig.__dataclass_fields__})
+    cfg.explicit_keys = frozenset(data)
+    return cfg
+
+
+def config_path(path: str | Path | None = None) -> Path | None:
+    """The cluster.yaml load_config() reads (same search order), or None."""
     candidates: list[Path] = []
     if path:
         candidates.append(Path(path))
@@ -254,25 +272,16 @@ def load_config(path: str | Path | None = None) -> ClusterConfig:
         if val:
             candidates.append(Path(val) / "cluster.yaml")
     candidates.append(Path("cluster.yaml"))
+    return next((c for c in candidates if c.exists()), None)
 
-    for candidate in candidates:
-        if candidate.exists():
-            with candidate.open() as fh:
-                data = yaml.safe_load(fh) or {}
-            # Normalise max_ppn_procs keys to strings (YAML may parse them as int)
-            if "max_ppn_procs" in data:
-                data["max_ppn_procs"] = {str(k): v for k, v in data["max_ppn_procs"].items()}
-            _validate_config(data, candidate)
-            for old, new in _KEY_ALIASES.items():
-                if old in data:
-                    if new in data:
-                        raise ConfigError(f"{candidate}: set {new} or its deprecated alias {old}, "
-                                          "not both")
-                    warnings.warn(f"{candidate}: {old} is deprecated, use {new}",
-                                  DeprecationWarning, stacklevel=2)
-                    data[new] = data.pop(old)
-            cfg = ClusterConfig(**{k: v for k, v in data.items() if k in ClusterConfig.__dataclass_fields__})
-            cfg.explicit_keys = frozenset(data)
-            return cfg
 
-    return ClusterConfig()
+def check_config_data(data: dict, source: Path) -> dict:
+    """Validate cluster.yaml data (schema, alias conflicts); return it with
+    max_ppn_procs keys normalised to strings (YAML may parse them as int)."""
+    if "max_ppn_procs" in data and isinstance(data["max_ppn_procs"], dict):
+        data["max_ppn_procs"] = {str(k): v for k, v in data["max_ppn_procs"].items()}
+    _validate_config(data, source)
+    for old, new in _KEY_ALIASES.items():
+        if old in data and new in data:
+            raise ConfigError(f"{source}: set {new} or its deprecated alias {old}, not both")
+    return data

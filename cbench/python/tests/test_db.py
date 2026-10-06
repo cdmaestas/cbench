@@ -190,3 +190,16 @@ def test_deduplicate_removes_older_rows(tmp_path):
     rows = db.query(limit=100)
     assert len(rows) == 1
     assert rows[0]["parsed_at"].startswith("2025-06-01")
+
+
+def test_query_limit_counts_runs_not_metric_rows(db):
+    # 3 runs x 5 metrics: a limit below the metric-row count used to cut runs off
+    for i in range(3):
+        db.store(_make_result(jobname=f"job{i}", benchmark="fio",
+                              metrics={f"m{k}": float(k) for k in range(5)},
+                              metric_units={f"m{k}": "x" for k in range(5)}))
+    rows = db.query(limit=2)
+    assert len(rows) == 2
+    assert all(len(r["metrics"]) == 5 for r in rows)
+    assert len(db.query(limit=3)) == 3
+    assert {r["jobname"] for r in db.query(limit=10, benchmark="fio")} == {"job0", "job1", "job2"}

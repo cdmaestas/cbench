@@ -8,6 +8,21 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **`cbench mcp`: an MCP server** (stdio; optional `cbench[mcp]` extra, Python 3.10+) that lets an
+  MCP client such as Claude drive cbench.
+  - Read-only tools: `status`, `get_config`, `list_testsets`, `node_facts`, `watch_jobs`,
+    `query_results`, `task_status`, `check_deps`, `check_updates`.
+  - Tools that need `confirm=true`: `set_config`, `run_nodecheck`, `gen_jobs`, `start_jobs`,
+    `build_benchmark`. Without it they return the command or the `cluster.yaml` diff.
+  - `parse_results` needs no confirm; it is idempotent.
+  - `set_config` validates against the schema before writing and keeps a `.bak`.
+  - `check_deps` suggests system packages and never installs them.
+  - Interactive runs and builds are detached tasks, polled with `task_status`.
+  - The tools live in `cbench.mcp_tools`, which has no MCP dependency, so they are tested on
+    Python 3.9 too.
+- `python -m cbench` runs the CLI.
+- `config.config_path()` / `check_config_data()`: the cluster.yaml search and validation
+  `load_config()` uses, now reusable.
 - **`cbench watch --testset X --ident Y [--follow [SECONDS]]`** shows each job's state from
   its `.heartbeat` file.
   - States: running (elapsed, last update), stale (no update for 3 heartbeat intervals,
@@ -180,6 +195,7 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- `cbench query --limit` (and the MCP `query_results` tool) limited metric rows, not runs: with 20 metrics per run, `--limit 20` returned one run. The limit now counts runs, each with all its metrics.
 - **`cbench snb`'s NPB test failed on SMT nodes and reported only one suite.**
   - It ran `mpirun -np <logical CPUs>`, which Open MPI 4 refuses when there are fewer
     cores than hardware threads.
