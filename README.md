@@ -533,6 +533,44 @@ cbench serve --no-cdn --assets-dir /path/to/assets/
 Endpoints: `/` HTML dashboard, `/api/results` `/api/summary` `/api/trend` JSON API,
 `/metrics` Prometheus text exposition format.
 
+### Drive cbench from an AI assistant (MCP server)
+
+`cbench mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server on stdio,
+so an MCP client such as Claude Code or Claude Desktop can run the whole workflow: probe
+nodes, edit `cluster.yaml`, check for missing software, generate, start, watch and parse jobs,
+and query results.
+
+```bash
+# Install the optional mcp extra (needs Python 3.10+)
+pip install "cbench[mcp]"
+
+# Register it with Claude Code
+claude mcp add cbench -e CBENCHTEST=/shared/cbtest -- cbench mcp
+```
+
+Tools:
+
+| Kind | Tools |
+|---|---|
+| Read only | `status`, `get_config`, `list_testsets`, `node_facts`, `watch_jobs`, `query_results`, `task_status`, `check_deps`, `check_updates` (network lookups) |
+| Need `confirm=true` | `set_config`, `run_nodecheck`, `gen_jobs`, `start_jobs`, `build_benchmark` |
+| Re-derives data | `parse_results` (idempotent: re-parsing overwrites the run's rows) |
+
+- **Consent.** A tool that changes anything does nothing unless it's called with
+  `confirm=true`. Without it, the tool returns the exact `cbench` command it would run, or the
+  `cluster.yaml` diff. The server tells the client to show that plan and to confirm only
+  after you agree.
+- **`set_config`** schema-validates the new file before writing it and keeps the old one as
+  `cluster.yaml.bak`. Comments in the file are not preserved.
+- **`check_deps`** never installs system packages. It lists what's missing (scheduler client,
+  MPI, pdsh, fio, compilers) and suggests the package to install. The only thing it can
+  install is cbench's own benchmarks, through `build_benchmark`.
+- **Long operations** (interactive `start_jobs`, `build_benchmark`) run detached and return a
+  task id. `task_status` reports their state and log tail; their files are under
+  `$CBENCHTEST/.cbench-mcp/tasks/`.
+- **Commands.** Side-effecting tools run the cbench CLI (`python -m cbench`), so they behave
+  exactly as they do from a shell.
+
 ---
 
 ## Supported benchmarks
