@@ -84,6 +84,10 @@ PROFILES: dict[str, Profile] = {
             "gpfs-mpi": Group("gpfs", "gpfsmpi", (
                 Member("iogpfs", "gpfsperfmpi"),
             )),
+            # gpfsperf -dio once per node, one node at a time, to compare clients
+            "gpfs-node": Group("gpfs", "gpfsnode", (
+                Member("iogpfs", "gpfsperfnode"),
+            )),
         },
         default_groups=("node-local",),
     ),

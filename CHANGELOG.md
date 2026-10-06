@@ -8,6 +8,18 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **Per-node gpfsperf** (`io-default` group `gpfs-node`, also in the `iogpfs` testset), to
+  compare GPFS clients.
+  - gen-jobs writes one single-node gpfsperf job per node, from the nodecheck facts' hosts
+    or `--nodelist`. Each job is pinned to its node (Slurm `-w`, Torque `nodes=`); without
+    a scheduler it runs over ssh.
+  - Jobs run one node at a time by default (Slurm `--dependency=singleton`; interactive
+    runs one by one). `gen-jobs --concurrent` and `start-jobs --interactive --concurrent`
+    run them together.
+  - Each job uses direct I/O (`-dio`) on a bounded file (`gpfsperf_node_size_mib`, default
+    4 GiB) with 256 MiB of 4k random ops, so a node takes minutes.
+  - `cbench parse` prints a per-node table and flags nodes more than `--outlier-pct`
+    (default 10%) worse than the median.
 - **Multi-node gpfsperf-mpi** (`io-default` group `gpfs-mpi`, also in the `iogpfs`
   testset). gen-jobs creates one job per node count (1, 2, 4 … `max_nodes`).
   - Each job runs one MPI rank per IO thread on every node (`-th 1`), through the
