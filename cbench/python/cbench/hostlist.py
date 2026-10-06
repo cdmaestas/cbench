@@ -11,6 +11,15 @@ from __future__ import annotations
 import re
 
 _TRAILING_DIGITS = re.compile(r"^(.*?)(\d+)$")
+#: a host name that is safe to write into a job script or scheduler option:
+#: letters, digits, '.', '_' and '-', starting and ending alphanumeric
+_HOSTNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._\-]*[A-Za-z0-9])?$")
+
+
+def invalid_hostnames(hosts: list[str]) -> list[str]:
+    """The names in ``hosts`` that aren't plain host names (shell syntax,
+    spaces, path separators...)."""
+    return [h for h in hosts if not _HOSTNAME.match(h)]
 
 
 def _split_top_level(spec: str) -> list[str]:

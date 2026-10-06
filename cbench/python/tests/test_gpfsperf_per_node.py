@@ -219,3 +219,20 @@ def test_parse_prints_per_node_table_and_outliers(tmp_path, monkeypatch):
     res = CliRunner().invoke(cli, ["parse", "--testset", "io-default", "--ident", "r1",
                                    "--cbenchtest", str(tmp_path), "--outlier-pct", "50"])
     assert "No outlier nodes (all within 50% of the median)" in res.output
+
+
+@pytest.mark.parametrize("bad", ["n1;touch x", "n1 n2", "$(id)", "../n1", "-n1"])
+def test_unsafe_node_names_are_refused(tmp_path, bad):
+    """Node names are written into the job script (NODE="...") and Slurm -w:
+    anything but a plain host name is refused before rendering."""
+    (tmp_path / "nodefacts").mkdir(exist_ok=True)
+    (tmp_path / "nodefacts" / "bg.json").write_text(json.dumps(_facts()))
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(f"cluster_name: zimabg\nmax_nodes: 2\nprocs_per_node: 8\nbatch_method: slurm\n"
+                   f"io_targets:\n  parallel: {GPFS}\n")
+    res = CliRunner().invoke(cli, ["gen-jobs", "--ident", "r1", "--run-type", "batch",
+                                   "--nodefacts", "bg", "--config", str(cfg),
+                                   "--cbenchtest", str(tmp_path), "--profile", "io-default",
+                                   "--group", "gpfs-node", "--nodelist", bad])
+    assert res.exit_code != 0 and "not a valid host name" in res.output
+    assert not (tmp_path / "io-default" / "r1").exists() or not any((tmp_path / "io-default" / "r1").iterdir())

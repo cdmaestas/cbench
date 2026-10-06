@@ -115,9 +115,16 @@ pip install pre-commit
 pre-commit install --install-hooks -t pre-commit -t pre-push   # from the repo root
 ```
 
-- **pre-commit**: ruff (with autofix), YAML checks, private-key detection, whitespace fixers
+- **pre-commit**: ruff (with autofix), bandit (same skips as CI), shellcheck on the
+  packaged `cbench` wrapper, actionlint on the workflows, YAML checks, private-key
+  detection, whitespace fixers. Job templates aren't shell until rendered; the test
+  suite renders them and runs `shellcheck -S error` on the result.
 - **pre-push**: the full pytest suite
-- **CI**: `.github/workflows/test.yml` (pytest, Python 3.9–3.12) and `.github/workflows/security.yml` (ruff + bandit + pip-audit) run on every push/PR touching `cbench/python/` or `cbench/templates/`. Workflows run with a read-only `GITHUB_TOKEN` unless a job asks for more.
+- **CI**: every pull request runs `.github/workflows/ci.yml`, whose `ci-ok` job is the
+  required check. It calls `test.yml` (pytest, Python 3.9–3.12, coverage ≥ 80%),
+  `security.yml` (ruff + bandit + pip-audit) and `package-build.yml` when their paths
+  changed. CI pins ruff and bandit to the hook versions; bump both places together.
+  Workflows run with a read-only `GITHUB_TOKEN` unless a job asks for more.
 
 ## Error behavior
 
@@ -128,7 +135,10 @@ submissions (`start-jobs` and `nodehwtest`), a failed scheduler queue query in
 throttled mode (it used to report "0 jobs" and submit everything), a crashing
 hw_test parser, and a missing `jsonschema` install (which would otherwise skip
 `cluster.yaml` validation entirely). Commands also exit nonzero when an
-interactive job fails, or when a remote pdsh run fails. Generated job scripts stop with a
+interactive job fails, or when a remote pdsh run fails. `cbench build update` fails when
+git can't read a checkout's HEAD (it used to report "Already up to date"), gen-jobs
+refuses per-node names that aren't plain host names, and the package builds fail
+without man pages or a produced `.deb`. Generated job scripts stop with a
 `CBENCH NOTICE` if they cannot `cd` into their job directory or the IO target
 lacks space. Benchmark *output* parsing remains
 tolerant — unparseable lines in third-party benchmark output are skipped, as

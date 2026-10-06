@@ -68,3 +68,9 @@ def test_round_trip(hosts):
 def test_nodehwtest_expand_now_handles_multiple_groups():
     from cbench.cli.nodehwtest import _expand_pdsh
     assert _expand_pdsh("n[1-2],m[5-6]") == ["n1", "n2", "m5", "m6"]
+
+
+def test_invalid_hostnames():
+    from cbench.hostlist import invalid_hostnames
+    assert invalid_hostnames(["zimabg1", "n01.cluster", "gpu_node-3"]) == []
+    assert invalid_hostnames(["n1;id", "a b", "x$(id)", "-n", "n.", ""]) == ["n1;id", "a b", "x$(id)", "-n", "n.", ""]

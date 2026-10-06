@@ -29,7 +29,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install tools
-        run: pip install ruff bandit pip-audit
+        # ruff and bandit are pinned to the pre-commit hooks
+        # (.pre-commit-config.yaml), so a new release never fails CI on code
+        # the hooks passed; bump both places together
+        run: pip install ruff==0.16.10 bandit==1.9.4 pip-audit
 
       - name: Ruff (lint + security rules)
         working-directory: cbench/python
