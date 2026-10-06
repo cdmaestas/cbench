@@ -65,6 +65,8 @@ class NodeValues:
     #: gen-time notes (e.g. io_profile auto moved up to fit a block size),
     #: collected while sizing jobs and printed once by gen-jobs
     notes: set = field(default_factory=set)
+    #: the nodes nodecheck probed (facts "hosts"); per-node jobs run one per node
+    hosts: list = field(default_factory=list)
 
 
 def _resolve_targets(cfg, facts_targets: dict, warnings: list) -> dict:
@@ -124,6 +126,7 @@ def resolve_node_values(cfg, facts: dict | None = None) -> NodeValues:
             source=f"nodefacts:{facts.get('name', '?')}",
             warnings=warnings,
             labels=transport_labels(agg),
+            hosts=list(facts.get("hosts") or []),
         )
     explicit = getattr(cfg, "explicit_keys", frozenset())
     cpus = cfg.procs_per_node if "procs_per_node" in explicit else None
@@ -407,6 +410,49 @@ def gpfsperf_tokens(nv: NodeValues, cfg, *, testset: str, benchmark: str,
     tokens, target = _gpfsperf_sizing(nv, cfg, testset=testset, benchmark=benchmark,
                                       target=target, nodes=1, workers=n)
     return {**tokens, "GPFSPERF_THREADS": str(n), **target_tokens(nv, benchmark, target)}
+
+
+#: per-node gpfsperf (-dio): MiB the random 4k ops move on each node
+PERNODE_IOPS_MIB = 256
+
+
+def gpfsperfnode_tokens(nv: NodeValues, cfg, *, node: str, testset: str, benchmark: str,
+                        target: str | None = None) -> dict:
+    """gpfsperf on one named node with direct I/O (-dio), for comparing nodes.
+
+    -dio bypasses the GPFS pagepool and the page cache (and gpfsperf clears the
+    file's cached blocks before each test), so a bounded file -- not 2x RAM --
+    still measures the path to disk: ``gpfsperf_node_size_mib`` (default 4 GiB)
+    rounded up to the record size. Threads = IO threads. Random ops move a fixed
+    PERNODE_IOPS_MIB (256 MiB = 65k 4k ops, at most the file): enough for a
+    stable IOPS figure, and quick per node even at a few hundred IOPS."""
+    from cbench import fioprofile
+
+    n = io_threads(nv, cfg)
+    target = target or target_name_for(benchmark)
+    fstype = nv.targets.get(target or "", {}).get("fstype") or "gpfs"
+    profile, bs = seq_profile(nv, cfg, target, fstype)
+    rec = _block_mib(bs)
+    size = max(rec, math.ceil(cfg.gpfsperf_node_size_mib / rec) * rec)
+    caveat = ""
+    cap_kb, _shared = _free_cap_kb(nv, target)
+    if cap_kb is not None and size * 1024 > cap_kb:
+        capped = max(rec, (cap_kb // 1024) // rec * rec)
+        caveat = (f"{benchmark} file capped to {capped} MiB ({size} MiB requested) to fit target "
+                  f"'{target}' free space")
+        size = capped
+    tokens = {
+        "PERNODE_HOST": node,
+        "GPFSPERF_IOPS_RECORD": fioprofile.IOPS_BS,
+        "GPFSPERF_IOPS_BYTES": f"{min(size, PERNODE_IOPS_MIB)}m",
+        "GPFSPERF_THREADS": str(n),
+        "GPFSPERF_SIZE": f"{size}m",
+        "GPFSPERF_RECORD": bs,
+        "GPFSPERF_PROFILE": profile,
+        "IO_REQUIRED_KB": str(size * 1024),
+        "IO_CAVEAT": _shell_safe(caveat),
+    }
+    return {**tokens, **target_tokens(nv, benchmark, target)}
 
 
 def gpfsperfmpi_tokens(nv: NodeValues, cfg, *, numnodes: int, numprocs: int, testset: str,

@@ -1,0 +1,59 @@
+# iogpfs_gpfsperfnode job template
+# Per-node IBM Storage Scale (GPFS) gpfsperf, for comparing GPFS clients:
+# gen-jobs writes one job per node (io-default group gpfs-node), run one at a
+# time by default so each node is measured alone. Same four ops as
+# iogpfs_gpfsperf (create/read seq at the IO profile's block size, read/write
+# rand at 4k) with direct I/O (-dio): that bypasses the GPFS pagepool and the
+# page cache, and gpfsperf clears the file's cached blocks before each test, so
+# a bounded file (gpfsperf_node_size_mib, default 4 GiB) still measures the
+# path to disk. `cbench parse` compares the nodes and flags outliers.
+#
+# The job runs gpfsperf on its node: directly when the scheduler placed it
+# there (Slurm -w / Torque nodes=), else over ssh (interactive runs; needs
+# key-based ssh to the node). The GPFS target and CBENCHTEST must be mounted on
+# this host and the node.
+#
+# NOTE: bash syntax is used here
+#
+# Cbench job binary: CBENCHTEST_BIN_HERE/gpfsperf if you built one, else the
+# binary GPFS ships
+
+GPFSPERF=CBENCHTEST_BIN_HERE/gpfsperf
+[ -x "$GPFSPERF" ] || GPFSPERF=/usr/lpp/mmfs/samples/perf/gpfsperf
+cbench_check_for_bin $GPFSPERF
+
+NODE="PERNODE_HOST_HERE"
+if [ "$(hostname -s)" == "${NODE%%.*}" ]; then
+	ON_NODE=""
+else
+	ON_NODE="ssh -o BatchMode=yes $NODE"
+fi
+
+IO_TARGET_DIR="IO_TARGET_DIR_HERE"
+if [ -z "$IO_TARGET_DIR" ]; then
+	cbench_echo "CBENCH NOTICE: no GPFS IO target (set io_targets.gpfs, or a GPFS io_targets.parallel)"
+	exit 1
+fi
+# per job and node, on GPFS; removed when the job exits or is killed
+DATADIR="$IO_TARGET_DIR/gpfsperfnode.$JOBID.$NODE"
+cbench_scratch_dir "$DATADIR"
+
+cbench_io_preflight "$DATADIR" "IO_REQUIRED_KB_HERE" "IO_CAVEAT_HERE"
+
+threads=GPFSPERF_THREADS_HERE
+file="$DATADIR/gpfsperf.dat"
+seq_opts="-r GPFSPERF_RECORD_HERE -n GPFSPERF_SIZE_HERE -th $threads -dio"
+iops_opts="-r GPFSPERF_IOPS_RECORD_HERE -n GPFSPERF_IOPS_BYTES_HERE -th $threads -dio"
+cbench_echo "Cbench gpfsperf: profile=GPFSPERF_PROFILE_HERE record=GPFSPERF_RECORD_HERE iops_record=GPFSPERF_IOPS_RECORD_HERE threads=$threads size=GPFSPERF_SIZE_HERE iops_bytes=GPFSPERF_IOPS_BYTES_HERE dio=1 node=$NODE"
+
+for op in "create seq" "read seq"; do
+	CMD="$ON_NODE $GPFSPERF $op $file $seq_opts"
+	cbench_run_cmd $CMD
+done
+for op in "read rand" "write rand"; do
+	CMD="$ON_NODE $GPFSPERF $op $file $iops_opts"
+	cbench_run_cmd $CMD
+done
+rm -f "$file"
+sync
+cbench_echo "Cbench gpfsperf: finished"

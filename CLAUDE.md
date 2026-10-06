@@ -149,6 +149,7 @@ Groups in `io-default`:
 - `parallel`: ior1mNtoN, mdtest.
 - `gpfs`: gpfsperf (single node).
 - `gpfs-mpi`: gpfsperf-mpi across nodes (opt-in; `--group all` includes it).
+- `gpfs-node`: gpfsperf once per node, to compare GPFS clients (opt-in).
 
 `--group all` selects every group. Custom profiles come from cluster.yaml `io_profiles`. The config schema checks the structure, and `profiles.custom_profiles()` refuses a built-in name, a member with no `<testset>_<benchmark>.in` template, an unknown default group, or two members that would get the same job name. Their groups have `route_members=True`: gen-jobs passes `group.target` as `target=` to every `iosizing.*_tokens()`/`target_tokens()`, so that target sets `IO_TARGET_DIR`/`TESTDIR`, the free-space cap and the block-aware profile. Built-in groups pass `None`, which keeps `target_name_for(benchmark)`. A group whose target isn't available is skipped with a warning. The `gpfs` target is `io_targets.gpfs`, else `io_targets.parallel` when the node facts say it's GPFS (`iosizing._gpfs_alias`), so gen-jobs resolves node values before choosing groups. Job names are group-qualified (`fio-local-1ppn-1`), and `get_parser()` strips a trailing `-<qualifier>` when the name doesn't match exactly or via an alias.
 
@@ -177,6 +178,15 @@ nodecheck facts **schema v2** adds per-node `cores` (distinct physical id/core i
 - Same four ops as gpfsperf on one shared file in a `cbench_scratch_dir` on the GPFS target. `iosizing._gpfsperf_sizing()` (shared with single-node gpfsperf) sizes it to 2× the RAM of all the job's nodes, with random ops bounded to ranks × 256 MiB. `-n` is the job's total; the samples README says all processes work on the same file at different offsets, with `-n` defaulting to the file size.
 - Binary: `$CBENCHTEST/bin/gpfsperf-mpi`, else `/usr/lpp/mmfs/samples/perf/gpfsperf-mpi`. GPFS does NOT ship it prebuilt (checked on zimabg1, GPFS 5.x samples), so build it: the `gpfsperf` builder also runs `make gpfsperf-mpi MPCC=<mpicc> MPLIBS=` when mpicc exists. The makefile's `MPLIBS = -lmpich` is MPICH-only, and mpicc links its own MPI. `--extra mpi=no` skips it, `mpi=yes` requires it, and `mplibs=` overrides.
 - `GpfsperfParser` takes it via `alias_spec = gpfsperfmpi` and uses the same `Cbench gpfsperf:` start/end lines; `nprocesses` is job-level. A job with the end line but no result is `ERROR(NO RESULTS)`, e.g. when every `orterun` failed (seen on zimabg1/2 with firewalld blocking ORTE's daemons; fixture `tests/fixtures/io/gpfsperfmpi_orte_daemon_failure.txt`).
+
+**Per-node gpfsperf** (`templates/iogpfs_gpfsperfnode.in`, group `gpfs-node`, `_PER_NODE`). This isn't nodehwtest: that runs the Perl `node_hw_test` driver on all nodes at once.
+- **Nodes:** gen-jobs writes one job per node, named `<bench>-<node>-<T>ppn-<T>`. The nodes come from `--nodelist`, else the facts' `hosts` (`NodeValues.hosts`). With neither, the jobs are skipped with a warning.
+- **Placement:** `_pin_to_node()` sets Slurm `-w <node>` and Torque `nodes=<node>`. The job runs gpfsperf directly when `hostname -s` is its node, else over `ssh -o BatchMode=yes`.
+- **One node at a time by default:**
+  - Under Slurm, a shared `-J cbench-pernode-<testset>-<ident> --dependency=singleton` serializes the jobs; `gen-jobs --concurrent` drops it.
+  - Interactive jobs run one by one; `start-jobs --interactive --concurrent` starts them all and waits.
+- **Size:** `-dio` bypasses the pagepool and page cache, so the file is bounded at `gpfsperf_node_size_mib` (default 4096, rounded up to the record) instead of 2× RAM. Random ops move `iosizing.PERNODE_IOPS_MIB` (256 MiB) in total.
+- **Comparison:** the start line carries `node=<name>`. `cbench parse` (`nodecompare`) groups PASSED per-node results and prints a per-node table. It flags metrics more than `--outlier-pct` (default 10) worse than the median: lower for throughput and IOPS, higher for latency; bookkeeping values are skipped.
 
 **io500 profile** (`--profile io500`, group `parallel`, `templates/io500_io500.in`):
 - Writes an `io500.ini` with the datadir on the parallel target and `stonewall-time` = `io500_stonewall_s` (default 300; `gen-jobs --io500-stonewall`), then runs `io500` through the MPI launcher and removes the datadir.

@@ -131,8 +131,9 @@ class GpfsperfParser(BenchmarkParser):
     """
 
     names = ["gpfsperf"]
-    #: gen-jobs' multi-node job (iogpfs_gpfsperfmpi) prints the same output
-    alias_spec = r"gpfsperfmpi"
+    #: gen-jobs' multi-node (iogpfs_gpfsperfmpi) and per-node
+    #: (iogpfs_gpfsperfnode) jobs print the same output
+    alias_spec = r"gpfsperf(mpi|node)"
 
     def parse(self, stdout: str, stderr: str = "") -> ParseResult:
         if "CBENCH NOTICE" in stdout:

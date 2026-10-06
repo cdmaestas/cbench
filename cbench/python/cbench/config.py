@@ -77,6 +77,8 @@ _SCHEMA: dict = {
         "fio_runtime_s": {"type": "integer", "minimum": 1},
         # IO500 stonewall (seconds per write phase); < 300 marks the run [INVALID]
         "io500_stonewall_s": {"type": "integer", "minimum": 1},
+        # per-node gpfsperf (iogpfs_gpfsperfnode, -dio): file size per node, MiB
+        "gpfsperf_node_size_mib": {"type": "integer", "minimum": 64},
         # custom IO profile bundles for `gen-jobs --profile` (cbench.profiles):
         # name -> {description?, default_groups?, groups: {name -> {target,
         # suffix?, members: ["<testset>_<benchmark>", ...]}}}
@@ -195,6 +197,7 @@ class ClusterConfig:
     io_profiles: dict = field(default_factory=dict)  # custom gen-jobs --profile bundles
     fio_runtime_s: int = 300
     io500_stonewall_s: int = 300
+    gpfsperf_node_size_mib: int = 4096
     job_heartbeat_s: int = 60
     io_profile: str = "auto"
     io_seq_bs: str = ""

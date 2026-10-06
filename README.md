@@ -175,6 +175,7 @@ A profile bundles IO benchmarks into one testset directory
 cbench gen-jobs --profile io-default --ident io1 --nodefacts compute            # node-local: fio, bonnie, iozone
 cbench gen-jobs --profile io-default --ident io1 --group parallel --group gpfs  # ior + mdtest; gpfsperf
 cbench gen-jobs --profile io-default --ident io1 --group gpfs-mpi --nodefacts compute  # gpfsperf-mpi, one job per node count
+cbench gen-jobs --profile io-default --ident io1 --group gpfs-node --nodefacts compute # gpfsperf -dio on each node, one at a time
 cbench gen-jobs --profile io-default --ident io1 --group all
 cbench gen-jobs --profile io500      --ident io1 --io500-stonewall 300          # one job per node count
 cbench gen-jobs --profile io-default --ident quick --fio-runtime 30             # short fio runs
@@ -204,6 +205,14 @@ io_profiles:
 
 `cbench gen-jobs --profile fast-local --group all` generates both groups. A custom profile can't
 reuse a built-in name (`io-default`, `io500`).
+
+The `gpfs-node` group runs gpfsperf on each node in turn: the nodes from `--nodefacts`, or
+`--nodelist 'n[1-8]'`. It uses direct I/O (`-dio`) on a bounded file (`gpfsperf_node_size_mib`,
+default 4 GiB), so each node takes minutes rather than the 2×-RAM run's half hour.
+`cbench parse` prints a per-node table and flags any node more than `--outlier-pct` (default
+10%) worse than the median. Jobs run one at a time, by Slurm `--dependency=singleton` or the
+interactive loop, unless you use `gen-jobs --concurrent` (batch) or `start-jobs --interactive
+--concurrent`. Without a scheduler, each job runs gpfsperf on its node over ssh.
 
 Sizing rules:
 - **Data size:** buffered tests write 2× RAM so the page cache can't hold the data, capped to 90% of the target's free space with a `CBENCH CAVEAT`.

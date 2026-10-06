@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from cbench.config import ClusterConfig, load_config
-from cbench import launchers, schedulers, templates
+from cbench import hostlist, launchers, nodecompare, schedulers, templates
 from cbench.db import ParseResult, ResultsDB
 from cbench.parsers import get_parser
 from cbench.parse_filters import build_filter_set, apply_filters, AVAILABLE as FILTER_MODULES
@@ -64,6 +64,21 @@ _DEFAULT_SKIP: dict[str, set[str]] = {"iometadata": {"fileop"}}
 _SINGLE_INSTANCE = {"fio", "bonnie", "iozone", "gpfsperf"}
 #: whole-node MPI suites generated at ppn = IO threads, one job per node count
 _NODE_SWEEP = {"io500", "gpfsperfmpi"}
+#: single-node benchmarks generated once per node, pinned to it, for comparing
+#: nodes (nodes from --nodelist, else the nodecheck facts' hosts)
+_PER_NODE = {"gpfsperfnode"}
+
+
+def _pin_to_node(cfg: ClusterConfig, node: str, ppn: int, testset: str, ident: str,
+                 concurrent: bool) -> dict:
+    """Scheduler tokens that place a per-node job on ``node``. Under Slurm the
+    jobs also share one name with --dependency=singleton, so they run one at a
+    time unless ``concurrent``. Other schedulers are not pinned: the job then
+    runs gpfsperf on its node over ssh (see iogpfs_gpfsperfnode.in)."""
+    spec = f"-N 1 --ntasks-per-node {ppn} -w {node}"
+    if not concurrent:
+        spec += f" -J cbench-pernode-{testset}-{ident} --dependency=singleton"
+    return {"SLURM_NODESPEC": spec, "TORQUE_NODESPEC": f"{node}:ppn={ppn}"}
 
 
 def _cfg(config: str | None) -> ClusterConfig:
@@ -119,6 +134,12 @@ cli.add_command(serve_cmd)
 @click.option("--io500-stonewall", type=click.IntRange(min=1), default=None, metavar="SECONDS",
               help="IO500 stonewall per write phase (default: cluster.yaml io500_stonewall_s, "
                    "else 300; below 300 IO500 marks the run [INVALID])")
+@click.option("--nodelist", default=None, metavar="HOSTLIST",
+              help="Nodes for per-node jobs (gpfs-node group), e.g. 'n[1-8]' "
+                   "(default: the hosts in --nodefacts)")
+@click.option("--concurrent", is_flag=True,
+              help="Per-node jobs: let the scheduler run them at the same time (default: one "
+                   "node at a time via Slurm --dependency=singleton)")
 @click.option("--heartbeat", type=click.IntRange(min=0), default=None, metavar="SECONDS",
               help="Seconds between the 'still running' lines each job writes to stderr "
                    "(default: cluster.yaml job_heartbeat_s, else 60; 0 disables)")
@@ -138,6 +159,8 @@ def gen_jobs(
     fio_runtime: int | None,
     io500_stonewall: int | None,
     heartbeat: int | None,
+    nodelist: str | None,
+    concurrent: bool,
 ) -> None:
     """Generate batch and/or interactive job scripts for a testset or IO profile."""
     from cbench import hplsizing, iosizing, profiles
@@ -235,7 +258,7 @@ def gen_jobs(
             f"testset '{out_ts}' sizes {', '.join(sized)} from node memory: pass --nodefacts "
             "NAME (run `cbench nodecheck` first) or set memory_per_node_mb explicitly in cluster.yaml"
         )
-    threaded = [b for b in benchmark_templates if b in _SINGLE_INSTANCE | _NODE_SWEEP]
+    threaded = [b for b in benchmark_templates if b in _SINGLE_INSTANCE | _NODE_SWEEP | _PER_NODE]
     if threaded and not nv.cpus:
         raise click.ClickException(
             f"testset '{out_ts}' sizes {', '.join(threaded)} concurrency from node CPUs: pass "
@@ -268,10 +291,11 @@ def gen_jobs(
     total = 0
 
     def emit(home: str, bench: str, out_bench: str, ppn_val: int, numprocs: int,
-             numnodes: int, walltime: str, launch_cmd: str, target: str | None = None) -> None:
+             numnodes: int, walltime: str, launch_cmd: str, target: str | None = None,
+             node: str | None = None) -> None:
         """Render and write one job (every run type) for a member at (ppn, numprocs).
         ``target``: a custom profile group's io_targets key, overriding the
-        benchmark's usual target."""
+        benchmark's usual target. ``node``: the node a per-node job is pinned to."""
         nonlocal total
         jobname = f"{out_bench}-{ppn_val}ppn-{numprocs}"
         if match_re and not match_re.search(jobname):
@@ -288,6 +312,9 @@ def gen_jobs(
                 io_extra = iosizing.gpfsperf_tokens(nv, cfg, **kw)
             elif bench == "io500":
                 io_extra = iosizing.io500_tokens(nv, cfg, **kw)
+            elif bench == "gpfsperfnode":
+                io_extra = {**iosizing.gpfsperfnode_tokens(nv, cfg, node=node, **kw),
+                            **_pin_to_node(cfg, node, ppn_val, out_ts, ident, concurrent)}
             elif bench == "gpfsperfmpi":
                 io_extra = iosizing.gpfsperfmpi_tokens(nv, cfg, numnodes=numnodes,
                                                        numprocs=numprocs, **kw)
@@ -378,7 +405,7 @@ def gen_jobs(
             walltime = templates.compute_walltime(numprocs, valid_sizes, cfg)
             launch_cmd = launchers.build_launch_cmd(numprocs, ppn_val, numnodes, cfg)
             for home, bench, out_bench, target in members:
-                if bench not in _SINGLE_INSTANCE and bench not in _NODE_SWEEP:
+                if bench not in _SINGLE_INSTANCE | _NODE_SWEEP | _PER_NODE:
                     emit(home, bench, out_bench, ppn_val, numprocs, numnodes, walltime, launch_cmd,
                          target)
 
@@ -409,6 +436,24 @@ def gen_jobs(
                 emit(home, bench, out_bench, threads, numprocs, numnodes, walltime, launch_cmd,
                      target)
 
+    # Per-node benchmarks: the single-node job once per node, pinned to it and
+    # named <bench>-<node>-<T>ppn-<T>, so parse can compare the nodes.
+    per_node = [m for m in members if m[1] in _PER_NODE]
+    if per_node:
+        nodes = hostlist.expand(nodelist) if nodelist else list(nv.hosts)
+        if not nodes:
+            gen_warnings.add(
+                f"skipping {', '.join(m[1] for m in per_node)}: no node list (pass --nodelist, or "
+                "--nodefacts from a `cbench nodecheck` of the nodes to compare)")
+        else:
+            threads = iosizing.io_threads(nv, cfg)
+            launch_cmd = launchers.build_launch_cmd(threads, threads, 1, cfg)
+            walltime = templates.compute_walltime(threads, [threads], cfg)
+            for home, bench, out_bench, target in per_node:
+                for node in nodes:
+                    emit(home, bench, f"{out_bench}-{node}", threads, threads, 1, walltime,
+                         launch_cmd, target, node=node)
+
     if skipped_no_grid:
         console.print(f"[yellow]WARNING: no HPL P x Q grid (P:Q within 1:3) for "
                       f"{len(skipped_no_grid)} job(s), not generated: "
@@ -435,6 +480,9 @@ def gen_jobs(
 @click.option("--echo-output", is_flag=True,
               help="With --interactive: also stream each job's output to the terminal "
                    "(sets CBENCH_ECHO_OUTPUT=YES; output still goes to the job's .o file)")
+@click.option("--concurrent", is_flag=True,
+              help="With --interactive: start every job at once and wait for all of them "
+                   "(default: one at a time), e.g. per-node gpfsperf under shared load")
 @click.option("--throttledbatch", "throttle", default=None, type=int,
               help="Keep N jobs running+queued at a time")
 @click.option("--match", default=None, help="Regex to filter job names")
@@ -452,6 +500,7 @@ def start_jobs(
     ident: str,
     mode: str,
     echo_output: bool,
+    concurrent: bool,
     throttle: int | None,
     match: str | None,
     exclude: str | None,
@@ -466,6 +515,9 @@ def start_jobs(
     """Submit jobs from a generated testset/ident directory."""
     if echo_output and mode != "interactive":
         raise click.UsageError("--echo-output only applies with --interactive")
+    if concurrent and mode != "interactive":
+        raise click.UsageError("--concurrent only applies with --interactive (for batch jobs, "
+                               "generate per-node jobs with gen-jobs --concurrent)")
     cfg = _cfg(config)
     cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
     ident_dir = _safe_path(cbenchtest, testset, ident)
@@ -528,8 +580,22 @@ def start_jobs(
                     time.sleep(delay)
             if remaining:
                 time.sleep(poll_interval)
+    elif mode == "interactive" and concurrent and not dry_run:
+        # every job at once; each still writes its own .o file
+        env = {**os.environ, "CBENCH_ECHO_OUTPUT": "YES"} if echo_output else None
+        procs = []
+        for script in scripts:
+            console.print(f"[bold]Starting {script.parent.name}[/bold]")
+            procs.append((script, subprocess.Popen(["bash", str(script)], shell=False, env=env)))
+        failed = [f"{script.parent.name} (exit {rc})" for script, p in procs
+                  if (rc := p.wait()) != 0]
+        submitted = len(procs)
+        if failed:
+            console.print(f"[red]{len(failed)} of {submitted} interactive job(s) exited nonzero: "
+                          f"{', '.join(failed)}[/red]")
+            raise SystemExit(1)
     else:
-        failed: list[str] = []
+        failed = []
         for script in scripts:
             if mode == "interactive":
                 if dry_run:
@@ -578,6 +644,8 @@ def start_jobs(
     default=None,
     help="Comma-separated parse filter modules to apply (e.g. openmpi,slurm,misc).",
 )
+@click.option("--outlier-pct", default=10.0, type=click.FloatRange(min=0), show_default=True,
+              help="Per-node jobs: flag a node this many percent worse than the median")
 def parse_cmd(
     testset: str,
     ident: str,
@@ -586,6 +654,7 @@ def parse_cmd(
     cbenchtest: str | None,
     no_db: bool,
     customparse: str | None,
+    outlier_pct: float,
 ) -> None:
     """Parse benchmark output files and store results."""
     cfg = _cfg(config)
@@ -697,6 +766,8 @@ def parse_cmd(
             "status": result.status,
             "status_detail": result.status_detail,
             "metrics": result.metrics,
+            # per-node jobs (gpfs-node) name their node; parse compares them
+            "node": nodecompare.node_from_output(stdout),
         })
 
     if output == "json":
@@ -705,6 +776,7 @@ def parse_cmd(
         console.print(f"[green]Results written to {json_path}[/green]")
     else:
         _render_table(results, testset, ident)
+        _render_node_comparison(results, outlier_pct)
 
     summary = _summarize(results)
     console.print(
@@ -757,6 +829,36 @@ def _caveat_lines(stdout: str) -> list[str]:
                 seen.setdefault(line[idx:].strip(), None)
                 break
     return list(seen)
+
+
+def _render_node_comparison(results: list[dict], pct: float) -> None:
+    """Per-node jobs: one row per node, then the nodes more than ``pct`` percent
+    worse than the median (cbench.nodecompare)."""
+    groups, outliers = nodecompare.compare(results, pct)
+    for group, by_node in sorted(groups.items()):
+        metrics = sorted({m for ms in by_node.values() for m in ms if nodecompare.compared(m)})
+        t = Table(title=f"Per-node comparison: {group} ({len(by_node)} nodes)")
+        t.add_column("Node", style="cyan")
+        for m in metrics:
+            t.add_column(m, justify="right")
+        flagged = {(o.node, o.metric) for o in outliers if o.group == group}
+        for node in sorted(by_node):
+            cells = []
+            for m in metrics:
+                v = by_node[node].get(m)
+                cell = "" if v is None else f"{v:.4g}"
+                cells.append(f"[red]{cell}[/red]" if (node, m) in flagged else cell)
+            t.add_row(node, *cells)
+        console.print(t)
+        if len(by_node) < 2:
+            console.print("  (one node: nothing to compare)")
+    if outliers:
+        console.print(f"[red]Outlier nodes (more than {pct:g}% worse than the median):[/red]")
+        for o in outliers:
+            console.print(f"  [red]{o.node}[/red] {o.group} {o.metric}={o.value:.4g} "
+                          f"(median {o.median:.4g}, {o.pct_worse:.0f}% worse)")
+    elif groups and any(len(b) > 1 for b in groups.values()):
+        console.print(f"[green]No outlier nodes (all within {pct:g}% of the median)[/green]")
 
 
 def _render_table(results: list[dict], testset: str, ident: str) -> None:
