@@ -9,6 +9,7 @@ Usage:
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import shlex
@@ -38,6 +39,29 @@ def _hostname() -> str:
 
 def _detect_cores() -> int:
     return os.cpu_count() or 1
+
+
+def _mpi_ranks(numcores: int, explicit: bool) -> int:
+    """Ranks for snb's MPI runs (npb, mpistreams). An explicit --numcores is
+    used as given; otherwise the physical core count: Open MPI's default slot
+    count is cores, so -np <logical CPUs> is refused on an SMT node. Falls
+    back to the logical count when physical cores are unknown."""
+    if explicit:
+        return numcores
+    return min(numcores, _detect_physical_cores()) or numcores
+
+
+#: NPB suites that need a power-of-two process count (BT and SP need a square)
+_NPB_POW2 = frozenset({"CG", "FT", "IS", "LU", "MG"})
+
+
+def _npb_ranks(suite: str, ranks: int) -> int:
+    """The largest process count <= ranks that NPB ``suite`` accepts."""
+    if suite in _NPB_POW2:
+        return 1 << (max(1, ranks).bit_length() - 1)
+    if suite in ("BT", "SP"):
+        return int(math.isqrt(max(1, ranks))) ** 2
+    return max(1, ranks)
 
 
 def _detect_physical_cores(cpuinfo_path: str | Path = Path("/proc/cpuinfo")) -> int:
@@ -418,7 +442,8 @@ def _parse_npb_out(outfile: Path) -> dict[str, float]:
     for part in parts:
         if "NAS Parallel Benchmarks" not in part:
             continue
-        m = re.search(r"NAS Parallel Benchmarks[^-]*-\s*(\w+)\s+Benchmark", part)
+        # "NAS Parallel Benchmarks 3.4 -- EP Benchmark" (NPB 3.4 prints "--")
+        m = re.search(r"NAS Parallel Benchmarks[^-]*-+\s*(\w+)\s+Benchmark", part)
         suite = m.group(1).lower() if m else "npb"
         result = parser.parse(part)
         if result.status == "PASSED" and "mops" in result.metrics:
@@ -835,6 +860,8 @@ def run_cmd(
         raise click.UsageError(f"Invalid --node value: '{hostname}'")
     explicit_numcores = numcores is not None
     numcores = numcores or _detect_cores()
+    # MPI tests (npb, mpistreams): physical cores unless --numcores was given
+    mpi_np = _mpi_ranks(numcores, explicit_numcores)
     ident = ident or f"{cfg.cluster_name}1"
 
     destdir_p = Path(destdir).resolve()
@@ -935,10 +962,13 @@ def run_cmd(
         # ------------------------------------------------------------------
         if re.search(r"mpistreams", tests):
             _logmsg(log, "Starting Multi-Process STREAMS (MPI streams) testing")
+            if mpi_np != numcores:
+                _logmsg(log, f"MPI ranks: up to {mpi_np} (physical cores of {numcores} logical "
+                             "CPUs; --numcores overrides)")
             stream_mpi = binpath_p / "stream-mpi"
             if stream_mpi.exists():
                 run("true", "mpistreams", overwrite=True)
-                for np in range(1, numcores + 1):
+                for np in range(1, mpi_np + 1):
                     marker = f"====> {np} processes"
                     if dry_run:
                         _logmsg(log, f"DRYRUN: {mpi_cmd} -n {np} {stream_mpi}")
@@ -986,6 +1016,9 @@ def run_cmd(
         # ------------------------------------------------------------------
         if re.search(r"npb", tests):
             _logmsg(log, "Starting NAS Parallel Benchmark testing")
+            if mpi_np != numcores:
+                _logmsg(log, f"MPI ranks: {mpi_np} (physical cores of {numcores} logical CPUs; "
+                             "--numcores overrides)")
             # Preferred suites: EP (CPU FP), CG (memory + sparse comm)
             npb_suites = ["EP", "CG"]
             npb_classes = ["B", "A", "C"]
@@ -1009,8 +1042,12 @@ def run_cmd(
                         break
                 if npb_bin:
                     found_any_npb = True
+                    np_suite = _npb_ranks(suite, mpi_np)
+                    if np_suite != mpi_np:
+                        _logmsg(log, f"NOTE: NPB {suite} needs a power-of-two process count; "
+                                     f"running {np_suite} of {mpi_np} ranks")
                     runcmd(
-                        [mpi_cmd, "-np", str(numcores), str(npb_bin)],
+                        [mpi_cmd, "-np", str(np_suite), str(npb_bin)],
                         out("npb"), overwrite=first_npb, dry_run=dry_run, log_fh=log,
                     )
                     first_npb = False

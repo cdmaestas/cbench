@@ -1,5 +1,6 @@
 """Tests for cbench snb command."""
 
+import re
 import textwrap
 
 import pytest
@@ -923,3 +924,54 @@ def test_snb_finds_npb_binaries_in_either_case(tmp_path, monkeypatch, names):
     for n in names:   # case-insensitive: macOS filesystems find EP.B.x as ep.B.x
         assert str(bindir / n).lower() in res.output.lower()
     assert "no NPB binaries found" not in res.output
+
+
+# ---------------------------------------------------------------------------
+# NPB in snb: rank counts and per-suite results (real NPB 3.4.4 output, zimabg1)
+# ---------------------------------------------------------------------------
+
+def test_parse_npb_out_keeps_each_suite_with_npb34_headers():
+    from pathlib import Path
+    f = Path(__file__).parent / "fixtures" / "io" / "snb_npb_3.4.4_ep_cg.txt"
+    assert "NAS Parallel Benchmarks 3.4 -- EP Benchmark" in f.read_text()
+    assert _parse_npb_out(f) == {"ep_mops": pytest.approx(367.15), "cg_mops": pytest.approx(3273.82)}
+
+
+@pytest.mark.parametrize(("numcores", "explicit", "physical", "expect"), [
+    (8, False, 4, 4),      # SMT node: Open MPI refuses -np 8 with 4 cores
+    (8, True, 4, 8),       # --numcores is taken as given
+    (8, False, 0, 8),      # physical cores unknown: logical
+    (4, False, 8, 4),      # never more than the logical count
+])
+def test_mpi_ranks(monkeypatch, numcores, explicit, physical, expect):
+    from cbench.cli import snb as snb_mod
+    monkeypatch.setattr(snb_mod, "_detect_physical_cores", lambda *a: physical)
+    assert snb_mod._mpi_ranks(numcores, explicit) == expect
+
+
+@pytest.mark.parametrize(("suite", "ranks", "expect"), [
+    ("EP", 6, 6), ("CG", 6, 4), ("CG", 4, 4), ("CG", 1, 1), ("FT", 12, 8),
+    ("BT", 6, 4), ("SP", 9, 9), ("MG", 0, 1),
+])
+def test_npb_ranks(suite, ranks, expect):
+    from cbench.cli.snb import _npb_ranks
+    assert _npb_ranks(suite, ranks) == expect
+
+
+def test_snb_npb_dry_run_uses_physical_cores_and_pow2_for_cg(tmp_path, monkeypatch):
+    from cbench.cli import snb as snb_mod
+    monkeypatch.setattr(snb_mod.console, "width", 10000)
+    monkeypatch.setattr(snb_mod, "_detect_cores", lambda: 12)
+    monkeypatch.setattr(snb_mod, "_detect_physical_cores", lambda *a: 6)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for n in ("ep.B.x", "cg.B.x"):
+        (bindir / n).write_text("#!/bin/sh\n")
+        (bindir / n).chmod(0o755)
+    res = CliRunner().invoke(cli, ["snb", "run", "--tests", "npb", "--binpath", str(bindir),
+                                   "--destdir", str(tmp_path / "out"), "--ident", "x", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    assert "MPI ranks: 6 (physical cores of 12 logical CPUs" in res.output
+    assert re.search(r"-np 6 \S*ep\.B\.x", res.output, re.I)
+    assert re.search(r"-np 4 \S*cg\.B\.x", res.output, re.I)
+    assert "NPB CG needs a power-of-two process count; running 4 of 6 ranks" in res.output
