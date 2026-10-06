@@ -632,6 +632,76 @@ def start_jobs(
 # parse
 # ---------------------------------------------------------------------------
 
+@cli.command("watch")
+@click.option("--testset", required=True, help="Testset or profile name")
+@click.option("--ident", required=True)
+@click.option("--follow", type=int, is_flag=False, flag_value=10, default=None, metavar="[SECONDS]",
+              help="Redraw every SECONDS (default 10) until no job is running or waiting to "
+                   "start; then exit 0, or 1 if any job failed or went stale")
+@click.option("--stale-after", type=click.IntRange(min=1), default=None, metavar="SECONDS",
+              help="Call a running job stale after this long without a heartbeat (default: "
+                   "3 of its heartbeat intervals)")
+@click.option("--config", default=None)
+@click.option("--cbenchtest", default=None, envvar="CBENCHTEST")
+def watch_cmd(testset: str, ident: str, follow: int | None, stale_after: int | None,
+              config: str | None, cbenchtest: str | None) -> None:
+    """Show each job's state from its heartbeat file: running, stale (no heartbeat
+    for 3 intervals: killed?), finished, failed (exit code), or not started."""
+    from rich.live import Live
+
+    from cbench import watch
+
+    cfg = _cfg(config)
+    cbenchtest = cbenchtest or os.environ.get("CBENCHTEST", ".")
+    ident_dir = _safe_path(cbenchtest, testset, ident)
+    if not ident_dir.is_dir():
+        raise click.ClickException(f"no jobs at {ident_dir} (run gen-jobs first)")
+    default_interval = cfg.job_heartbeat_s or 60
+
+    def snapshot():
+        statuses = watch.scan(ident_dir, default_interval=default_interval,
+                              stale_after=stale_after)
+        return statuses, _watch_table(statuses, testset, ident)
+
+    if follow is None:
+        _statuses, table = snapshot()
+        console.print(table)
+        return
+    with Live(console=console, auto_refresh=False) as live:
+        while True:
+            statuses, table = snapshot()
+            live.update(table, refresh=True)
+            if watch.all_done(statuses):
+                break
+            time.sleep(max(1, follow))
+    raise SystemExit(0 if watch.succeeded(statuses) else 1)
+
+
+def _watch_table(statuses, testset: str, ident: str):
+    from rich.console import Group
+    from rich.text import Text
+
+    from cbench import watch
+
+    styles = {watch.RUNNING: "cyan", watch.FINISHED: "green", watch.FAILED: "red",
+              watch.STALE: "bold red", watch.NOT_STARTED: "dim", watch.NO_HEARTBEAT: "yellow"}
+    t = Table(title=f"{testset} / {ident}")
+    for col in ("Job", "State", "Elapsed", "Exit", "Last update", "Detail"):
+        t.add_column(col, justify="right" if col in ("Elapsed", "Exit", "Last update") else "left")
+    for s in statuses:
+        style = styles.get(s.status, "")
+        t.add_row(s.job, f"[{style}]{s.status}[/{style}]" if style else s.status,
+                  watch.hms(s.elapsed_s), "-" if s.rc is None else str(s.rc),
+                  "-" if s.age_s is None else f"{watch.hms(s.age_s)} ago", s.detail)
+    counts: dict[str, int] = {}
+    for s in statuses:
+        counts[s.status] = counts.get(s.status, 0) + 1
+    order = (watch.RUNNING, watch.STALE, watch.FINISHED, watch.FAILED, watch.NOT_STARTED,
+             watch.NO_HEARTBEAT)
+    summary = "  ".join(f"{counts[k]} {k}" for k in order if counts.get(k))
+    return Group(t, Text(summary or "no jobs"))
+
+
 @cli.command("parse")
 @click.option("--testset", required=True)
 @click.option("--ident", required=True)

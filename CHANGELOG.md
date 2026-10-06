@@ -8,6 +8,13 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
 ## [Unreleased]
 
 ### Added
+- **`cbench watch --testset X --ident Y [--follow [SECONDS]]`** shows each job's state from
+  its `.heartbeat` file.
+  - States: running (elapsed, last update), stale (no update for 3 heartbeat intervals,
+    probably SIGKILLed), finished or failed (exit code), and not started.
+  - `--follow` redraws until everything is done and exits 1 if any job failed or went
+    stale.
+  - The heartbeat line now records its interval (`, every 60s`); older lines still parse.
 - **`cbench build check-updates [BENCH ...]`** reports newer upstream versions of
   benchmark sources without downloading anything.
   - Git sources: whether the default branch has moved past your local clone, and the
