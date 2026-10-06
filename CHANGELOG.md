@@ -275,6 +275,15 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **CI is now one required gate, `CI / ci-ok`.**
+  - `ci.yml` runs on every pull request. It calls the test, security and
+    package-build workflows only when the files they cover changed, and `ci-ok`
+    passes when everything it ran passed or was skipped. Docs-only PRs used to report
+    no checks at all.
+  - Feature-branch pushes no longer run CI twice; pushes to `v2.0`/`main` still run
+    the workflows directly.
+  - The package build jobs moved into `package-build.yml`, so pull requests can build
+    packages without the release job's write token.
 - **NPB builder updated to 3.4.4** from 3.4.2. 3.4.4 is NASA's bug-fix release (LU VEC
   free_space, MPI-2 functions in BT-IO, DT uninitialized variables, CG optimization).
 - **OSU micro-benchmarks builder updated to 7.5.2** from 7.3. Same configure/make

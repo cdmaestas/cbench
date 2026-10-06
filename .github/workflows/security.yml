@@ -2,17 +2,14 @@ name: Security
 
 on:
   push:
+    branches: [v2.0, main]
     paths:
       - "cbench/python/**"
       # job templates are rendered and checked by the test suite
       - "cbench/templates/**"
       - ".github/workflows/security.yml"
-  pull_request:
-    paths:
-      - "cbench/python/**"
-      # job templates are rendered and checked by the test suite
-      - "cbench/templates/**"
-      - ".github/workflows/security.yml"
+  # pull requests run this through ci.yml (the CI / ci-ok gate)
+  workflow_call:
 
 # Least privilege for GITHUB_TOKEN; a job that needs more asks for it
 # (attach-to-release: contents: write).
