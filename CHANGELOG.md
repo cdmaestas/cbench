@@ -173,6 +173,10 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   `tree_remove`; bonnie++ results include an `instances` count.
 
 ### Fixed
+- **OSU latency was wrong with OSU 7.x.** The parser reported the 0-byte latency
+  (like the Perl parser), but OSU 7.x starts its table at 1 byte, so it fell back to the
+  largest message's latency (35,889 µs instead of 44.04 µs on zimabg). It now reports
+  the smallest message size measured.
 - **A job whose MPI launches all failed looked "not started".** Found on zimabg1/2,
   where firewalld blocked Open MPI's remote daemons:
   - A gpfsperf(-mpi) job that reaches its end line without any result is now
@@ -251,6 +255,8 @@ See `cbench/CHANGES` for the v1.x Perl toolchain history.
   handling now lives in `cbench.hostlist`.
 
 ### Changed
+- **OSU micro-benchmarks builder updated to 7.5.2** from 7.3. Same configure/make
+  layout; all 63 MPI benchmarks build and install.
 - **iozone builder updated to 3.511** (`iozone3_511.tgz`, iozone.org's current
   "Latest"/"Stable" tarball) from 3.506. Same `src/current` layout. On a host without
   internet, put the tarball in `<srcdir>/iozone/` and the builder uses it instead of
